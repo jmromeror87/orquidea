@@ -19,6 +19,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import NavLinks from './NavLinks'
+import MobileMenu from './MobileMenu'
 import SedeSelector from './SedeSelector'
 import AuthLinks from './AuthLinks'
 import BenefitIcon from './BenefitIcons'
@@ -68,6 +69,7 @@ export default async function SiteHeader() {
             >
               Llámanos ahora
             </a>
+            <MobileMenu sedes={sedes} />
           </div>
         </div>
       </header>
