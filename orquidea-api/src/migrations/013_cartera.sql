@@ -115,7 +115,7 @@ CREATE OR REPLACE VIEW v_cartera AS
     c.dia_cobro,
     c.fecha_inicio
   FROM contratos c
-  JOIN terceros t ON t.id = c.titular_id;
+  JOIN terceros t ON t.id = c.contratante_id;
 
 -- ── 6. Función: recalcular mora de pólizas ───────────────────────────────
 
