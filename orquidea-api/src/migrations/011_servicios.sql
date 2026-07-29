@@ -96,15 +96,33 @@ CREATE TABLE IF NOT EXISTS items_servicio (
 
 -- ── 5. Permisos ───────────────────────────────────────────────────────────
 
-INSERT INTO permisos_roles (rol, modulo, puede_ver, puede_crear, puede_editar, puede_eliminar)
+INSERT INTO permisos_roles (rol, modulo, accion, permitido)
 VALUES
-  ('superadmin',       'servicios', true, true,  true,  true),
-  ('administrador',    'servicios', true, true,  true,  true),
-  ('operador',         'servicios', true, true,  true,  false),
-  ('asesor_comercial', 'servicios', true, true,  false, false),
-  ('contador',         'servicios', true, false, false, false),
-  ('consultor',        'servicios', true, false, false, false)
-ON CONFLICT (rol, modulo) DO NOTHING;
+  ('superadmin',       'servicios', 'ver',      true),
+  ('superadmin',       'servicios', 'crear',    true),
+  ('superadmin',       'servicios', 'editar',   true),
+  ('superadmin',       'servicios', 'eliminar', true),
+  ('administrador',    'servicios', 'ver',      true),
+  ('administrador',    'servicios', 'crear',    true),
+  ('administrador',    'servicios', 'editar',   true),
+  ('administrador',    'servicios', 'eliminar', true),
+  ('operador',         'servicios', 'ver',      true),
+  ('operador',         'servicios', 'crear',    true),
+  ('operador',         'servicios', 'editar',   true),
+  ('operador',         'servicios', 'eliminar', false),
+  ('asesor_comercial', 'servicios', 'ver',      true),
+  ('asesor_comercial', 'servicios', 'crear',    true),
+  ('asesor_comercial', 'servicios', 'editar',   false),
+  ('asesor_comercial', 'servicios', 'eliminar', false),
+  ('contador',         'servicios', 'ver',      true),
+  ('contador',         'servicios', 'crear',    false),
+  ('contador',         'servicios', 'editar',   false),
+  ('contador',         'servicios', 'eliminar', false),
+  ('consultor',        'servicios', 'ver',      true),
+  ('consultor',        'servicios', 'crear',    false),
+  ('consultor',        'servicios', 'editar',   false),
+  ('consultor',        'servicios', 'eliminar', false)
+ON CONFLICT (rol, modulo, accion) DO NOTHING;
 
 -- ── 6. Grants ─────────────────────────────────────────────────────────────
 

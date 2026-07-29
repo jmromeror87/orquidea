@@ -185,15 +185,33 @@ $$;
 -- ── 6. Rol en terceros ────────────────────────────────────────────────────
 
 -- Asegurar que los permisos del módulo clientes mapeen a polizas también
-INSERT INTO permisos_roles (rol, modulo, puede_ver, puede_crear, puede_editar, puede_eliminar)
+INSERT INTO permisos_roles (rol, modulo, accion, permitido)
 VALUES
-  ('superadmin',       'polizas', true, true,  true,  true),
-  ('administrador',    'polizas', true, true,  true,  true),
-  ('operador',         'polizas', true, true,  true,  false),
-  ('asesor_comercial', 'polizas', true, true,  true,  false),
-  ('contador',         'polizas', true, false, false, false),
-  ('consultor',        'polizas', true, false, false, false)
-ON CONFLICT (rol, modulo) DO NOTHING;
+  ('superadmin',       'polizas', 'ver',      true),
+  ('superadmin',       'polizas', 'crear',    true),
+  ('superadmin',       'polizas', 'editar',   true),
+  ('superadmin',       'polizas', 'eliminar', true),
+  ('administrador',    'polizas', 'ver',      true),
+  ('administrador',    'polizas', 'crear',    true),
+  ('administrador',    'polizas', 'editar',   true),
+  ('administrador',    'polizas', 'eliminar', true),
+  ('operador',         'polizas', 'ver',      true),
+  ('operador',         'polizas', 'crear',    true),
+  ('operador',         'polizas', 'editar',   true),
+  ('operador',         'polizas', 'eliminar', false),
+  ('asesor_comercial', 'polizas', 'ver',      true),
+  ('asesor_comercial', 'polizas', 'crear',    true),
+  ('asesor_comercial', 'polizas', 'editar',   true),
+  ('asesor_comercial', 'polizas', 'eliminar', false),
+  ('contador',         'polizas', 'ver',      true),
+  ('contador',         'polizas', 'crear',    false),
+  ('contador',         'polizas', 'editar',   false),
+  ('contador',         'polizas', 'eliminar', false),
+  ('consultor',        'polizas', 'ver',      true),
+  ('consultor',        'polizas', 'crear',    false),
+  ('consultor',        'polizas', 'editar',   false),
+  ('consultor',        'polizas', 'eliminar', false)
+ON CONFLICT (rol, modulo, accion) DO NOTHING;
 
 -- ── 7. Grants ─────────────────────────────────────────────────────────────
 

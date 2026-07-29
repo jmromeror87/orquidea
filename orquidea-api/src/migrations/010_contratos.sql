@@ -39,15 +39,33 @@ ON CONFLICT DO NOTHING;
 UPDATE permisos_roles SET modulo = 'contratos' WHERE modulo = 'contratos';
 
 -- Asegurar permiso si no existe
-INSERT INTO permisos_roles (rol, modulo, puede_ver, puede_crear, puede_editar, puede_eliminar)
+INSERT INTO permisos_roles (rol, modulo, accion, permitido)
 VALUES
-  ('superadmin',       'contratos', true, true,  true,  true),
-  ('administrador',    'contratos', true, true,  true,  true),
-  ('operador',         'contratos', true, true,  true,  false),
-  ('asesor_comercial', 'contratos', true, true,  true,  false),
-  ('contador',         'contratos', true, false, false, false),
-  ('consultor',        'contratos', true, false, false, false)
-ON CONFLICT (rol, modulo) DO NOTHING;
+  ('superadmin',       'contratos', 'ver',      true),
+  ('superadmin',       'contratos', 'crear',    true),
+  ('superadmin',       'contratos', 'editar',   true),
+  ('superadmin',       'contratos', 'eliminar', true),
+  ('administrador',    'contratos', 'ver',      true),
+  ('administrador',    'contratos', 'crear',    true),
+  ('administrador',    'contratos', 'editar',   true),
+  ('administrador',    'contratos', 'eliminar', true),
+  ('operador',         'contratos', 'ver',      true),
+  ('operador',         'contratos', 'crear',    true),
+  ('operador',         'contratos', 'editar',   true),
+  ('operador',         'contratos', 'eliminar', false),
+  ('asesor_comercial', 'contratos', 'ver',      true),
+  ('asesor_comercial', 'contratos', 'crear',    true),
+  ('asesor_comercial', 'contratos', 'editar',   true),
+  ('asesor_comercial', 'contratos', 'eliminar', false),
+  ('contador',         'contratos', 'ver',      true),
+  ('contador',         'contratos', 'crear',    false),
+  ('contador',         'contratos', 'editar',   false),
+  ('contador',         'contratos', 'eliminar', false),
+  ('consultor',        'contratos', 'ver',      true),
+  ('consultor',        'contratos', 'crear',    false),
+  ('consultor',        'contratos', 'editar',   false),
+  ('consultor',        'contratos', 'eliminar', false)
+ON CONFLICT (rol, modulo, accion) DO NOTHING;
 
 -- ── 4. Grants ────────────────────────────────────────────────────────────
 
