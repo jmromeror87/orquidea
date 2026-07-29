@@ -96,6 +96,6 @@ DROP TABLE IF EXISTS clientes;
 DROP TABLE IF EXISTS difuntos;
 
 -- ── Renombrar el módulo de permisos "clientes" -> "terceros" ──────────────
-UPDATE permisos SET modulo = 'terceros' WHERE modulo = 'clientes';
+UPDATE permisos_roles SET modulo = 'terceros' WHERE modulo = 'clientes';
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE terceros, tercero_roles, nucleo_familiar, defunciones TO orquidea_user;
