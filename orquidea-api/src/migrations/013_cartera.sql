@@ -96,10 +96,10 @@ CREATE OR REPLACE VIEW v_cartera AS
   SELECT
     c.id,
     'CONTRATO'                       AS tipo,
-    c.numero_contrato::TEXT          AS numero,
+    c.numero::TEXT                   AS numero,
     COALESCE(t.razon_social, t.nombres || ' ' || COALESCE(t.apellidos,'')) AS titular,
     t.telefono,
-    c.paquete                        AS plan,
+    ps.nombre                        AS plan,
     c.valor_cuota                    AS cuota,
     c.estado,
     c.pago_hasta,
@@ -115,7 +115,8 @@ CREATE OR REPLACE VIEW v_cartera AS
     c.dia_cobro,
     c.fecha_inicio
   FROM contratos c
-  JOIN terceros t ON t.id = c.contratante_id;
+  JOIN terceros t ON t.id = c.contratante_id
+  LEFT JOIN paquetes_servicio ps ON ps.id = c.paquete_id;
 
 -- ── 6. Función: recalcular mora de pólizas ───────────────────────────────
 
