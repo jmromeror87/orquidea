@@ -29,6 +29,9 @@ ALTER TABLE polizas
   ADD COLUMN IF NOT EXISTS valor_excedente         NUMERIC(12,2),
   ADD COLUMN IF NOT EXISTS coberturas_extra        JSONB;
 
+ALTER TABLE planes_poliza
+  ADD COLUMN IF NOT EXISTS coberturas_extra JSONB;
+
 -- ── 2. Backfill: pólizas existentes toman snapshot de su plan actual ──────
 -- (es lo mejor que se puede hacer retroactivamente; de aquí en adelante ya
 --  quedan protegidas contra futuras ediciones del plan)
