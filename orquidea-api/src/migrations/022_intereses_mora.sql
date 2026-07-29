@@ -82,6 +82,8 @@ CREATE INDEX IF NOT EXISTS idx_mora_intereses_fecha  ON mora_intereses(fecha);
 --    b) Aplica intereses a promesas vencidas
 --    c) Auto-cancela pólizas con promesas muy vencidas
 -- ─────────────────────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS fn_recalcular_mora_polizas();
+
 CREATE OR REPLACE FUNCTION fn_recalcular_mora_polizas()
 RETURNS TABLE(
   procesadas      INT,
