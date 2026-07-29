@@ -19,6 +19,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -31,7 +32,12 @@ const NAV = [
 
 export default function MobileMenu({ sedes = [] }) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const pathname = usePathname()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     setOpen(false)
@@ -44,23 +50,8 @@ export default function MobileMenu({ sedes = [] }) {
     }
   }, [open])
 
-  return (
-    <div className="md:hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Abrir menú"
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-brand-900 transition hover:bg-stone-100"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-6 w-6">
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-[60] bg-black/40" onClick={() => setOpen(false)}>
+  const panel = (
+    <div className="fixed inset-0 z-[9999] bg-black/40" onClick={() => setOpen(false)}>
           <div
             className="ml-auto flex h-full w-full max-w-xs flex-col bg-white p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
@@ -126,8 +117,25 @@ export default function MobileMenu({ sedes = [] }) {
               </a>
             </div>
           </div>
-        </div>
-      )}
+    </div>
+  )
+
+  return (
+    <div className="md:hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Abrir menú"
+        className="flex h-10 w-10 items-center justify-center rounded-lg text-brand-900 transition hover:bg-stone-100"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-6 w-6">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {open && mounted && createPortal(panel, document.body)}
     </div>
   )
 }
