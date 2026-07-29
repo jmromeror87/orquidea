@@ -1,0 +1,468 @@
+/**
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  Módulo          : Planes de Póliza — Administración                   ║
+ * ║  Archivo         : PlanesPolizaPage.jsx                                ║
+ * ║  Fecha           : 2026-07-01                                          ║
+ * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ */
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Pencil, Trash2, CheckCircle, XCircle, ShieldCheck, Users, Clock, DollarSign, ToggleLeft, ToggleRight, PlusCircle } from 'lucide-react'
+import api from '../../services/api.js'
+import { toast } from '../../store/toast.store.js'
+
+const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
+
+const TIPOS = ['INDIVIDUAL', 'FAMILIAR', 'AMPLIADO', 'COLECTIVO']
+const ATAUD = ['BASICO', 'MEDIANO', 'PREMIUM', 'LUJO']
+
+const BLANK = {
+  nombre: '', descripcion: '', tipo: 'FAMILIAR',
+  max_beneficiarios: 1, valor_mensual: '', meses_carencia: 3,
+  cubre_ataud: 'BASICO', cubre_velacion_h: 4,
+  cubre_traslado_local: true, cubre_traslado_nacional: false,
+  cubre_flores: false, cubre_cremacion: false,
+  cubre_tramites: true, cubre_lapida: false,
+  valor_excedente: 0,
+  coberturas_extra: [],
+}
+
+const CSS = `
+.pp-wrap { padding: 24px; background: #f8fafc; min-height: 100vh; }
+.pp-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px; }
+.pp-title { font-size:22px; font-weight:700; color:#0f172a; margin:0; }
+.pp-sub { font-size:13px; color:#64748b; margin:4px 0 0; }
+.pp-btn-new { display:flex; align-items:center; gap:6px; background:linear-gradient(135deg,#059669,#047857); color:#fff; border:none; border-radius:8px; padding:10px 18px; font-size:14px; font-weight:600; cursor:pointer; transition:.15s; }
+.pp-btn-new:hover { opacity:.9; }
+
+/* Grid de tarjetas */
+.pp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:20px; }
+.pp-card { background:#fff; border-radius:14px; border:1px solid #e2e8f0; box-shadow:0 1px 4px rgba(0,0,0,.06); overflow:hidden; transition:box-shadow .15s; position:relative; }
+.pp-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.1); }
+.pp-card.inactivo { opacity:.55; }
+.pp-card-head { padding:18px 18px 14px; border-bottom:1px solid #f1f5f9; }
+.pp-card-tipo { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; margin-bottom:8px; background:#dbeafe; color:#1d4ed8; letter-spacing:.5px; }
+.pp-card-tipo.FAMILIAR  { background:#d1fae5; color:#065f46; }
+.pp-card-tipo.AMPLIADO  { background:#ede9fe; color:#5b21b6; }
+.pp-card-tipo.COLECTIVO { background:#fef3c7; color:#92400e; }
+.pp-card-nombre { font-size:17px; font-weight:700; color:#0f172a; margin:0 0 4px; }
+.pp-card-desc { font-size:13px; color:#64748b; margin:0; line-height:1.4; }
+.pp-card-body { padding:14px 18px; }
+.pp-kpis { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+.pp-kpi { background:#f8fafc; border-radius:8px; padding:8px 10px; }
+.pp-kpi-label { font-size:11px; color:#94a3b8; margin-bottom:2px; display:flex; align-items:center; gap:4px; }
+.pp-kpi-val { font-size:15px; font-weight:700; color:#0f172a; }
+.pp-coberturas { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+.pp-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:3px 8px; border-radius:20px; }
+.pp-chip.si { background:#d1fae5; color:#065f46; }
+.pp-chip.no { background:#f1f5f9; color:#94a3b8; text-decoration:line-through; }
+.pp-card-foot { display:flex; justify-content:flex-end; gap:8px; padding:10px 18px; border-top:1px solid #f1f5f9; }
+.pp-btn-ic { display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; border:none; border-radius:7px; padding:6px 12px; cursor:pointer; transition:.15s; }
+.pp-btn-ic:hover { opacity:.85; }
+.pp-btn-edit { background:#eff6ff; color:#1d4ed8; }
+.pp-btn-del  { background:#fef2f2; color:#dc2626; }
+.pp-btn-tog  { background:#f0fdf4; color:#059669; }
+.pp-badge-inact { position:absolute; top:12px; right:12px; background:#ef4444; color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; }
+
+/* Modal */
+.pp-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
+.pp-modal { background:#fff; border-radius:16px; width:100%; max-width:680px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+.pp-modal-head { display:flex; align-items:center; justify-content:space-between; padding:20px 24px 16px; border-bottom:3px solid #059669; position:sticky; top:0; background:#fff; z-index:1; }
+.pp-modal-title { font-size:18px; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:8px; }
+.pp-modal-close { background:none; border:none; font-size:22px; cursor:pointer; color:#94a3b8; line-height:1; }
+.pp-modal-body { padding:20px 24px; }
+.pp-section { margin-bottom:20px; }
+.pp-section-title { font-size:12px; font-weight:700; color:#059669; text-transform:uppercase; letter-spacing:.8px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #d1fae5; }
+.pp-row { display:grid; gap:12px; margin-bottom:12px; }
+.pp-row.cols2 { grid-template-columns:1fr 1fr; }
+.pp-row.cols3 { grid-template-columns:1fr 1fr 1fr; }
+.pp-field label { display:block; font-size:12px; font-weight:600; color:#374151; margin-bottom:5px; }
+.pp-field input, .pp-field select, .pp-field textarea {
+  width:100%; border:1.5px solid #e2e8f0; border-radius:8px; padding:9px 12px;
+  font-size:14px; color:#0f172a; background:#fafafa; outline:none; box-sizing:border-box;
+  transition:border-color .15s;
+}
+.pp-field input:focus, .pp-field select:focus, .pp-field textarea:focus { border-color:#059669; background:#fff; }
+.pp-field textarea { resize:vertical; min-height:60px; }
+.pp-checks { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.pp-check-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; border:1.5px solid #e2e8f0; cursor:pointer; transition:.15s; }
+.pp-check-item:hover { border-color:#059669; background:#f0fdf4; }
+.pp-check-item.active { border-color:#059669; background:#f0fdf4; }
+.pp-check-item input { width:auto; }
+.pp-check-label { font-size:12px; font-weight:600; color:#374151; }
+.pp-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 24px; border-top:1px solid #f1f5f9; position:sticky; bottom:0; background:#fff; }
+.pp-btn-cancel { padding:10px 20px; border:1.5px solid #e2e8f0; border-radius:8px; background:#fff; color:#374151; font-size:14px; font-weight:600; cursor:pointer; }
+.pp-btn-save { padding:10px 24px; border:none; border-radius:8px; background:linear-gradient(135deg,#059669,#047857); color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
+.pp-btn-save:disabled { opacity:.6; cursor:not-allowed; }
+.pp-error { color:#dc2626; font-size:13px; margin-top:8px; padding:8px 12px; background:#fef2f2; border-radius:8px; }
+.pp-empty { text-align:center; padding:60px 20px; color:#94a3b8; }
+.pp-empty svg { margin-bottom:16px; opacity:.4; }
+
+/* Editor coberturas extra */
+.pp-extra-list { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+.pp-extra-item { display:flex; align-items:center; gap:8px; }
+.pp-extra-item input[type=text] { flex:1; }
+.pp-extra-item input[type=text]:focus { border-color:#059669; background:#fff; }
+.pp-extra-toggle { display:flex; align-items:center; gap:4px; background:none; border:1.5px solid #e2e8f0; border-radius:7px; padding:6px 10px; cursor:pointer; font-size:12px; font-weight:600; color:#64748b; white-space:nowrap; transition:.15s; }
+.pp-extra-toggle.on { border-color:#059669; background:#f0fdf4; color:#059669; }
+.pp-extra-del { background:none; border:none; cursor:pointer; color:#ef4444; padding:4px; border-radius:6px; display:flex; align-items:center; }
+.pp-extra-del:hover { background:#fef2f2; }
+.pp-add-extra { display:flex; align-items:center; gap:6px; background:#f8fafc; border:1.5px dashed #cbd5e1; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; width:100%; justify-content:center; transition:.15s; }
+.pp-add-extra:hover { border-color:#059669; color:#059669; background:#f0fdf4; }
+.pp-card-extra { margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0; display:flex; flex-wrap:wrap; gap:4px; }
+`
+
+function Toggle({ label, checked, onChange }) {
+  return (
+    <div
+      className={`pp-check-item${checked ? ' active' : ''}`}
+      onClick={() => onChange(!checked)}
+    >
+      {checked
+        ? <CheckCircle size={15} color="#059669" />
+        : <XCircle size={15} color="#94a3b8" />}
+      <span className="pp-check-label">{label}</span>
+    </div>
+  )
+}
+
+function CoberturaChip({ label, activo }) {
+  return <span className={`pp-chip ${activo ? 'si' : 'no'}`}>{activo ? '✓' : '×'} {label}</span>
+}
+
+export default function PlanesPolizaPage() {
+  const [planes, setPlanes]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [modal, setModal]     = useState(null) // null | 'nuevo' | plan-objeto
+  const [form, setForm]       = useState(BLANK)
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
+  const [mostrarInactivos, setMostrarInactivos] = useState(false)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await api.get(`/polizas/planes?todos=${mostrarInactivos ? '1' : '0'}`)
+      setPlanes(data.data || [])
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }, [mostrarInactivos])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const abrirNuevo = () => { setForm(BLANK); setError(''); setModal('nuevo') }
+  const abrirEditar = (p) => {
+    setForm({ ...p, coberturas_extra: Array.isArray(p.coberturas_extra) ? p.coberturas_extra : [] })
+    setError('')
+    setModal(p)
+  }
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Coberturas extra helpers
+  const addExtra = () => setForm(f => ({
+    ...f, coberturas_extra: [...(f.coberturas_extra || []), { nombre: '', incluido: true }]
+  }))
+  const setExtra = (i, key, val) => setForm(f => {
+    const list = [...(f.coberturas_extra || [])]
+    list[i] = { ...list[i], [key]: val }
+    return { ...f, coberturas_extra: list }
+  })
+  const removeExtra = (i) => setForm(f => ({
+    ...f, coberturas_extra: (f.coberturas_extra || []).filter((_, j) => j !== i)
+  }))
+
+  const guardar = async () => {
+    setSaving(true); setError('')
+    try {
+      if (modal === 'nuevo') {
+        await api.post('/polizas/planes', form)
+        toast.success('Plan de póliza creado')
+      } else {
+        await api.put(`/polizas/planes/${modal.id}`, form)
+        toast.success('Plan de póliza actualizado')
+      }
+      setModal(null)
+      cargar()
+    } catch (e) {
+      setError(e.response?.data?.error || 'Error al guardar')
+      toast.error(e.response?.data?.error || 'Error al guardar')
+    } finally { setSaving(false) }
+  }
+
+  const toggleActivo = async (p) => {
+    if (p.activo) {
+      if (!confirm(`¿Desactivar el plan "${p.nombre}"? Ya no aparecerá al crear pólizas nuevas.`)) return
+      try { await api.delete(`/polizas/planes/${p.id}`); toast.success('Plan de póliza desactivado'); cargar() }
+      catch (e) { toast.error(e.response?.data?.error || 'Error') }
+    } else {
+      try { await api.put(`/polizas/planes/${p.id}`, { activo: true }); toast.success('Plan de póliza activado'); cargar() }
+      catch (e) { toast.error(e.response?.data?.error || 'Error') }
+    }
+  }
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div className="pp-wrap">
+        <div className="pp-top">
+          <div>
+            <h1 className="pp-title">Planes de Póliza</h1>
+            <p className="pp-sub">Configure los planes que ofrece la funeraria · {planes.length} plan(es)</p>
+          </div>
+          <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#64748b', cursor:'pointer' }}>
+              <input type="checkbox" checked={mostrarInactivos} onChange={e => setMostrarInactivos(e.target.checked)} />
+              Mostrar inactivos
+            </label>
+            <button className="pp-btn-new" onClick={abrirNuevo}>
+              <Plus size={16} /> Nuevo plan
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="pp-empty"><p>Cargando planes…</p></div>
+        ) : planes.length === 0 ? (
+          <div className="pp-empty">
+            <ShieldCheck size={48} />
+            <p>No hay planes configurados aún.</p>
+            <button className="pp-btn-new" onClick={abrirNuevo} style={{ margin:'0 auto' }}>
+              <Plus size={16} /> Crear primer plan
+            </button>
+          </div>
+        ) : (
+          <div className="pp-grid">
+            {planes.map(p => (
+              <div key={p.id} className={`pp-card${p.activo ? '' : ' inactivo'}`}>
+                {!p.activo && <span className="pp-badge-inact">INACTIVO</span>}
+                <div className="pp-card-head">
+                  <div className={`pp-card-tipo ${p.tipo}`}>{p.tipo}</div>
+                  <h3 className="pp-card-nombre">{p.nombre}</h3>
+                  {p.descripcion && <p className="pp-card-desc">{p.descripcion}</p>}
+                </div>
+                <div className="pp-card-body">
+                  <div className="pp-kpis">
+                    <div className="pp-kpi">
+                      <div className="pp-kpi-label"><DollarSign size={11} /> Cuota mensual</div>
+                      <div className="pp-kpi-val">{fmt(p.valor_mensual)}</div>
+                    </div>
+                    <div className="pp-kpi">
+                      <div className="pp-kpi-label"><Users size={11} /> Beneficiarios</div>
+                      <div className="pp-kpi-val">Máx. {p.max_beneficiarios}</div>
+                    </div>
+                    <div className="pp-kpi">
+                      <div className="pp-kpi-label"><Clock size={11} /> Carencia</div>
+                      <div className="pp-kpi-val">{p.meses_carencia} meses</div>
+                    </div>
+                    <div className="pp-kpi">
+                      <div className="pp-kpi-label"><ShieldCheck size={11} /> Velación</div>
+                      <div className="pp-kpi-val">{p.cubre_velacion_h}h</div>
+                    </div>
+                  </div>
+                  <div className="pp-coberturas">
+                    <CoberturaChip label={`Ataúd ${p.cubre_ataud}`} activo />
+                    <CoberturaChip label="Traslado local"    activo={p.cubre_traslado_local} />
+                    <CoberturaChip label="Traslado nacional" activo={p.cubre_traslado_nacional} />
+                    <CoberturaChip label="Flores"     activo={p.cubre_flores} />
+                    <CoberturaChip label="Cremación"  activo={p.cubre_cremacion} />
+                    <CoberturaChip label="Trámites"   activo={p.cubre_tramites} />
+                    <CoberturaChip label="Lápida"     activo={p.cubre_lapida} />
+                    {+p.valor_excedente > 0 &&
+                      <span className="pp-chip si">Excedente {fmt(p.valor_excedente)}</span>}
+                    {Array.isArray(p.coberturas_extra) && p.coberturas_extra.length > 0 && (
+                      <div className="pp-card-extra">
+                        {p.coberturas_extra.map((c, i) => (
+                          <CoberturaChip key={i} label={c.nombre} activo={c.incluido !== false} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="pp-card-foot">
+                  <button className="pp-btn-ic pp-btn-tog" onClick={() => toggleActivo(p)}>
+                    {p.activo
+                      ? <><ToggleRight size={14} /> Desactivar</>
+                      : <><ToggleLeft size={14} /> Activar</>}
+                  </button>
+                  <button className="pp-btn-ic pp-btn-edit" onClick={() => abrirEditar(p)}>
+                    <Pencil size={13} /> Editar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {modal && (
+        <div className="pp-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
+          <div className="pp-modal">
+            <div className="pp-modal-head">
+              <div className="pp-modal-title">
+                <ShieldCheck size={20} color="#059669" />
+                {modal === 'nuevo' ? 'Nuevo plan de póliza' : `Editar: ${modal.nombre}`}
+              </div>
+              <button className="pp-modal-close" onClick={() => setModal(null)}>×</button>
+            </div>
+
+            <div className="pp-modal-body">
+              {/* Información básica */}
+              <div className="pp-section">
+                <div className="pp-section-title">Información básica</div>
+                <div className="pp-row">
+                  <div className="pp-field">
+                    <label>Nombre del plan *</label>
+                    <input
+                      value={form.nombre}
+                      onChange={e => set('nombre', e.target.value)}
+                      placeholder="Ej: Familiar Clásico"
+                    />
+                  </div>
+                </div>
+                <div className="pp-row cols2">
+                  <div className="pp-field">
+                    <label>Tipo</label>
+                    <select value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+                      {TIPOS.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="pp-field">
+                    <label>Máx. beneficiarios</label>
+                    <input
+                      type="number" min={1} max={20}
+                      value={form.max_beneficiarios}
+                      onChange={e => set('max_beneficiarios', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="pp-row">
+                  <div className="pp-field">
+                    <label>Descripción</label>
+                    <textarea
+                      value={form.descripcion || ''}
+                      onChange={e => set('descripcion', e.target.value)}
+                      placeholder="Breve descripción del plan…"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Tarifas */}
+              <div className="pp-section">
+                <div className="pp-section-title">Tarifas y carencia</div>
+                <div className="pp-row cols3">
+                  <div className="pp-field">
+                    <label>Cuota mensual (COP) *</label>
+                    <input
+                      type="number" min={0}
+                      value={form.valor_mensual}
+                      onChange={e => set('valor_mensual', e.target.value)}
+                      placeholder="58000"
+                    />
+                  </div>
+                  <div className="pp-field">
+                    <label>Meses de carencia</label>
+                    <input
+                      type="number" min={0} max={12}
+                      value={form.meses_carencia}
+                      onChange={e => set('meses_carencia', e.target.value)}
+                    />
+                  </div>
+                  <div className="pp-field">
+                    <label>Cobro por excedente (COP)</label>
+                    <input
+                      type="number" min={0}
+                      value={form.valor_excedente}
+                      onChange={e => set('valor_excedente', e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Cobertura */}
+              <div className="pp-section">
+                <div className="pp-section-title">Cobertura incluida</div>
+                <div className="pp-row cols2" style={{ marginBottom:12 }}>
+                  <div className="pp-field">
+                    <label>Tipo de ataúd</label>
+                    <select value={form.cubre_ataud} onChange={e => set('cubre_ataud', e.target.value)}>
+                      {ATAUD.map(a => <option key={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  <div className="pp-field">
+                    <label>Horas de velación</label>
+                    <input
+                      type="number" min={0} max={72} step={4}
+                      value={form.cubre_velacion_h}
+                      onChange={e => set('cubre_velacion_h', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="pp-checks">
+                  <Toggle label="Traslado local"    checked={form.cubre_traslado_local}    onChange={v => set('cubre_traslado_local', v)} />
+                  <Toggle label="Traslado nacional" checked={form.cubre_traslado_nacional} onChange={v => set('cubre_traslado_nacional', v)} />
+                  <Toggle label="Flores"            checked={form.cubre_flores}            onChange={v => set('cubre_flores', v)} />
+                  <Toggle label="Cremación"         checked={form.cubre_cremacion}         onChange={v => set('cubre_cremacion', v)} />
+                  <Toggle label="Trámites"          checked={form.cubre_tramites}          onChange={v => set('cubre_tramites', v)} />
+                  <Toggle label="Lápida"            checked={form.cubre_lapida}            onChange={v => set('cubre_lapida', v)} />
+                </div>
+              </div>
+
+              {/* Coberturas adicionales personalizadas */}
+              <div className="pp-section">
+                <div className="pp-section-title">Coberturas adicionales personalizadas</div>
+                <div style={{ fontSize:12, color:'#64748b', marginBottom:10 }}>
+                  Agregue servicios extra que este plan incluye o excluye — aparecerán junto a la cobertura estándar.
+                </div>
+                {(form.coberturas_extra || []).length > 0 && (
+                  <div className="pp-extra-list">
+                    {(form.coberturas_extra || []).map((c, i) => (
+                      <div key={i} className="pp-extra-item">
+                        <input
+                          type="text"
+                          className="pp-field"
+                          style={{ border:'1.5px solid #e2e8f0', borderRadius:8, padding:'8px 12px', fontSize:13, flex:1, outline:'none' }}
+                          value={c.nombre}
+                          onChange={e => setExtra(i, 'nombre', e.target.value)}
+                          placeholder="Ej: Música en vivo, Asesoría psicológica…"
+                        />
+                        <button
+                          className={`pp-extra-toggle${c.incluido !== false ? ' on' : ''}`}
+                          onClick={() => setExtra(i, 'incluido', c.incluido === false ? true : false)}
+                          type="button"
+                        >
+                          {c.incluido !== false
+                            ? <><CheckCircle size={13}/> Incluido</>
+                            : <><XCircle size={13}/> No incluido</>}
+                        </button>
+                        <button className="pp-extra-del" onClick={() => removeExtra(i)} type="button">
+                          <Trash2 size={14}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button className="pp-add-extra" onClick={addExtra} type="button">
+                  <PlusCircle size={15}/> Agregar cobertura personalizada
+                </button>
+              </div>
+
+              {error && <div className="pp-error">{error}</div>}
+            </div>
+
+            <div className="pp-modal-foot">
+              <button className="pp-btn-cancel" onClick={() => setModal(null)}>Cancelar</button>
+              <button className="pp-btn-save" onClick={guardar} disabled={saving}>
+                {saving ? 'Guardando…' : modal === 'nuevo' ? 'Crear plan' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}

@@ -1,0 +1,87 @@
+/*
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  Cliente         : Funeraria San José de Abrego                        ║
+ * ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+ * ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  Módulo          : Estilos globales                                ║
+ * ║  Archivo         : index.css                                       ║
+ * ║  Versión         : v1.0.0                                               ║
+ * ║  Fecha           : 2026-06-28                                      ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+ * ║  Software propietario. Prohibida su reproducción, distribución o       ║
+ * ║  comercialización sin autorización escrita del titular.                ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ */
+/* ═══════════════════════════════════════════════
+   Orquídea — Design Tokens & Reset
+═══════════════════════════════════════════════ */
+:root {
+  /* Paleta principal — Funeraria San José de Ábrego */
+  --color-primary:     #2E3192;   /* Azul índigo — borde del logo */
+  --color-primary-lt:  #4547B8;   /* Índigo claro — hover */
+  --color-primary-dk:  #1E2070;   /* Índigo oscuro — énfasis */
+  --color-accent:      #C9A020;   /* Dorado — acento del logo */
+  --color-accent-lt:   #E8C547;   /* Dorado claro */
+  --color-surface:     #FFFFFF;
+  --color-bg:          #F4F5FA;   /* Fondo azul muy claro */
+  --color-sidebar:     #14154A;   /* Azul marino profundo */
+  --color-text:        #1A1A2E;
+  --color-text-muted:  #6B7280;
+  --color-border:      #DDE1F0;
+  --color-danger:      #DC2626;
+  --color-success:     #16A34A;
+  --color-warning:     #D97706;
+  --color-info:        #2563EB;
+
+  /* Tipografía */
+  --font-sans:   'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Espaciado */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  20px;
+
+  /* Sombras */
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.05);
+  --shadow-md:  0 4px 12px rgba(46,49,146,.12);
+  --shadow-lg:  0 8px 24px rgba(46,49,146,.18);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button { cursor: pointer; font-family: inherit; }
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(46,49,146,.1);
+}

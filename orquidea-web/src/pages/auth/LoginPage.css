@@ -1,0 +1,435 @@
+/*
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  Cliente         : Funeraria San José de Abrego                        ║
+ * ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+ * ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  Módulo          : Autenticación                                        ║
+ * ║  Archivo         : LoginPage.css                                        ║
+ * ║  Versión         : v1.0.0                                               ║
+ * ║  Fecha           : 2026-06-28                                           ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ */
+
+/* ─── Reset base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ─── Shell ──────────────────────────────────────────────── */
+.lp-shell {
+  display: flex;
+  width: 100vw;
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PANEL IZQUIERDO
+════════════════════════════════════════════════════════════ */
+.lp-left {
+  flex: 0 0 44%;
+  position: relative;
+  background:
+    linear-gradient(175deg, #0A0B2E 0%, #12144A 40%, #1C1F72 75%, #2E3192 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* capa de brillo sutil */
+.lp-left::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 0%,  rgba(201,160,32,.10) 0%, transparent 60%),
+    radial-gradient(ellipse at 10% 80%, rgba(46,49,146,.40)  0%, transparent 55%);
+  pointer-events: none;
+}
+
+.lp-left-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 52px 36px 36px;
+  height: 100%;
+}
+
+/* ── Logotipo ── */
+.lp-logo-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.lp-logo-ring {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid #C9A020;
+  background: rgba(201,160,32,.08);
+  box-shadow: 0 0 0 6px rgba(201,160,32,.08), 0 0 32px rgba(201,160,32,.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  color: #C9A020;
+  margin-bottom: 20px;
+}
+
+.lp-brand-name {
+  font-size: 28px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 5px;
+  line-height: 1;
+  text-align: center;
+}
+
+.lp-brand-name span {
+  color: #C9A020;
+}
+
+.lp-brand-sub {
+  font-size: 11px;
+  color: #7B82C4;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* ── Separador dorado ── */
+.lp-divider {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #C9A020, transparent);
+  margin-bottom: 28px;
+  border-radius: 2px;
+}
+
+/* ── Lista de módulos (columna única) ── */
+.lp-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  flex: 1;
+}
+
+.lp-mod-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  padding: 14px 18px;
+  cursor: default;
+  transition: background .2s, border-color .2s, transform .15s;
+}
+
+.lp-mod-card:hover {
+  background: rgba(255,255,255,.09);
+  border-color: rgba(201,160,32,.25);
+  transform: translateX(3px);
+}
+
+.lp-mod-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(201,160,32,.12);
+  border: 1px solid rgba(201,160,32,.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.lp-mod-texts { flex: 1; min-width: 0; }
+
+.lp-mod-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #E4E8FF;
+  line-height: 1.2;
+}
+
+.lp-mod-desc {
+  font-size: 11px;
+  color: #5A6299;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Footer seguridad ── */
+.lp-sec-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 24px;
+  font-size: 10.5px;
+  color: #3A3D6A;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PANEL DERECHO
+════════════════════════════════════════════════════════════ */
+.lp-right {
+  flex: 1 1 0;
+  background: #F0F2FA;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+}
+
+/* ── Tarjeta del formulario ── */
+.lp-card {
+  width: 100%;
+  max-width: 440px;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow:
+    0 4px 6px rgba(0,0,0,.04),
+    0 12px 40px rgba(46,49,146,.10),
+    0 0 0 1px rgba(221,225,240,.8);
+  padding: 44px 40px 36px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Encabezado */
+.lp-card-header { margin-bottom: 32px; }
+
+.lp-form-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #E8E9F8;
+  color: #2E3192;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 5px 13px;
+  border-radius: 20px;
+  margin-bottom: 18px;
+}
+
+.lp-title {
+  font-size: 30px;
+  font-weight: 900;
+  color: #1A1A2E;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+
+.lp-sub {
+  font-size: 14px;
+  color: #6B7280;
+  line-height: 1.5;
+}
+
+/* ── Campos ── */
+.lp-form { display: flex; flex-direction: column; gap: 18px; }
+
+.lp-field { display: flex; flex-direction: column; gap: 7px; }
+
+.lp-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.lp-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 11px;
+  font-size: 14.5px;
+  color: #1A1A2E;
+  background: #F8F9FF;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+  font-family: inherit;
+}
+
+.lp-input::placeholder { color: #B0B7C8; }
+
+.lp-input:focus {
+  border-color: #2E3192;
+  box-shadow: 0 0 0 4px rgba(46,49,146,.09);
+  background: #fff;
+}
+
+.lp-input.error {
+  border-color: #DC2626;
+  background: #FFF5F5;
+}
+
+.lp-pwd-wrap { position: relative; }
+.lp-pwd-wrap .lp-input { padding-right: 50px; }
+
+.lp-eye-btn {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #9CA3AF;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  transition: color .2s;
+  line-height: 0;
+}
+.lp-eye-btn:hover { color: #2E3192; }
+
+/* ── Error ── */
+.lp-error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #DC2626;
+}
+.lp-error-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #DC2626;
+  flex-shrink: 0;
+}
+
+/* ── Botón ── */
+.lp-btn {
+  background: linear-gradient(135deg, #2E3192 0%, #1E2070 100%);
+  color: #fff;
+  border: none;
+  border-radius: 11px;
+  padding: 16px 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 6px 20px rgba(46,49,146,.35);
+  transition: opacity .2s, transform .15s, box-shadow .2s;
+  font-family: inherit;
+  position: relative;
+  overflow: hidden;
+}
+
+.lp-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.12) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.lp-btn:hover:not(:disabled) {
+  box-shadow: 0 8px 28px rgba(46,49,146,.45);
+  transform: translateY(-2px);
+}
+
+.lp-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 3px 12px rgba(46,49,146,.3);
+}
+
+.lp-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+/* ── Footer ── */
+.lp-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 28px;
+  font-size: 11px;
+  color: #9CA3AF;
+}
+.lp-dot-green {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #16A34A;
+  flex-shrink: 0;
+  box-shadow: 0 0 5px rgba(22,163,74,.5);
+}
+.lp-sep { color: #D1D5DB; }
+
+/* ── Spinner ── */
+@keyframes lp-spin { to { transform: rotate(360deg); } }
+.lp-spin { animation: lp-spin 1s linear infinite; }
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE — Tablet ≤ 1024px
+════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .lp-left          { flex: 0 0 46%; }
+  .lp-left-content  { padding: 40px 28px 28px; }
+  .lp-logo-ring     { width: 80px; height: 80px; font-size: 36px; }
+  .lp-brand-name    { font-size: 23px; letter-spacing: 4px; }
+  .lp-card          { padding: 36px 32px 28px; }
+  .lp-title         { font-size: 26px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE — ≤ 768px  →  apila vertical
+════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .lp-shell         { flex-direction: column; }
+
+  .lp-left          { flex: none; }
+  .lp-left-content  { padding: 32px 24px 28px; align-items: center; }
+  .lp-logo-ring     { width: 70px; height: 70px; font-size: 32px; margin-bottom: 14px; }
+  .lp-brand-name    { font-size: 21px; letter-spacing: 3px; }
+
+  /* Ocultar módulos: solo banner de marca en móvil */
+  .lp-divider       { display: none; }
+  .lp-modules       { display: none; }
+  .lp-sec-badge     { display: none; }
+
+  .lp-right         { flex: none; padding: 36px 20px 48px; background: #F0F2FA; }
+  .lp-card          { max-width: 100%; padding: 32px 24px 28px; }
+  .lp-title         { font-size: 26px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE — ≤ 480px  →  móvil
+════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  .lp-left-content  { padding: 24px 20px 20px; }
+  .lp-logo-ring     { width: 60px; height: 60px; font-size: 28px; }
+  .lp-brand-name    { font-size: 18px; letter-spacing: 2.5px; }
+  .lp-brand-sub     { font-size: 10px; letter-spacing: 1.5px; }
+  .lp-right         { padding: 28px 16px 40px; }
+  .lp-card          { padding: 28px 20px 24px; border-radius: 16px; }
+  .lp-title         { font-size: 24px; }
+  .lp-sub           { font-size: 13px; }
+  .lp-input         { font-size: 15px; padding: 13px 14px; }
+  .lp-btn           { padding: 15px 0; font-size: 14.5px; }
+}

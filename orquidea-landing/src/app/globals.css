@@ -1,0 +1,71 @@
+/*
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  Cliente         : Funeraria San José de Abrego                        ║
+ * ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+ * ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  Módulo          : Landing Pública                                     ║
+ * ║  Archivo         : app/globals.css                                     ║
+ * ║  Versión         : v1.0.0                                              ║
+ * ║  Fecha           : 2026-07-28                                          ║
+ * ╠══════════════════════════════════════════════════════════════════════════╣
+ * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+ * ║  Software propietario. Prohibida su reproducción, distribución o       ║
+ * ║  comercialización sin autorización escrita del titular.                ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ */
+@import "tailwindcss";
+
+:root {
+  --background: #faf9fc;
+  --foreground: #1c1a2e;
+
+  /* Marca — azul marino del logo/obituarios */
+  --color-brand-950: #14133a;
+  --color-brand-900: #1e1c5c;
+  --color-brand-800: #2b2a82;
+  --color-brand-700: #37359c;
+  --color-brand-600: #4442b8;
+
+  /* Marca — dorado del anillo del logo */
+  --color-gold-700: #a8730a;
+  --color-gold-600: #c98c00;
+  --color-gold-500: #f2a900;
+  --color-gold-400: #ffc23d;
+  --color-gold-100: #fdecc4;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-serif);
+
+  --color-brand-950: var(--color-brand-950);
+  --color-brand-900: var(--color-brand-900);
+  --color-brand-800: var(--color-brand-800);
+  --color-brand-700: var(--color-brand-700);
+  --color-brand-600: var(--color-brand-600);
+
+  --color-gold-700: var(--color-gold-700);
+  --color-gold-600: var(--color-gold-600);
+  --color-gold-500: var(--color-gold-500);
+  --color-gold-400: var(--color-gold-400);
+  --color-gold-100: var(--color-gold-100);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in-up {
+  animation: fade-in-up 0.6s ease-out both;
+}
