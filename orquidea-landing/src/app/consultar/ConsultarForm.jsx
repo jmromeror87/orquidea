@@ -244,7 +244,7 @@ export default function ConsultarForm() {
       )}
 
       {resultado && (
-        <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
           {/* ── Encabezado: titular + estado ── */}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
