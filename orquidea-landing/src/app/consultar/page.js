@@ -27,7 +27,7 @@ export const metadata = {
 
 export default function ConsultarPage() {
   return (
-    <div className="relative isolate mx-auto max-w-3xl overflow-hidden px-5 py-16">
+    <div className="relative isolate mx-auto max-w-6xl overflow-hidden px-5 py-16">
       <Watermark className="-left-10 bottom-0" />
       <p className="text-sm font-semibold uppercase tracking-widest text-gold-700">Portal de clientes</p>
       <h1 className="mt-2 font-serif text-4xl text-brand-900">Consulta el estado de tu póliza</h1>

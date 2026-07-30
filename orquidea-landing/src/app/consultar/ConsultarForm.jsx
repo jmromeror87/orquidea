@@ -138,65 +138,109 @@ export default function ConsultarForm() {
   }
 
   return (
-    <div className="mt-10">
-      <form onSubmit={onSubmit} className="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
-        <div className="flex gap-3">
-          {['POLIZA', 'CONTRATO'].map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTipo(t)}
-              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
-                tipo === t ? 'bg-brand-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-              }`}
-            >
-              {t === 'POLIZA' ? 'Póliza' : 'Contrato'}
-            </button>
-          ))}
+    <div className="mt-10 grid gap-6 lg:grid-cols-[380px_1fr] lg:items-start">
+      {/* ── Columna izquierda: formulario + ayudas ── */}
+      <div className="lg:sticky lg:top-24">
+        <form onSubmit={onSubmit} className="rounded-2xl border border-stone-200 bg-white p-6">
+          <div className="flex gap-2">
+            {['POLIZA', 'CONTRATO'].map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTipo(t)}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+                  tipo === t ? 'bg-brand-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                {t === 'POLIZA' ? 'Póliza' : 'Contrato'}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-4">
+            <label className="block text-sm">
+              <span className="font-semibold text-stone-700">Número de cédula del titular</span>
+              <input
+                required
+                value={numeroDocumento}
+                onChange={(e) => setNumeroDocumento(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500"
+                placeholder="Ej: 1091234567"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-semibold text-stone-700">
+                Número de {tipo === 'POLIZA' ? 'póliza' : 'contrato'}
+              </span>
+              <input
+                required
+                value={numero}
+                onChange={(e) => setNumero(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500"
+                placeholder="Ej: 1024"
+              />
+              <span className="mt-1 block text-xs text-stone-400">
+                Está en tu {tipo === 'POLIZA' ? 'carné o contrato de afiliación' : 'contrato de servicio'}.
+              </span>
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-6 w-full rounded-full bg-gold-500 px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-gold-400 disabled:opacity-60"
+          >
+            {loading ? 'Consultando…' : 'Consultar estado'}
+          </button>
+        </form>
+
+        {error && (
+          <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        )}
+
+        {estadoPago && (
+          <p className={`mt-4 rounded-lg border px-4 py-3 text-sm font-semibold ${PAGO_ESTADO_LABEL[estadoPago]?.clase || 'bg-stone-50 text-stone-700 border-stone-200'}`}>
+            {PAGO_ESTADO_LABEL[estadoPago]?.texto || estadoPago}
+          </p>
+        )}
+
+        {/* ── Ayudas para el usuario ── */}
+        <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-6 text-sm">
+          <h3 className="font-semibold text-brand-900">¿Necesitas ayuda?</h3>
+          <ul className="mt-3 space-y-3 text-stone-600">
+            <li className="flex gap-2">
+              <span>📇</span>
+              <span>El <strong>número de cédula</strong> debe ser el del titular con quien se afilió o firmó el contrato.</span>
+            </li>
+            <li className="flex gap-2">
+              <span>🔢</span>
+              <span>El <strong>número de póliza o contrato</strong> aparece en el documento que te entregamos al momento de afiliarte.</span>
+            </li>
+            <li className="flex gap-2">
+              <span>🔒</span>
+              <span>Tus datos están protegidos: solo puedes ver la información si conoces ambos números.</span>
+            </li>
+          </ul>
+          <a
+            href="https://wa.me/573158786701"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 flex items-center justify-center gap-2 rounded-full border border-brand-900 px-4 py-2.5 text-sm font-semibold text-brand-900 transition hover:bg-brand-900 hover:text-white"
+          >
+            💬 ¿No la encuentras? Escríbenos por WhatsApp
+          </a>
         </div>
+      </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="font-semibold text-stone-700">Número de cédula del titular</span>
-            <input
-              required
-              value={numeroDocumento}
-              onChange={(e) => setNumeroDocumento(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500"
-              placeholder="Ej: 1091234567"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="font-semibold text-stone-700">
-              Número de {tipo === 'POLIZA' ? 'póliza' : 'contrato'}
-            </span>
-            <input
-              required
-              value={numero}
-              onChange={(e) => setNumero(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500"
-              placeholder="Ej: 1024"
-            />
-          </label>
+      {/* ── Columna derecha: resultado ── */}
+      <div>
+      {!resultado && (
+        <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white/60 p-10 text-center text-stone-400">
+          <span className="text-4xl">🔍</span>
+          <p className="mt-3 max-w-xs text-sm">
+            Ingresa tus datos en el formulario para ver el estado de tu póliza o contrato aquí.
+          </p>
         </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="mt-6 w-full rounded-full bg-gold-500 px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-gold-400 disabled:opacity-60 sm:w-auto"
-        >
-          {loading ? 'Consultando…' : 'Consultar estado'}
-        </button>
-      </form>
-
-      {error && (
-        <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      )}
-
-      {estadoPago && (
-        <p className={`mt-4 rounded-lg border px-4 py-3 text-sm font-semibold ${PAGO_ESTADO_LABEL[estadoPago]?.clase || 'bg-stone-50 text-stone-700 border-stone-200'}`}>
-          {PAGO_ESTADO_LABEL[estadoPago]?.texto || estadoPago}
-        </p>
       )}
 
       {resultado && (
@@ -323,6 +367,7 @@ export default function ConsultarForm() {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }
