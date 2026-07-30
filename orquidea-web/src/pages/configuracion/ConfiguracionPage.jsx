@@ -199,6 +199,33 @@ const CSS = `
                    align-items:center; justify-content:center; font-size:14px;
                    font-weight:800; color:#fff; letter-spacing:.5px;
                    box-shadow:0 4px 20px rgba(0,0,0,.12); }
+  .color-row input[type='text'], .color-row input:not([type]) { font-family:'JetBrains Mono',monospace; letter-spacing:.5px; text-transform:uppercase; }
+  .input-err { border-color:#EF4444 !important; background:#FFF5F5 !important; }
+  .color-hint-err { font-size:11px; color:#DC2626; margin-top:5px; font-weight:600; }
+
+  .paleta-row { display:flex; flex-wrap:wrap; gap:8px; }
+  .paleta-chip {
+    display:flex; align-items:center; gap:7px;
+    background:#F8F9FF; border:1.5px solid #E2E5F0; border-radius:11px;
+    padding:8px 13px; font-size:12px; font-weight:700; color:#374151;
+    cursor:pointer; transition:all .15s;
+  }
+  .paleta-chip:hover { border-color:#C7CBE8; background:#F0F1FA; transform:translateY(-1px); }
+  .paleta-dot { width:14px; height:14px; border-radius:50%; border:1.5px solid rgba(0,0,0,.08); flex-shrink:0; }
+
+  .ap-preview { margin-top:22px; }
+  .ap-preview-lbl { font-size:11px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#9CA3AF; margin-bottom:10px; }
+  .ap-preview-mock {
+    display:flex; border-radius:16px; overflow:hidden; border:1px solid #ECEDF8;
+    box-shadow:0 4px 20px rgba(0,0,0,.06); height:180px;
+  }
+  .ap-mock-sidebar { width:34%; padding:18px 16px; display:flex; flex-direction:column; gap:10px; }
+  .ap-mock-dot { width:22px; height:22px; border-radius:7px; margin-bottom:6px; }
+  .ap-mock-bar { height:9px; border-radius:5px; background:rgba(255,255,255,.35); width:80%; }
+  .ap-mock-bar.active { width:75%; height:26px; border-radius:8px; margin:2px 0; }
+  .ap-mock-main { flex:1; background:#F8F9FF; padding:24px 22px; display:flex; flex-direction:column; gap:14px; align-items:flex-start; }
+  .ap-mock-btn { color:#fff; font-size:13px; font-weight:800; padding:11px 22px; border-radius:11px; box-shadow:0 4px 14px rgba(0,0,0,.12); }
+  .ap-mock-chip { font-size:11.5px; font-weight:700; padding:6px 14px; border-radius:20px; border:1.5px solid; }
 
   /* ── Form panel (modal inline) ── */
   .form-panel { background:#F8F9FF; border:1.5px solid #DDE1F0; border-radius:16px;
@@ -836,19 +863,19 @@ export default function ConfiguracionPage() {
           {/* Contenido */}
           <main className="cfg-content">
 
-            {tab === 'empresa'        && <TabEmpresa         data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(d);ok('Empresa actualizada')}}          onErr={()=>err('Error al guardar')} />}
+            {tab === 'empresa'        && <TabEmpresa         data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Empresa actualizada')}}          onErr={()=>err('Error al guardar')} />}
             {tab === 'sedes'          && <TabSedes           sedes={sedes}   saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Sede guardada')}}                     onErr={()=>err('Error al guardar')} />}
             {tab === 'salas'          && <TabSalas           salas={salas}   saving={saving} setSaving={setSaving} onOk={()=>{api.get('/servicios/salas').then(r=>setSalas(r.data.data||[]));ok('Sala guardada')}} onErr={()=>err('Error al guardar')} />}
             {tab === 'flota'          && <TabFlota />}
-            {tab === 'dian'           && <TabDian            data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(d);ok('Parámetros DIAN actualizados')}}  onErr={()=>err('Error al guardar')} />}
-            {tab === 'parametros'     && <TabParametros      data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(d);ok('Parámetros actualizados')}}        onErr={()=>err('Error al guardar')} />}
+            {tab === 'dian'           && <TabDian            data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Parámetros DIAN actualizados')}}  onErr={()=>err('Error al guardar')} />}
+            {tab === 'parametros'     && <TabParametros      data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Parámetros actualizados')}}        onErr={()=>err('Error al guardar')} />}
             {tab === 'planes'         && <TabPlanes          planes={planes} saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Plan guardado')}}                      onErr={()=>err('Error al guardar')} />}
             {tab === 'servicios'      && <TabServicios       servs={servs}   saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Servicio guardado')}}                  onErr={()=>err('Error al guardar')} />}
             {tab === 'paquetes'       && <TabPaquetes />}
             {tab === 'tipos_doc'      && <TabTiposDocumento  tiposDoc={tiposDoc} saving={saving} setSaving={setSaving} onOk={()=>{api.get('/tipos-documento').then(r=>setTiposDoc(r.data.data));ok('Guardado')}} onErr={()=>err('Error al guardar')} />}
             {tab === 'formas_pago'    && <TabFormasPago />}
-            {tab === 'notificaciones' && <TabNotificaciones  data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(d);ok('Notificaciones actualizadas')}}    onErr={()=>err('Error al guardar')} />}
-            {tab === 'apariencia'     && <TabApariencia      data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(d);ok('Apariencia actualizada')}}          onErr={()=>err('Error al guardar')} />}
+            {tab === 'notificaciones' && <TabNotificaciones  data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Notificaciones actualizadas')}}    onErr={()=>err('Error al guardar')} />}
+            {tab === 'apariencia'     && <TabApariencia      data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Apariencia actualizada')}}          onErr={()=>err('Error al guardar')} />}
 
           </main>
         </div>
@@ -2234,40 +2261,112 @@ function TabNotificaciones({ data, saving, setSaving, onOk, onErr }) {
 /* ════════════════════════════════════
    TAB APARIENCIA
 ════════════════════════════════════ */
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
+const PALETAS_SUGERIDAS = [
+  { nombre:'Orquídea (original)', primario:'#2E3192', acento:'#C9A020' },
+  { nombre:'Esmeralda',           primario:'#065F46', acento:'#D97706' },
+  { nombre:'Vino',                primario:'#7C2D12', acento:'#B45309' },
+  { nombre:'Azul corporativo',    primario:'#1E3A8A', acento:'#0EA5E9' },
+  { nombre:'Grafito',             primario:'#1F2937', acento:'#9CA3AF' },
+]
+
+function CampoColor({ label, valor, onCambiar }) {
+  const [draft, setDraft] = useState(valor)
+  useEffect(() => { setDraft(valor) }, [valor])
+  const valido = HEX_RE.test(draft)
+
+  const commit = () => { if (valido) { onCambiar(draft.toUpperCase()) } else { setDraft(valor) } }
+
+  return (
+    <div className="campo">
+      <label>{label}</label>
+      <div className="color-row">
+        <input
+          type="color"
+          className="color-swatch"
+          value={valido ? draft : valor}
+          onChange={e => { onCambiar(e.target.value); setDraft(e.target.value) }}
+        />
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => e.key === 'Enter' && commit()}
+          placeholder="#2E3192"
+          className={draft && !valido ? 'input-err' : undefined}
+          maxLength={7}
+        />
+      </div>
+      {draft && !valido && <div className="color-hint-err">Formato inválido — usa #RRGGBB</div>}
+    </div>
+  )
+}
+
 function TabApariencia({ data, saving, setSaving, onOk, onErr }) {
   const [f, setF] = useState({ color_primario:'#2E3192', color_acento:'#C9A020' })
-  useEffect(() => { if (data) setF(x => ({...x,...data})) }, [data])
+  useEffect(() => { if (data?.color_primario || data?.color_acento) setF(x => ({...x,...data})) }, [data])
   const set = k => v => setF(x => ({...x,[k]:v}))
+
   const guardar = async () => {
     setSaving(true)
     try {
-      const res = await empresaService.actualizarParametros(f)
+      const res = await empresaService.actualizarParametros({ color_primario:f.color_primario, color_acento:f.color_acento })
       aplicarColoresTema(f.color_primario, f.color_acento)
       onOk(res.data.data)
     } catch { onErr() } finally { setSaving(false) }
   }
 
+  const aplicarPaleta = p => {
+    setF(x => ({ ...x, color_primario:p.primario, color_acento:p.acento }))
+  }
+
   return (
-    <SecCard titulo="Apariencia del Sistema" sub="Paleta de colores corporativa del ERP" Icon={Palette} color="#C9A020">
+    <SecCard titulo="Apariencia del Sistema" sub="Personaliza los colores corporativos que se ven en todo el ERP" Icon={Palette} color="#C9A020">
       <div className="g2">
-        <div className="campo">
-          <label>Color Primario</label>
-          <div className="color-row">
-            <input type="color" className="color-swatch" value={f.color_primario} onChange={e=>set('color_primario')(e.target.value)} />
-            <input value={f.color_primario} onChange={e=>set('color_primario')(e.target.value)} placeholder="#2E3192" />
-          </div>
+        <CampoColor label="Color primario" valor={f.color_primario} onCambiar={set('color_primario')} />
+        <CampoColor label="Color acento (dorado)" valor={f.color_acento} onCambiar={set('color_acento')} />
+      </div>
+
+      <div className="campo" style={{ marginTop:18 }}>
+        <label>Paletas sugeridas</label>
+        <div className="paleta-row">
+          {PALETAS_SUGERIDAS.map(p => (
+            <button
+              type="button"
+              key={p.nombre}
+              className="paleta-chip"
+              title={p.nombre}
+              onClick={() => aplicarPaleta(p)}
+            >
+              <span className="paleta-dot" style={{ background:p.primario }} />
+              <span className="paleta-dot" style={{ background:p.acento }} />
+              {p.nombre}
+            </button>
+          ))}
         </div>
-        <div className="campo">
-          <label>Color Acento (Dorado)</label>
-          <div className="color-row">
-            <input type="color" className="color-swatch" value={f.color_acento} onChange={e=>set('color_acento')(e.target.value)} />
-            <input value={f.color_acento} onChange={e=>set('color_acento')(e.target.value)} placeholder="#C9A020" />
+      </div>
+
+      <div className="ap-preview">
+        <div className="ap-preview-lbl">Vista previa en vivo</div>
+        <div className="ap-preview-mock">
+          <div className="ap-mock-sidebar" style={{ background: `linear-gradient(180deg, ${f.color_primario}, ${f.color_primario}CC)` }}>
+            <div className="ap-mock-dot" style={{ background:f.color_acento }} />
+            <div className="ap-mock-bar" style={{ width:'70%' }} />
+            <div className="ap-mock-bar active" style={{ background:'rgba(255,255,255,.18)' }} />
+            <div className="ap-mock-bar" style={{ width:'55%' }} />
+            <div className="ap-mock-bar" style={{ width:'65%' }} />
+          </div>
+          <div className="ap-mock-main">
+            <div className="ap-mock-btn" style={{ background:`linear-gradient(135deg, ${f.color_primario}, ${f.color_acento})` }}>
+              Botón principal
+            </div>
+            <div className="ap-mock-chip" style={{ color:f.color_primario, borderColor:f.color_primario+'55', background:f.color_primario+'12' }}>
+              Etiqueta activa
+            </div>
           </div>
         </div>
       </div>
-      <div className="color-preview" style={{ background:`linear-gradient(135deg, ${f.color_primario} 0%, ${f.color_acento} 100%)` }}>
-        Vista previa — Orquídea ERP
-      </div>
+
       <BtnBar saving={saving} onGuardar={guardar} />
     </SecCard>
   )

@@ -128,6 +128,12 @@ export async function actualizarParametros(req, reply) {
   }
   if (!sets.length) return reply.send({ data: {}, mensaje: 'Sin cambios' })
 
+  // Asegurar que exista la fila de parámetros antes de actualizarla
+  await query(
+    `INSERT INTO parametros_sistema (empresa_id) VALUES ($1) ON CONFLICT (empresa_id) DO NOTHING`,
+    [empresa_id]
+  )
+
   const { rows } = await query(`
     UPDATE parametros_sistema SET ${sets.join(', ')}
     WHERE empresa_id = $1
@@ -135,7 +141,7 @@ export async function actualizarParametros(req, reply) {
               prefijo_contrato, prefijo_servicio, prefijo_prevision,
               dias_gracia_mora, porcentaje_mora, color_primario, color_acento
   `, vals)
-  return reply.send({ data: rows[0], mensaje: 'Parámetros actualizados correctamente' })
+  return reply.send({ data: rows[0] || {}, mensaje: 'Parámetros actualizados correctamente' })
 }
 
 /* ════════════════════════════════════════════════
