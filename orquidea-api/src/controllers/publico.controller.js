@@ -69,7 +69,7 @@ export async function listarServiciosPublico(req, reply) {
 // ── Sedes ─────────────────────────────────────────────────────────────────
 export async function listarSedesPublico(req, reply) {
   const { rows } = await pool.query(`
-    SELECT nombre, direccion, ciudad, departamento, municipio, barrio,
+    SELECT nombre, direccion, departamento, municipio, barrio,
            telefono_1, telefono_2, email, horario, es_principal
     FROM sedes
     WHERE activo = TRUE
