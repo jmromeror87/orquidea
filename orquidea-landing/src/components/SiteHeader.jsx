@@ -23,23 +23,27 @@ import MobileMenu from './MobileMenu'
 import SedeSelector from './SedeSelector'
 import AuthLinks from './AuthLinks'
 import BenefitIcon from './BenefitIcons'
-import { getSedes } from '@/lib/api'
+import { getSedes, getEmpresa } from '@/lib/api'
 
 export default async function SiteHeader() {
-  const sedes = await getSedes()
+  const [sedes, empresaRaw] = await Promise.all([getSedes(), getEmpresa()])
+  const empresa = Array.isArray(empresaRaw) ? null : empresaRaw
+  const telefono = empresa?.telefono_1 || '3158786701'
+  const telHref = telefono.replace(/\D/g, '')
+  const email = empresa?.email || 'fsj.gerencia@funerariasanjoseabrego.com'
 
   return (
     <div className="sticky top-0 z-50">
       {/* Barra de contacto */}
       <div className="hidden bg-brand-900 text-xs text-stone-200 sm:block">
         <div className="mx-auto flex max-w-6xl items-center justify-end gap-6 px-5 py-1.5">
-          <a href="mailto:fsj.gerencia@funerariasanjoseabrego.com" className="flex items-center gap-1.5 transition hover:text-gold-400">
+          <a href={`mailto:${email}`} className="flex items-center gap-1.5 transition hover:text-gold-400">
             <BenefitIcon name="sobre" className="h-3.5 w-3.5 text-gold-400" />
-            fsj.gerencia@funerariasanjoseabrego.com
+            {email}
           </a>
-          <a href="tel:+573158786701" className="flex items-center gap-1.5 transition hover:text-gold-400">
+          <a href={`tel:+57${telHref}`} className="flex items-center gap-1.5 transition hover:text-gold-400">
             <BenefitIcon name="telefono" className="h-3.5 w-3.5 text-gold-400" />
-            315 878 6701
+            {telefono}
           </a>
           <span className="font-semibold text-gold-400">Línea de emergencia 24h</span>
         </div>
@@ -64,12 +68,12 @@ export default async function SiteHeader() {
             <SedeSelector sedes={sedes} />
             <AuthLinks />
             <a
-              href="tel:+573158786701"
+              href={`tel:+57${telHref}`}
               className="hidden rounded-full bg-gold-500 px-4 py-2 text-sm font-semibold text-brand-950 transition hover:bg-gold-400 sm:inline-block"
             >
               Llámanos ahora
             </a>
-            <MobileMenu sedes={sedes} />
+            <MobileMenu sedes={sedes} telefono={telefono} telHref={telHref} />
           </div>
         </div>
       </header>

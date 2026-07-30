@@ -19,13 +19,15 @@
 import { Suspense } from 'react'
 import ConsultarForm from './ConsultarForm'
 import Watermark from '@/components/Watermark'
+import { getWhatsappNumero } from '@/lib/api'
 
 export const metadata = {
   title: 'Consultar mi póliza',
   description: 'Consulta el estado de tu póliza o contrato exequial con tu cédula.',
 }
 
-export default function ConsultarPage() {
+export default async function ConsultarPage() {
+  const waNumero = await getWhatsappNumero()
   return (
     <div className="relative isolate mx-auto max-w-6xl overflow-hidden px-5 py-16">
       <Watermark className="-left-10 bottom-0" />
@@ -35,7 +37,7 @@ export default function ConsultarPage() {
         Ingresa tu número de cédula y el número de tu póliza o contrato para ver su estado actual.
       </p>
       <Suspense fallback={null}>
-        <ConsultarForm />
+        <ConsultarForm waNumero={waNumero} />
       </Suspense>
     </div>
   )

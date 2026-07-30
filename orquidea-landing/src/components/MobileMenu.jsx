@@ -30,7 +30,7 @@ const NAV = [
   { href: '/contacto', label: 'Contacto' },
 ]
 
-export default function MobileMenu({ sedes = [] }) {
+export default function MobileMenu({ sedes = [], telefono = '315 878 6701', telHref = '573158786701' }) {
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const pathname = usePathname()
@@ -110,7 +110,7 @@ export default function MobileMenu({ sedes = [] }) {
                 Inicia sesión
               </a>
               <a
-                href="tel:+573158786701"
+                href={`tel:+57${telHref}`}
                 className="rounded-full bg-gold-500 px-4 py-2.5 text-center text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
               >
                 Llámanos ahora

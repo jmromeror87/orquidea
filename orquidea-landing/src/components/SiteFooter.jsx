@@ -18,11 +18,16 @@
  */
 import Link from 'next/link'
 import Image from 'next/image'
-import { getPlanes, getServicios } from '@/lib/api'
+import { getPlanes, getServicios, getEmpresa, getWhatsappNumero } from '@/lib/api'
 import SocialIcons from './SocialIcons'
 
 export default async function SiteFooter() {
-  const [planes, servicios] = await Promise.all([getPlanes(), getServicios()])
+  const [planes, servicios, empresaRaw, waNumero] = await Promise.all([
+    getPlanes(), getServicios(), getEmpresa(), getWhatsappNumero(),
+  ])
+  const empresa = Array.isArray(empresaRaw) ? null : empresaRaw
+  const telefono = empresa?.telefono_1 || '3158786701'
+  const telHref = telefono.replace(/\D/g, '')
   const categoriasServicio = [...new Set(servicios.map((s) => s.categoria))].slice(0, 6)
 
   const CATEGORIAS = {
@@ -44,12 +49,12 @@ export default async function SiteFooter() {
               Acompañamos a las familias con respeto, cercanía y disponibilidad las 24 horas del
               día, los 365 días del año.
             </p>
-            <SocialIcons className="mt-5" />
+            <SocialIcons className="mt-5" whatsapp={waNumero} />
             <a
-              href="tel:+573158786701"
+              href={`tel:+57${telHref}`}
               className="mt-6 inline-block rounded-full bg-gold-500 px-5 py-2.5 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
             >
-              📞 315 878 6701 — Línea 24h
+              📞 {telefono} — Línea 24h
             </a>
           </div>
 

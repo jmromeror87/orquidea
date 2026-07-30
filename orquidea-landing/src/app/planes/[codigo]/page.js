@@ -18,7 +18,7 @@
  */
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getPlanes } from '@/lib/api'
+import { getPlanes, getEmpresa } from '@/lib/api'
 
 export async function generateStaticParams() {
   const planes = await getPlanes()
@@ -35,9 +35,11 @@ export async function generateMetadata({ params }) {
 
 export default async function PlanDetallePage({ params }) {
   const { codigo } = await params
-  const planes = await getPlanes()
+  const [planes, empresaRaw] = await Promise.all([getPlanes(), getEmpresa()])
   const plan = planes.find((p) => p.codigo === codigo)
   if (!plan) notFound()
+  const empresa = Array.isArray(empresaRaw) ? null : empresaRaw
+  const telHref = (empresa?.telefono_1 || '3158786701').replace(/\D/g, '')
 
   const incluidos = Array.isArray(plan.servicios_incluidos) ? plan.servicios_incluidos : []
 
@@ -84,7 +86,7 @@ export default async function PlanDetallePage({ params }) {
       )}
 
       <a
-        href="tel:+573158786701"
+        href={`tel:+57${telHref}`}
         className="mt-10 inline-block rounded-full bg-gold-500 px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
       >
         Quiero afiliarme — llamar ahora

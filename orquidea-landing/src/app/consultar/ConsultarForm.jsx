@@ -82,7 +82,7 @@ const COBERTURA_ITEMS = (c) => [
   c.cubre_lapida != null && { label: 'Lápida', valor: c.cubre_lapida ? 'Incluido' : 'No incluido' },
 ].filter(Boolean)
 
-export default function ConsultarForm() {
+export default function ConsultarForm({ waNumero = '573158786701' }) {
   const searchParams = useSearchParams()
   const [tipo, setTipo] = useState('POLIZA')
   const [numeroDocumento, setNumeroDocumento] = useState('')
@@ -223,7 +223,7 @@ export default function ConsultarForm() {
             </li>
           </ul>
           <a
-            href="https://wa.me/573158786701"
+            href={`https://wa.me/${waNumero}`}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-4 flex items-center justify-center gap-2 rounded-full border border-brand-900 px-4 py-2.5 text-sm font-semibold text-brand-900 transition hover:bg-brand-900 hover:text-white"

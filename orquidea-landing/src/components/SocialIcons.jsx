@@ -19,7 +19,7 @@
 
 // TODO: reemplazar href="#" por las URLs reales de cada red social cuando
 // el cliente las confirme (pendiente al momento de construir este footer).
-const REDES = [
+const REDES_BASE = [
   {
     nombre: 'Facebook',
     href: '#',
@@ -48,16 +48,14 @@ const REDES = [
       </>
     ),
   },
-  {
-    nombre: 'WhatsApp',
-    href: 'https://wa.me/573158786701',
-    icon: (
-      <path d="M12 3.5a8.4 8.4 0 0 0-7.2 12.7L3.5 20.5l4.4-1.3A8.4 8.4 0 1 0 12 3.5zm4.9 11.9c-.2.6-1.2 1.1-1.7 1.2-.4.1-1 .1-1.6-.1a10 10 0 0 1-4.6-3.2 5.3 5.3 0 0 1-1.1-2.8c0-.8.4-1.2.6-1.4.2-.2.4-.2.6-.2h.4c.1 0 .3 0 .5.4l.7 1.6c.1.1.1.3 0 .4l-.4.5c-.1.1-.2.3-.1.4.3.6.8 1.2 1.3 1.6.5.4 1 .7 1.6.9.1.1.3 0 .4-.1l.5-.6c.1-.2.3-.2.4-.1l1.5.8c.2.1.2.1.2.3 0 .1 0 .3-.1.4z" />
-    ),
-  },
 ]
 
-export default function SocialIcons({ className = '' }) {
+const ICONO_WHATSAPP = (
+  <path d="M12 3.5a8.4 8.4 0 0 0-7.2 12.7L3.5 20.5l4.4-1.3A8.4 8.4 0 1 0 12 3.5zm4.9 11.9c-.2.6-1.2 1.1-1.7 1.2-.4.1-1 .1-1.6-.1a10 10 0 0 1-4.6-3.2 5.3 5.3 0 0 1-1.1-2.8c0-.8.4-1.2.6-1.4.2-.2.4-.2.6-.2h.4c.1 0 .3 0 .5.4l.7 1.6c.1.1.1.3 0 .4l-.4.5c-.1.1-.2.3-.1.4.3.6.8 1.2 1.3 1.6.5.4 1 .7 1.6.9.1.1.3 0 .4-.1l.5-.6c.1-.2.3-.2.4-.1l1.5.8c.2.1.2.1.2.3 0 .1 0 .3-.1.4z" />
+)
+
+export default function SocialIcons({ className = '', whatsapp = '573158786701' }) {
+  const REDES = [...REDES_BASE, { nombre: 'WhatsApp', href: `https://wa.me/${whatsapp}`, icon: ICONO_WHATSAPP }]
   return (
     <div className={`flex gap-3 ${className}`}>
       {REDES.map((r) => (
