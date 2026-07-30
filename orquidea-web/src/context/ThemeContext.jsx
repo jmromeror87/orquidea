@@ -13,6 +13,7 @@
  */
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { empresaService } from '../services/empresa.service.js'
+import { useAuthStore } from '../store/auth.store.js'
 
 const ThemeContext = createContext(null)
 
@@ -48,8 +49,10 @@ export function aplicarColoresTema(colorPrimario, colorAcento) {
 
 export function ThemeProvider({ children }) {
   const [cargado, setCargado] = useState(false)
+  const token = useAuthStore(s => s.token)
 
   const recargarTema = useCallback(() => {
+    if (!useAuthStore.getState().token) { setCargado(true); return }
     empresaService.obtener()
       .then(res => {
         const { color_primario, color_acento } = res.data.data || {}
@@ -59,7 +62,7 @@ export function ThemeProvider({ children }) {
       .finally(() => setCargado(true))
   }, [])
 
-  useEffect(() => { recargarTema() }, [recargarTema])
+  useEffect(() => { recargarTema() }, [recargarTema, token])
 
   return (
     <ThemeContext.Provider value={{ cargado, recargarTema, aplicarColoresTema }}>
