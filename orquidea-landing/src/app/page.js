@@ -21,6 +21,7 @@ import { getPlanes, getMemoriales } from '@/lib/api'
 import Watermark from '@/components/Watermark'
 import BannerPlanes from '@/components/BannerPlanes'
 import BannerPlanesV2 from '@/components/BannerPlanesV2'
+import BannerHacemosSimple from '@/components/BannerHacemosSimple'
 import HeroSlider from '@/components/HeroSlider'
 import ComoFunciona from '@/components/ComoFunciona'
 import PlanCard from '@/components/PlanCard'
@@ -37,6 +38,7 @@ export default async function HomePage() {
       <HeroSlider>
         <BannerPlanes />
         <BannerPlanesV2 />
+        <BannerHacemosSimple />
       </HeroSlider>
 
       {/* Planes destacados */}
