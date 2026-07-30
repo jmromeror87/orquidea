@@ -185,6 +185,21 @@ export async function actualizar(request, reply) {
     return reply.status(403).send({ error: 'Solo el superadmin puede asignar ese rol' })
   }
 
+  // No puede quedar el sistema sin al menos un superadmin activo
+  const dejaDeSerSuperadminActivo =
+    actual[0].rol === 'superadmin' &&
+    ((activo === false) || (rol && rol !== 'superadmin'))
+
+  if (dejaDeSerSuperadminActivo) {
+    const { rows: otros } = await query(
+      `SELECT COUNT(*) FROM usuarios WHERE rol = 'superadmin' AND activo = true AND id <> $1`,
+      [id]
+    )
+    if (parseInt(otros[0].count) === 0) {
+      return reply.status(400).send({ error: 'No puede quedar el sistema sin al menos un superadmin activo' })
+    }
+  }
+
   const sedePrincipal = sede_id || (Array.isArray(sedes) && sedes.length ? sedes[0] : null)
 
   const { rows } = await query(

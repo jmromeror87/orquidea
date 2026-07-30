@@ -264,7 +264,7 @@ function KpiCard({ label, value, color, bg, emoji }) {
 /* ─── Modal crear/editar usuario ─── */
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '')
 
-function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
+function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }) {
   const esEdit = !!usuario
   const [f, setF] = useState({ nombre:usuario?.nombre||'', email:usuario?.email||'', rol:usuario?.rol||'operador' })
   const [sedesSel, setSedesSel] = useState(usuario?.sede_id ? [usuario.sede_id] : [])
@@ -294,10 +294,7 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
     setError('')
   }
 
-  const submit = async e => {
-    e.preventDefault()
-    if (!f.nombre || !f.email) return setError('Nombre y correo son requeridos')
-    if (sedesSel.length === 0) return setError('Seleccione al menos una sede')
+  const guardar = async () => {
     setSaving(true)
     try {
       const body = { nombre:f.nombre, email:f.email, rol:f.rol, sedes: sedesSel, sede_id: sedesSel[0] }
@@ -327,6 +324,24 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
       onGuardado()
     } catch(err) { setError(err.response?.data?.error||'Error al guardar'); toast.error(err.response?.data?.error||'Error al guardar') }
     finally { setSaving(false) }
+  }
+
+  const submit = e => {
+    e.preventDefault()
+    if (!f.nombre || !f.email) return setError('Nombre y correo son requeridos')
+    if (sedesSel.length === 0) return setError('Seleccione al menos una sede')
+
+    const otorgaSuperadmin = f.rol === 'superadmin' && (!esEdit || usuario.rol !== 'superadmin')
+    if (otorgaSuperadmin) {
+      pedirConfirmacion({
+        titulo: 'Otorgar rol Super Admin',
+        mensaje: <>Estás a punto de dar acceso total al sistema a <strong>{f.nombre}</strong>. Este rol puede ver y modificar todo, incluyendo otros usuarios. ¿Continuar?</>,
+        textoBoton: 'Sí, otorgar acceso',
+        accion: async () => { await guardar(); pedirConfirmacion(null) },
+      })
+      return
+    }
+    guardar()
   }
 
   return (
@@ -469,6 +484,38 @@ function ModalPassword({ usuario, onClose, onGuardado }) {
   )
 }
 
+/* ─── Modal de confirmación (acciones sensibles) ─── */
+function ModalConfirmar({ titulo, mensaje, textoBoton='Confirmar', peligro=true, onCancelar, onConfirmar }) {
+  const [busy, setBusy] = useState(false)
+  const confirmar = async () => {
+    setBusy(true)
+    try { await onConfirmar() } finally { setBusy(false) }
+  }
+  return (
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onCancelar()}>
+      <div className="modal-box" style={{maxWidth:400}}>
+        <div className="modal-header">
+          <div className="modal-header-icon" style={{background:peligro?'#FEF2F2':'#EEF2FF'}}>
+            <AlertTriangle size={20} color={peligro?'#DC2626':'#4338CA'}/>
+          </div>
+          <div className="modal-title">{titulo}</div>
+          <button className="modal-close" onClick={onCancelar}><X size={15}/></button>
+        </div>
+        <div className="modal-body">
+          <div style={{ fontSize:13.5, color:'#4B5065', lineHeight:1.6 }}>{mensaje}</div>
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="mbtn-secondary" onClick={onCancelar} disabled={busy}>Cancelar</button>
+          <button type="button" className="mbtn-primary" onClick={confirmar} disabled={busy}
+            style={peligro?{background:'#DC2626'}:undefined}>
+            {busy?<Loader2 size={14} style={{animation:'spin 1s linear infinite'}}/>:textoBoton}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ══════════════════════════════════════════════
    TAB 1 — USUARIOS
 ══════════════════════════════════════════════ */
@@ -482,6 +529,7 @@ function TabUsuarios({ esAdmin }) {
   const [filtroRol,setFiltroRol]= useState('')
   const [modal,    setModal]    = useState(null)
   const [sel,      setSel]      = useState(null)
+  const [confirmar, setConfirmar] = useState(null) // { titulo, mensaje, accion }
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -502,8 +550,24 @@ function TabUsuarios({ esAdmin }) {
 
   useEffect(()=>{ cargar() },[cargar])
 
-  const toggleActivo = async u => {
-    try { await api.put(`/usuarios/${u.id}`,{activo:!u.activo}); toast.success(u.activo?'Usuario desactivado':'Usuario activado'); cargar() } catch{ toast.error('Error al cambiar el estado del usuario') }
+  const cambiarActivo = async (u, nuevoActivo) => {
+    try {
+      await api.put(`/usuarios/${u.id}`,{activo:nuevoActivo})
+      toast.success(nuevoActivo?'Usuario activado':'Usuario desactivado')
+      cargar()
+    } catch(err) {
+      toast.error(err.response?.data?.error || 'Error al cambiar el estado del usuario')
+    }
+  }
+
+  const toggleActivo = u => {
+    if (!u.activo) return cambiarActivo(u, true) // activar no es destructivo, no requiere confirmación
+    setConfirmar({
+      titulo: 'Desactivar usuario',
+      mensaje: <>¿Seguro que quieres desactivar a <strong>{u.nombre}</strong>? No podrá iniciar sesión hasta que lo actives de nuevo.</>,
+      textoBoton: 'Desactivar',
+      accion: async () => { await cambiarActivo(u, false); setConfirmar(null) },
+    })
   }
   const guardado = () => { setModal(null); setSel(null); cargar() }
   const activos   = usuarios.filter(u=>u.activo).length
@@ -532,6 +596,9 @@ function TabUsuarios({ esAdmin }) {
         <button className="tool-btn" onClick={cargar} title="Actualizar">
           <RefreshCw size={15} style={loading?{animation:'spin 1s linear infinite'}:{}}/>
         </button>
+        {esAdmin && (
+          <button className="btn-nuevo" onClick={()=>setModal('crear')}><UserPlus size={16}/> Nuevo Usuario</button>
+        )}
       </div>
 
       <div className="tbl-card">
@@ -603,14 +670,19 @@ function TabUsuarios({ esAdmin }) {
         )}
       </div>
 
-      {modal==='crear' && <ModalUsuario sedes={sedes} onClose={()=>setModal(null)} onGuardado={guardado}/>}
-      {modal==='editar' && sel && <ModalUsuario usuario={sel} sedes={sedes} onClose={()=>{setModal(null);setSel(null)}} onGuardado={guardado}/>}
+      {modal==='crear' && <ModalUsuario sedes={sedes} onClose={()=>setModal(null)} onGuardado={guardado} pedirConfirmacion={setConfirmar}/>}
+      {modal==='editar' && sel && <ModalUsuario usuario={sel} sedes={sedes} onClose={()=>{setModal(null);setSel(null)}} onGuardado={guardado} pedirConfirmacion={setConfirmar}/>}
       {modal==='password' && sel && <ModalPassword usuario={sel} onClose={()=>{setModal(null);setSel(null)}} onGuardado={guardado}/>}
 
-      {esAdmin && (
-        <div style={{position:'fixed',bottom:64,right:28,zIndex:50}}>
-          <button className="btn-nuevo" onClick={()=>setModal('crear')}><UserPlus size={16}/> Nuevo Usuario</button>
-        </div>
+      {confirmar && (
+        <ModalConfirmar
+          titulo={confirmar.titulo}
+          mensaje={confirmar.mensaje}
+          textoBoton={confirmar.textoBoton}
+          peligro={confirmar.peligro ?? true}
+          onCancelar={()=>setConfirmar(null)}
+          onConfirmar={confirmar.accion}
+        />
       )}
     </>
   )
