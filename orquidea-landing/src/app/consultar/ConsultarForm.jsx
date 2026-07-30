@@ -21,6 +21,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { consultarEstado, iniciarPago, consultarEstadoPago, cop } from '@/lib/api'
+import BenefitIcon from '@/components/BenefitIcons'
 
 const ESTADO_LABEL = {
   VIGENTE: 'Vigente', SUSPENDIDA: 'Suspendida', VENCIDA: 'Vencida',
@@ -61,7 +62,7 @@ function Seccion({ titulo, icono, children }) {
   return (
     <div className="mt-6 border-t border-stone-100 pt-6 first:mt-0 first:border-0 first:pt-0">
       <h3 className="flex items-center gap-2 font-serif text-lg text-brand-900">
-        <span>{icono}</span> {titulo}
+        <BenefitIcon name={icono} className="h-5 w-5 text-gold-600" /> {titulo}
       </h3>
       <div className="mt-4">{children}</div>
     </div>
@@ -209,15 +210,15 @@ export default function ConsultarForm() {
           <h3 className="font-semibold text-brand-900">¿Necesitas ayuda?</h3>
           <ul className="mt-3 space-y-3 text-stone-600">
             <li className="flex gap-2">
-              <span>📇</span>
+              <BenefitIcon name="usuario" className="h-4 w-4 shrink-0 mt-0.5 text-gold-600" />
               <span>El <strong>número de cédula</strong> debe ser el del titular con quien se afilió o firmó el contrato.</span>
             </li>
             <li className="flex gap-2">
-              <span>🔢</span>
+              <BenefitIcon name="documento" className="h-4 w-4 shrink-0 mt-0.5 text-gold-600" />
               <span>El <strong>número de póliza o contrato</strong> aparece en el documento que te entregamos al momento de afiliarte.</span>
             </li>
             <li className="flex gap-2">
-              <span>🔒</span>
+              <BenefitIcon name="escudo" className="h-4 w-4 shrink-0 mt-0.5 text-gold-600" />
               <span>Tus datos están protegidos: solo puedes ver la información si conoces ambos números.</span>
             </li>
           </ul>
@@ -227,7 +228,7 @@ export default function ConsultarForm() {
             rel="noopener noreferrer"
             className="mt-4 flex items-center justify-center gap-2 rounded-full border border-brand-900 px-4 py-2.5 text-sm font-semibold text-brand-900 transition hover:bg-brand-900 hover:text-white"
           >
-            💬 ¿No la encuentras? Escríbenos por WhatsApp
+            <BenefitIcon name="mensaje" className="h-4 w-4" /> ¿No la encuentras? Escríbenos por WhatsApp
           </a>
         </div>
       </div>
@@ -236,7 +237,7 @@ export default function ConsultarForm() {
       <div>
       {!resultado && (
         <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-white/60 p-10 text-center text-stone-400">
-          <span className="text-4xl">🔍</span>
+          <BenefitIcon name="documento" className="h-10 w-10 text-stone-300" />
           <p className="mt-3 max-w-xs text-sm">
             Ingresa tus datos en el formulario para ver el estado de tu póliza o contrato aquí.
           </p>
@@ -261,7 +262,7 @@ export default function ConsultarForm() {
           </div>
 
           {/* ── Datos generales ── */}
-          <Seccion titulo={tipo === 'POLIZA' ? resultado.plan : resultado.paquete || 'Contrato'} icono="📄">
+          <Seccion titulo={tipo === 'POLIZA' ? resultado.plan : resultado.paquete || 'Contrato'} icono="documento">
             <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
               <Dato label="Cuota mensual" valor={`${cop(resultado.valor_cuota)}/mes`} />
               {resultado.dia_cobro && <Dato label="Día de cobro" valor={`Día ${resultado.dia_cobro} de cada mes`} />}
@@ -273,7 +274,12 @@ export default function ConsultarForm() {
               {resultado.fecha_fin_carencia && (
                 <Dato
                   label="Fin carencia"
-                  valor={<>{fmtFecha(resultado.fecha_fin_carencia)} {resultado.en_carencia ? '⏳' : '✅'}</>}
+                  valor={
+                    <span className="inline-flex items-center gap-1.5">
+                      {fmtFecha(resultado.fecha_fin_carencia)}
+                      <BenefitIcon name={resultado.en_carencia ? 'escudo' : 'check'} className={`h-4 w-4 ${resultado.en_carencia ? 'text-gold-600' : 'text-emerald-600'}`} />
+                    </span>
+                  }
                 />
               )}
               {tipo === 'CONTRATO' && resultado.valor_total != null && (
@@ -288,7 +294,7 @@ export default function ConsultarForm() {
           {/* ── Afiliados / cobertura (solo pólizas) ── */}
           {tipo === 'POLIZA' && (
             <>
-              <Seccion titulo="Afiliados" icono="👥">
+              <Seccion titulo="Afiliados" icono="usuarioMas">
                 <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
                   <Dato label="Tipo de plan" valor={TIPO_PLAN_LABEL[resultado.plan_tipo] || resultado.plan_tipo} />
                   <Dato label="Máx. beneficiarios" valor={`${resultado.cobertura?.max_beneficiarios ?? '—'} personas`} />
@@ -306,7 +312,7 @@ export default function ConsultarForm() {
                 )}
               </Seccion>
 
-              <Seccion titulo="Cobertura" icono="🛡️">
+              <Seccion titulo="Cobertura" icono="escudo">
                 <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
                   {COBERTURA_ITEMS(resultado.cobertura || {}).map((it, i) => (
                     <Dato key={i} label={it.label} valor={it.valor} />
@@ -321,7 +327,7 @@ export default function ConsultarForm() {
 
           {/* ── Historial de pagos ── */}
           {resultado.pagos?.length > 0 && (
-            <Seccion titulo="Historial de pagos" icono="🧾">
+            <Seccion titulo="Historial de pagos" icono="moneda">
               <div className="overflow-x-auto rounded-lg border border-stone-100">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-stone-50 text-stone-500">
