@@ -31,9 +31,9 @@ export default async function ConfianzaSection() {
 
   const STATS = [
     { icon: 'escudo', valor: '20+', label: 'Años de experiencia' },
-    { icon: 'pin', valor: String(sedes.length || 3), label: 'Sedes de atención' },
+    { icon: 'pin', valor: String(sedes.length || 3), label: 'Sedes donde nos encuentras' },
     { icon: 'telefono', valor: '24/7', label: 'Disponibilidad' },
-    { icon: 'documento', valor: String(planes.length || 4), label: 'Planes exequiales' },
+    { icon: 'documento', valor: String(planes.length || 4), label: 'Planes exequiales a tu medida' },
   ]
 
   return (
