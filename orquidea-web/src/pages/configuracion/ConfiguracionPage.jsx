@@ -193,8 +193,11 @@ const CSS = `
 
   /* ── Color picker ── */
   .color-row { display:flex; align-items:center; gap:12px; }
-  .color-swatch { width:46px; height:46px; border-radius:12px; border:2px solid #E2E5F0;
-                  cursor:pointer; flex-shrink:0; }
+  .color-row input.color-swatch {
+    width:46px; height:46px; min-width:46px; flex:0 0 46px; padding:2px;
+    border-radius:12px; border:2px solid #E2E5F0; cursor:pointer;
+  }
+  .color-row input:not(.color-swatch) { flex:1; min-width:0; }
   .color-preview { margin-top:16px; height:72px; border-radius:16px; display:flex;
                    align-items:center; justify-content:center; font-size:14px;
                    font-weight:800; color:#fff; letter-spacing:.5px;
