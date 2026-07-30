@@ -39,4 +39,12 @@ export const env = {
     fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
     fromName:  process.env.SMTP_FROM_NAME  || 'Orquídea ERP',
   },
+  wompi: {
+    publicKey:      process.env.WOMPI_PUBLIC_KEY      || '',
+    privateKey:      process.env.WOMPI_PRIVATE_KEY     || '',
+    integritySecret: process.env.WOMPI_INTEGRITY_SECRET || '',
+    eventsSecret:    process.env.WOMPI_EVENTS_SECRET    || '',
+    // El ambiente lo determina el prefijo de la llave pública (pub_test_ vs pub_prod_)
+    checkoutUrl: 'https://checkout.wompi.co/p/',
+  },
 }

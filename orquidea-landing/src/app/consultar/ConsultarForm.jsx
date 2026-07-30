@@ -18,8 +18,9 @@
  */
 'use client'
 
-import { useState } from 'react'
-import { consultarEstado, cop } from '@/lib/api'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { consultarEstado, iniciarPago, consultarEstadoPago, cop } from '@/lib/api'
 
 const ESTADO_LABEL = {
   VIGENTE: 'Vigente', SUSPENDIDA: 'Suspendida', VENCIDA: 'Vencida',
@@ -34,13 +35,52 @@ const ESTADO_COLOR = {
   EJECUTADA: 'bg-stone-200 text-stone-700', finalizado: 'bg-stone-200 text-stone-700',
 }
 
+const PAGO_ESTADO_LABEL = {
+  aprobado: { texto: '¡Pago aprobado! Gracias por ponerte al día.', clase: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  rechazado: { texto: 'El pago fue rechazado. Puedes intentarlo de nuevo.', clase: 'bg-red-50 text-red-800 border-red-200' },
+  pendiente: { texto: 'Estamos confirmando tu pago con el banco. Esto puede tardar unos segundos…', clase: 'bg-gold-50 text-gold-700 border-gold-200' },
+}
+
 export default function ConsultarForm() {
+  const searchParams = useSearchParams()
   const [tipo, setTipo] = useState('POLIZA')
   const [numeroDocumento, setNumeroDocumento] = useState('')
   const [numero, setNumero] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [resultado, setResultado] = useState(null)
+  const [pagando, setPagando] = useState(false)
+  const [estadoPago, setEstadoPago] = useState(null) // 'pendiente' | 'aprobado' | 'rechazado'
+
+  // Si venimos de vuelta del checkout de Wompi (?ref=...), consultar el estado
+  useEffect(() => {
+    const ref = searchParams.get('ref')
+    if (!ref) return
+    let intentos = 0
+    const revisar = async () => {
+      try {
+        const data = await consultarEstadoPago(ref)
+        setEstadoPago(data.estado)
+        if (data.estado === 'pendiente' && intentos < 8) {
+          intentos++
+          setTimeout(revisar, 3000)
+        }
+      } catch { /* silencioso — no bloquea el resto de la página */ }
+    }
+    revisar()
+  }, [searchParams])
+
+  async function pagarAhora() {
+    setPagando(true)
+    setError(null)
+    try {
+      const { checkoutUrl } = await iniciarPago({ numero_documento: numeroDocumento.trim(), numero: numero.trim(), tipo })
+      window.location.href = checkoutUrl
+    } catch (err) {
+      setError(err.message || 'No se pudo iniciar el pago')
+      setPagando(false)
+    }
+  }
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -113,6 +153,12 @@ export default function ConsultarForm() {
         <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
 
+      {estadoPago && (
+        <p className={`mt-4 rounded-lg border px-4 py-3 text-sm font-semibold ${PAGO_ESTADO_LABEL[estadoPago]?.clase || 'bg-stone-50 text-stone-700 border-stone-200'}`}>
+          {PAGO_ESTADO_LABEL[estadoPago]?.texto || estadoPago}
+        </p>
+      )}
+
       {resultado && (
         <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
           <div className="flex items-center justify-between">
@@ -151,10 +197,18 @@ export default function ConsultarForm() {
               </dd>
             </div>
           </dl>
-          {Number(resultado.meses_mora) > 0 && (
-            <p className="mt-6 rounded-lg bg-gold-100 px-4 py-3 text-sm text-gold-700">
-              Tienes pagos pendientes. Comunícate con nosotros para ponerte al día y evitar la suspensión.
-            </p>
+          {Number(resultado.saldo_mora) > 0 && (
+            <div className="mt-6 rounded-lg bg-gold-100 px-4 py-4 text-sm text-gold-700">
+              <p>Tienes un saldo pendiente de <strong>{cop(resultado.saldo_mora)}</strong>.</p>
+              <button
+                type="button"
+                onClick={pagarAhora}
+                disabled={pagando}
+                className="mt-3 w-full rounded-full bg-brand-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:opacity-60 sm:w-auto"
+              >
+                {pagando ? 'Redirigiendo a pago seguro…' : `Pagar ahora ${cop(resultado.saldo_mora)}`}
+              </button>
+            </div>
           )}
         </div>
       )}

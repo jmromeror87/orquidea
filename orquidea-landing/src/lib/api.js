@@ -44,6 +44,25 @@ export async function consultarEstado({ numero_documento, numero, tipo }) {
   return json.data
 }
 
+export async function iniciarPago({ numero_documento, numero, tipo }) {
+  const res = await fetch(`${API_URL}/api/publico/pagos/iniciar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ numero_documento, numero, tipo }),
+    cache: 'no-store',
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.error || 'No se pudo iniciar el pago')
+  return json.data
+}
+
+export async function consultarEstadoPago(referencia) {
+  const res = await fetch(`${API_URL}/api/publico/pagos/${referencia}/estado`, { cache: 'no-store' })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.error || 'No se pudo consultar el pago')
+  return json.data
+}
+
 export async function crearLead({ nombre, correo, telefono, mensaje, origen }) {
   const res = await fetch(`${API_URL}/api/publico/leads`, {
     method: 'POST',

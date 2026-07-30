@@ -16,6 +16,7 @@
  * ║  comercialización sin autorización escrita del titular.                ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
+import { Suspense } from 'react'
 import ConsultarForm from './ConsultarForm'
 import Watermark from '@/components/Watermark'
 
@@ -33,7 +34,9 @@ export default function ConsultarPage() {
       <p className="mt-4 text-stone-600">
         Ingresa tu número de cédula y el número de tu póliza o contrato para ver su estado actual.
       </p>
-      <ConsultarForm />
+      <Suspense fallback={null}>
+        <ConsultarForm />
+      </Suspense>
     </div>
   )
 }

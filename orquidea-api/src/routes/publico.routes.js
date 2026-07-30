@@ -17,6 +17,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import * as ctrl from '../controllers/publico.controller.js'
+import * as pagos from '../controllers/pagosOnline.controller.js'
 
 // Sin verifyToken en ningún handler — este módulo es intencionalmente público.
 export default async function publicoRoutes(fastify) {
@@ -26,4 +27,8 @@ export default async function publicoRoutes(fastify) {
   fastify.post('/consultar-estado', ctrl.consultarEstado)
   fastify.post('/leads',            ctrl.crearLead)
   fastify.get('/memoriales',        ctrl.listarMemorialesPublico)
+
+  fastify.post('/pagos/iniciar',            pagos.iniciarPago)
+  fastify.get('/pagos/:referencia/estado',  pagos.estadoPago)
+  fastify.post('/pagos/webhook',            pagos.webhookWompi)
 }
