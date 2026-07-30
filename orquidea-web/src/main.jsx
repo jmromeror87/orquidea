@@ -21,13 +21,16 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import ToastContainer from './components/ui/ToastContainer.jsx'
+import { ThemeProvider } from './context/ThemeContext.jsx'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
-      <ToastContainer />
+      <ThemeProvider>
+        <App />
+        <ToastContainer />
+      </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>
 )

@@ -82,7 +82,7 @@ const CSS = `
   .sb-head { display:flex; align-items:center; gap:10px; padding:16px 14px 12px;
              border-bottom:1px solid #F0F1FA; flex-shrink:0; min-height:64px; }
   .sb-logo-img { width:36px; height:36px; border-radius:10px; object-fit:cover;
-                 border:2px solid #C9A020; flex-shrink:0;
+                 border:2px solid var(--color-accent); flex-shrink:0;
                  box-shadow:0 2px 8px rgba(201,160,32,.25); }
   .sb-logo-texts { overflow:hidden; white-space:nowrap; }
   .sb-logo-name { font-size:13px; font-weight:900; color:#0F1035; letter-spacing:.6px; line-height:1.1; }
@@ -93,7 +93,7 @@ const CSS = `
                border:1.5px solid #E2E5F0; display:flex; align-items:center; justify-content:center;
                cursor:pointer; color:#6B7280; flex-shrink:0;
                transition:all .15s; }
-  .sb-toggle:hover { background:#2E3192; color:#fff; border-color:#2E3192; }
+  .sb-toggle:hover { background:var(--color-primary); color:#fff; border-color:var(--color-primary); }
 
   /* Nav */
   .sb-nav { flex:1; overflow-y:auto; overflow-x:hidden; padding:8px 0; }
@@ -112,7 +112,7 @@ const CSS = `
              color:#6B7280; font-size:13.5px; font-weight:500;
              transition:all .15s; cursor:pointer; white-space:nowrap; }
   .sb-link:hover { background:#F4F5FA; color:#1A1A2E; }
-  .sb-link.active { background:#F0F1FA; color:#2E3192; font-weight:700;
+  .sb-link.active { background:#F0F1FA; color:var(--color-primary); font-weight:700;
                     box-shadow:0 0 0 1.5px #DDE1F0; }
 
   /* Icon box */
@@ -128,7 +128,7 @@ const CSS = `
   .sb-footer { border-top:1px solid #F0F1FA; padding:10px 10px; display:flex;
                align-items:center; gap:10px; flex-shrink:0; }
   .sb-avatar { width:36px; height:36px; border-radius:10px; flex-shrink:0;
-               background:linear-gradient(135deg,#2E3192,#C9A020);
+               background:linear-gradient(135deg,var(--color-primary),var(--color-accent));
                color:#fff; display:flex; align-items:center; justify-content:center;
                font-weight:800; font-size:14px; box-shadow:0 2px 6px rgba(46,49,146,.2); }
   .sb-footer-info { flex:1; overflow:hidden; }

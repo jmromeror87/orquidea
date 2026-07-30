@@ -169,7 +169,7 @@ const CSS = `
     cursor: pointer;
     transition: all .15s;
   }
-  .hdr-notif-btn:hover { background:#F4F5FA; color:#2E3192; }
+  .hdr-notif-btn:hover { background:#F4F5FA; color:var(--color-primary); }
   .hdr-notif-dot {
     position: absolute;
     top: 7px; right: 8px;
@@ -195,7 +195,7 @@ const CSS = `
   .hdr-avatar {
     width: 32px; height: 32px;
     border-radius: 9px;
-    background: linear-gradient(135deg,#2E3192,#C9A020);
+    background: linear-gradient(135deg,var(--color-primary),var(--color-accent));
     color: #fff;
     display: flex;
     align-items: center;

@@ -21,6 +21,7 @@ import {
 import { empresaService } from '../../services/empresa.service.js'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
+import { aplicarColoresTema } from '../../context/ThemeContext.jsx'
 
 const TABS = [
   { id:'empresa',        label:'Empresa',           sub:'Datos legales',        Icon:Building2, color:'#6366F1' },
@@ -2237,7 +2238,14 @@ function TabApariencia({ data, saving, setSaving, onOk, onErr }) {
   const [f, setF] = useState({ color_primario:'#2E3192', color_acento:'#C9A020' })
   useEffect(() => { if (data) setF(x => ({...x,...data})) }, [data])
   const set = k => v => setF(x => ({...x,[k]:v}))
-  const guardar = async () => { setSaving(true); try { onOk((await empresaService.actualizarParametros(f)).data.data) } catch { onErr() } finally { setSaving(false) } }
+  const guardar = async () => {
+    setSaving(true)
+    try {
+      const res = await empresaService.actualizarParametros(f)
+      aplicarColoresTema(f.color_primario, f.color_acento)
+      onOk(res.data.data)
+    } catch { onErr() } finally { setSaving(false) }
+  }
 
   return (
     <SecCard titulo="Apariencia del Sistema" sub="Paleta de colores corporativa del ERP" Icon={Palette} color="#C9A020">

@@ -77,7 +77,7 @@ const CSS = `
     display: flex;
     align-items: center;
     gap: 8px;
-    background: linear-gradient(135deg, #2E3192, #C9A020);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
     border-radius: 20px;
     padding: 4px 14px 4px 5px;
   }
