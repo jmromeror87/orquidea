@@ -19,8 +19,10 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import BenefitIcon from './BenefitIcons'
+import { getWhatsappNumero } from '@/lib/api'
 
-export default function BannerPlanesV2() {
+export default async function BannerPlanesV2() {
+  const waNumero = await getWhatsappNumero()
   return (
     <section className="relative isolate overflow-hidden bg-gradient-to-br from-white via-stone-50 to-gold-100/40">
       <div className="grid items-stretch gap-10 lg:grid-cols-[minmax(320px,32%)_1fr]">
@@ -58,7 +60,7 @@ export default function BannerPlanesV2() {
 
           <div className="mt-8 flex flex-wrap items-center gap-6">
             <a
-              href="https://wa.me/573103780786?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20los%20planes%20exequiales"
+              href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20los%20planes%20exequiales`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 rounded-full bg-brand-900 py-2.5 pl-3 pr-6 text-white shadow-md transition hover:bg-brand-800"

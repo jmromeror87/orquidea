@@ -16,7 +16,7 @@
  * ║  comercialización sin autorización escrita del titular.                ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
-import { getServicios } from '@/lib/api'
+import { getServicios, getWhatsappNumero } from '@/lib/api'
 import Watermark from '@/components/Watermark'
 import BenefitIcon from '@/components/BenefitIcons'
 
@@ -40,7 +40,7 @@ const CATEGORIAS = {
 }
 
 export default async function ServiciosPage() {
-  const servicios = await getServicios()
+  const [servicios, waNumero] = await Promise.all([getServicios(), getWhatsappNumero()])
   const porCategoria = servicios.reduce((acc, s) => {
     (acc[s.categoria] ||= []).push(s)
     return acc
@@ -86,7 +86,7 @@ export default async function ServiciosPage() {
                     {s.descripcion && <p className="mt-1.5 flex-1 text-sm text-stone-600">{s.descripcion}</p>}
                     <div className="mt-4 border-t border-stone-100 pt-3">
                       <a
-                        href="https://wa.me/573103780786?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20este%20servicio"
+                        href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20este%20servicio`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm font-semibold text-gold-700 hover:underline"
@@ -109,7 +109,7 @@ export default async function ServiciosPage() {
           <p className="mt-1 text-sm text-stone-300">Escríbenos y te ayudamos a armar el servicio exacto que tu familia necesita.</p>
         </div>
         <a
-          href="https://wa.me/573103780786?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20servicio"
+          href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20un%20servicio`}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 rounded-full bg-gold-500 px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"

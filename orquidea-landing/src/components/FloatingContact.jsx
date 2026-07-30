@@ -17,13 +17,15 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import BenefitIcon from './BenefitIcons'
+import { getWhatsappNumero } from '@/lib/api'
 
 // Pestaña vertical fija en el borde derecho — siempre visible mientras se
 // navega/scrollea el sitio, con el texto en vertical estilo "Suscríbete".
-export default function FloatingContact() {
+export default async function FloatingContact() {
+  const waNumero = await getWhatsappNumero()
   return (
     <a
-      href="https://wa.me/573103780786?text=Hola%2C%20quiero%20asesor%C3%ADa%20sobre%20los%20planes%20exequiales"
+      href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20asesor%C3%ADa%20sobre%20los%20planes%20exequiales`}
       target="_blank"
       rel="noopener noreferrer"
       className="fixed right-0 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center gap-2 rounded-l-2xl bg-gradient-to-b from-gold-400 to-gold-600 py-5 px-2.5 text-brand-950 shadow-lg transition hover:px-3.5 hover:shadow-xl"

@@ -17,6 +17,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import BenefitIcon from './BenefitIcons'
+import { getWhatsappNumero } from '@/lib/api'
 
 const PASOS = [
   { icon: 'mensaje',    titulo: 'Contáctanos',        texto: 'Comunícate con nuestra asesora y recibe información personalizada.' },
@@ -26,14 +27,15 @@ const PASOS = [
   { icon: 'escudo',     titulo: '¡Ya estás afiliado!', texto: 'Recibe tu certificado y disfruta de la tranquilidad de estar protegido.' },
 ]
 
-export default function AfiliacionBanner() {
+export default async function AfiliacionBanner() {
+  const waNumero = await getWhatsappNumero()
   return (
     <section className="relative isolate overflow-hidden bg-gradient-to-r from-brand-950 via-brand-900 to-brand-950 py-14">
       <div className="mx-auto max-w-6xl px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-serif text-2xl text-gold-100 sm:text-3xl">¿Cómo afiliarte? <span className="text-gold-400">¡Es muy fácil!</span></h2>
           <a
-            href="https://wa.me/573103780786?text=Hola%2C%20quiero%20afiliarme%20a%20un%20plan%20exequial"
+            href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20afiliarme%20a%20un%20plan%20exequial`}
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-full bg-gold-500 px-5 py-2 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"

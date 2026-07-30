@@ -26,6 +26,13 @@ async function get(path, revalidate = 3600) {
 }
 
 export const getEmpresa = () => get('/empresa')
+
+export async function getWhatsappNumero() {
+  const empresa = await getEmpresa()
+  const tel = (!Array.isArray(empresa) && empresa?.telefono_1) || '3158786701'
+  const digitos = tel.replace(/\D/g, '')
+  return digitos.length === 10 ? `57${digitos}` : digitos
+}
 export const getPlanes = () => get('/planes')
 export const getServicios = () => get('/servicios')
 export const getSedes = () => get('/sedes')

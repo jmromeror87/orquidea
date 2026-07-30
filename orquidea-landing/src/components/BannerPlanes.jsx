@@ -19,6 +19,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import BenefitIcon from './BenefitIcons'
+import { getWhatsappNumero } from '@/lib/api'
 
 const BENEFICIOS = [
   { icon: 'familia', label: 'Cobertura para toda la familia' },
@@ -36,7 +37,8 @@ const INCLUYE = [
   'Atención con respeto y calidez',
 ]
 
-export default function BannerPlanes() {
+export default async function BannerPlanes() {
+  const waNumero = await getWhatsappNumero()
   return (
     <section className="relative isolate overflow-hidden bg-gradient-to-br from-white via-stone-50 to-gold-100/40">
       <div className="grid items-center gap-10 lg:grid-cols-[minmax(320px,32%)_1fr]">
@@ -87,7 +89,7 @@ export default function BannerPlanes() {
 
           <div className="mt-8 flex flex-wrap items-center gap-6">
             <a
-              href="https://wa.me/573103780786?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20los%20planes%20exequiales"
+              href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20los%20planes%20exequiales`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 rounded-full bg-brand-900 py-2.5 pl-3 pr-6 text-white shadow-md transition hover:bg-brand-800"

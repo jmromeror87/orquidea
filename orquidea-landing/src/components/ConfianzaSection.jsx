@@ -17,7 +17,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import Image from 'next/image'
-import { getPlanes, getSedes } from '@/lib/api'
+import { getPlanes, getSedes, getWhatsappNumero } from '@/lib/api'
 import BenefitIcon from './BenefitIcons'
 
 const EQUIPO = [
@@ -27,7 +27,7 @@ const EQUIPO = [
 ]
 
 export default async function ConfianzaSection() {
-  const [planes, sedes] = await Promise.all([getPlanes(), getSedes()])
+  const [planes, sedes, waNumero] = await Promise.all([getPlanes(), getSedes(), getWhatsappNumero()])
 
   const STATS = [
     { icon: 'escudo', valor: '20+', label: 'Años de experiencia' },
@@ -105,7 +105,7 @@ export default async function ConfianzaSection() {
         </div>
 
         <a
-          href="https://wa.me/573103780786?text=Hola%2C%20quiero%20hablar%20con%20una%20asesora"
+          href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20hablar%20con%20una%20asesora`}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-8 inline-block rounded-full bg-gold-500 px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
