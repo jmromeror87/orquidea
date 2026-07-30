@@ -17,9 +17,11 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import { verifyToken } from '../middlewares/auth.middleware.js'
-import { login, me } from '../controllers/auth.controller.js'
+import { login, me, verificarTokenActivacion, activarCuenta } from '../controllers/auth.controller.js'
 
 export default async function routes(fastify) {
   fastify.post('/login', login)
   fastify.get('/me', { preHandler: verifyToken }, me)
+  fastify.get('/activar/:token',  verificarTokenActivacion)
+  fastify.post('/activar/:token', activarCuenta)
 }

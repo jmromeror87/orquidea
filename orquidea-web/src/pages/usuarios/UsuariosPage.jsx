@@ -266,7 +266,7 @@ const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001').rep
 
 function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
   const esEdit = !!usuario
-  const [f, setF] = useState({ nombre:usuario?.nombre||'', email:usuario?.email||'', rol:usuario?.rol||'operador', password:'' })
+  const [f, setF] = useState({ nombre:usuario?.nombre||'', email:usuario?.email||'', rol:usuario?.rol||'operador' })
   const [sedesSel, setSedesSel] = useState(usuario?.sede_id ? [usuario.sede_id] : [])
   const [cargandoSedes, setCargandoSedes] = useState(esEdit)
   const [foto, setFoto] = useState(null)
@@ -297,15 +297,19 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
   const submit = async e => {
     e.preventDefault()
     if (!f.nombre || !f.email) return setError('Nombre y correo son requeridos')
-    if (!esEdit && f.password.length < 8) return setError('La contraseña debe tener mínimo 8 caracteres')
     if (sedesSel.length === 0) return setError('Seleccione al menos una sede')
     setSaving(true)
     try {
       const body = { nombre:f.nombre, email:f.email, rol:f.rol, sedes: sedesSel, sede_id: sedesSel[0] }
-      if (!esEdit) body.password = f.password
       let id = usuario?.id
-      if (esEdit) await api.put(`/usuarios/${id}`, body)
-      else        id = (await api.post('/usuarios', body)).data.data.id
+      let correoEnviado = true
+      if (esEdit) {
+        await api.put(`/usuarios/${id}`, body)
+      } else {
+        const res = await api.post('/usuarios', body)
+        id = res.data.data.id
+        correoEnviado = res.data.correoEnviado
+      }
 
       if (foto) {
         const fd = new FormData()
@@ -313,7 +317,13 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
         await api.post(`/usuarios/${id}/foto`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       }
 
-      toast.success(esEdit ? 'Usuario actualizado' : 'Usuario creado')
+      if (esEdit) {
+        toast.success('Usuario actualizado')
+      } else if (correoEnviado) {
+        toast.success(`Usuario creado. Se envió un correo a ${f.email} para que cree su contraseña.`)
+      } else {
+        toast.success('Usuario creado. El correo de activación no pudo enviarse — contacta al administrador del sistema.')
+      }
       onGuardado()
     } catch(err) { setError(err.response?.data?.error||'Error al guardar'); toast.error(err.response?.data?.error||'Error al guardar') }
     finally { setSaving(false) }
@@ -390,8 +400,14 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
               </div>
               {!esEdit && (
                 <div className="mfield" style={{ gridColumn:'span 2' }}>
-                  <label>Contraseña inicial *</label>
-                  <input value={f.password} onChange={ch('password')} type="password" placeholder="Mínimo 8 caracteres"/>
+                  <div style={{
+                    display:'flex', gap:8, alignItems:'flex-start', padding:'10px 12px',
+                    background:'#EEF2FF', border:'1px solid #C7D2FE', borderRadius:10,
+                    fontSize:12, color:'#3730A3', lineHeight:1.5,
+                  }}>
+                    <Mail size={15} style={{ flexShrink:0, marginTop:1 }}/>
+                    Se enviará un correo a este usuario para que cree su propia contraseña antes de ingresar.
+                  </div>
                 </div>
               )}
             </div>

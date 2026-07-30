@@ -25,6 +25,7 @@ import AuthLayout   from './components/layout/AuthLayout.jsx'
 
 // Páginas
 import LoginPage        from './pages/auth/LoginPage.jsx'
+import ActivarCuentaPage from './pages/auth/ActivarCuentaPage.jsx'
 import DashboardPage    from './pages/dashboard/DashboardPage.jsx'
 import TercerosPage     from './pages/terceros/TercerosPage.jsx'
 import ServiciosPage    from './pages/servicios/ServiciosPage.jsx'
@@ -56,6 +57,7 @@ export default function App() {
       {/* Rutas públicas */}
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/activar-cuenta/:token" element={<ActivarCuentaPage />} />
       </Route>
 
       {/* Rutas privadas */}

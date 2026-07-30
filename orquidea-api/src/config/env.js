@@ -27,7 +27,16 @@ export const env = {
   frontendUrl: process.env.FRONTEND_URL    || 'http://localhost:5173',
   frontendUrls: (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:5173')
                   .split(',').map(u => u.trim()).filter(Boolean),
+  appUrl:      process.env.APP_URL         || process.env.FRONTEND_URL || 'http://localhost:5173',
   uploadPath:  process.env.UPLOAD_PATH     || './src/uploads',
   uploadMaxSize: parseInt(process.env.UPLOAD_MAX_SIZE) || 10485760,
   waEnabled:   process.env.WA_ENABLED === 'true',
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
+    fromName:  process.env.SMTP_FROM_NAME  || 'Orquídea ERP',
+  },
 }

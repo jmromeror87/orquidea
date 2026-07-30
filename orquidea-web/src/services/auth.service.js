@@ -22,4 +22,6 @@ export const authService = {
   login:  (email, password) => api.post('/auth/login', { email, password }),
   me:     ()                => api.get('/auth/me'),
   logout: ()                => api.post('/auth/logout'),
+  verificarActivacion: (token)           => api.get(`/auth/activar/${token}`),
+  activarCuenta:       (token, password) => api.post(`/auth/activar/${token}`, { password }),
 }

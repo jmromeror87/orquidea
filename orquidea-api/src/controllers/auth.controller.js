@@ -144,3 +144,51 @@ export async function me(request, reply) {
 
   return reply.send({ data: { ...rows[0], sedes: sedesRes.rows } })
 }
+
+// ── Activación de cuenta (usuario recién creado establece su contraseña) ───
+export async function verificarTokenActivacion(request, reply) {
+  const { token } = request.params
+
+  const { rows } = await query(
+    `SELECT nombre, email, activacion_expira FROM usuarios WHERE activacion_token = $1`,
+    [token]
+  )
+  if (!rows[0]) return reply.status(404).send({ error: 'Enlace inválido' })
+
+  if (new Date(rows[0].activacion_expira) < new Date()) {
+    return reply.status(410).send({ error: 'Este enlace expiró. Pide al administrador que te cree de nuevo o reenvíe la invitación.' })
+  }
+
+  return reply.send({ data: { nombre: rows[0].nombre, email: rows[0].email } })
+}
+
+export async function activarCuenta(request, reply) {
+  const { token } = request.params
+  const { password } = request.body
+
+  if (!password || password.length < 8) {
+    return reply.status(400).send({ error: 'La contraseña debe tener mínimo 8 caracteres' })
+  }
+
+  const { rows } = await query(
+    `SELECT id, activacion_expira FROM usuarios WHERE activacion_token = $1`,
+    [token]
+  )
+  if (!rows[0]) return reply.status(404).send({ error: 'Enlace inválido' })
+
+  if (new Date(rows[0].activacion_expira) < new Date()) {
+    return reply.status(410).send({ error: 'Este enlace expiró. Pide al administrador que te cree de nuevo o reenvíe la invitación.' })
+  }
+
+  const hash = await bcrypt.hash(password, 12)
+
+  await query(
+    `UPDATE usuarios
+     SET password = $1, debe_cambiar_pwd = false, activacion_token = NULL, activacion_expira = NULL,
+         login_intentos = 0, bloqueado_hasta = NULL
+     WHERE id = $2`,
+    [hash, rows[0].id]
+  )
+
+  return reply.send({ data: { mensaje: 'Contraseña creada. Ya puedes iniciar sesión.' } })
+}

@@ -17,7 +17,10 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import bcrypt from 'bcrypt'
+import crypto from 'node:crypto'
 import { query } from '../config/database.js'
+import { enviarCorreoActivacion } from '../utils/mailer.js'
+import { env } from '../config/env.js'
 import { pipeline } from 'node:stream/promises'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -111,16 +114,13 @@ export async function obtener(request, reply) {
 }
 
 export async function crear(request, reply) {
-  const { nombre, email, password, rol, sede_id, sedes } = request.body
+  const { nombre, email, rol, sede_id, sedes } = request.body
 
-  if (!nombre || !email || !password || !rol) {
-    return reply.status(400).send({ error: 'Nombre, email, contraseña y rol son requeridos' })
+  if (!nombre || !email || !rol) {
+    return reply.status(400).send({ error: 'Nombre, email y rol son requeridos' })
   }
   if (!ROLES_VALIDOS.includes(rol)) {
     return reply.status(400).send({ error: `Rol inválido. Roles permitidos: ${ROLES_VALIDOS.join(', ')}` })
-  }
-  if (password.length < 8) {
-    return reply.status(400).send({ error: 'La contraseña debe tener mínimo 8 caracteres' })
   }
 
   // Solo superadmin puede crear otro superadmin
@@ -128,15 +128,20 @@ export async function crear(request, reply) {
     return reply.status(403).send({ error: 'Solo el superadmin puede crear otro superadmin' })
   }
 
-  const hash = await bcrypt.hash(password, SALT_ROUNDS)
+  // Contraseña temporal inutilizable — el usuario debe establecer la suya vía el correo de activación
+  const hash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), SALT_ROUNDS)
+  const token = crypto.randomBytes(32).toString('hex')
+  const expira = new Date(Date.now() + 48 * 60 * 60 * 1000)
+
   const sedesFinal = Array.isArray(sedes) && sedes.length ? sedes : (sede_id ? [sede_id] : [])
   const sedePrincipal = sede_id || sedesFinal[0] || null
+  const emailNormalizado = email.toLowerCase().trim()
 
   const { rows } = await query(
-    `INSERT INTO usuarios (nombre, email, password, rol, sede_id, creado_por, debe_cambiar_pwd)
-     VALUES ($1, $2, $3, $4, $5, $6, true)
+    `INSERT INTO usuarios (nombre, email, password, rol, sede_id, creado_por, debe_cambiar_pwd, activacion_token, activacion_expira)
+     VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)
      RETURNING id, nombre, email, rol, sede_id, activo, creado_en`,
-    [nombre.trim(), email.toLowerCase().trim(), hash, rol, sedePrincipal, request.user.id]
+    [nombre.trim(), emailNormalizado, hash, rol, sedePrincipal, request.user.id, token, expira]
   )
 
   for (const sid of sedesFinal) {
@@ -146,7 +151,14 @@ export async function crear(request, reply) {
     )
   }
 
-  return reply.status(201).send({ data: rows[0] })
+  const urlActivacion = `${env.appUrl}/activar-cuenta/${token}`
+  const correo = await enviarCorreoActivacion({ para: emailNormalizado, nombre: nombre.trim(), url: urlActivacion })
+
+  return reply.status(201).send({
+    data: rows[0],
+    correoEnviado: correo.enviado,
+    ...(correo.enviado ? {} : { urlActivacion: correo.url }),
+  })
 }
 
 export async function actualizar(request, reply) {
