@@ -21,6 +21,7 @@ import * as pagos from '../controllers/pagosOnline.controller.js'
 
 // Sin verifyToken en ningún handler — este módulo es intencionalmente público.
 export default async function publicoRoutes(fastify) {
+  fastify.get('/empresa',            ctrl.obtenerEmpresaPublico)
   fastify.get('/planes',            ctrl.listarPlanesPublico)
   fastify.get('/servicios',         ctrl.listarServiciosPublico)
   fastify.get('/sedes',             ctrl.listarSedesPublico)

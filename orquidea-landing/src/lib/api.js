@@ -25,6 +25,7 @@ async function get(path, revalidate = 3600) {
   return json.data || []
 }
 
+export const getEmpresa = () => get('/empresa')
 export const getPlanes = () => get('/planes')
 export const getServicios = () => get('/servicios')
 export const getSedes = () => get('/sedes')

@@ -66,6 +66,19 @@ export async function listarServiciosPublico(req, reply) {
   return reply.send({ data: rows })
 }
 
+// ── Empresa (datos de contacto públicos) ────────────────────────────────────
+export async function obtenerEmpresaPublico(req, reply) {
+  const { rows } = await pool.query(`
+    SELECT razon_social, nombre_comercial, email, telefono_1, telefono_2,
+           sitio_web, direccion, departamento, municipio, logo_url
+    FROM empresa
+    WHERE activo = TRUE
+    LIMIT 1
+  `)
+  if (!rows.length) return reply.send({ data: null })
+  return reply.send({ data: rows[0] })
+}
+
 // ── Sedes ─────────────────────────────────────────────────────────────────
 export async function listarSedesPublico(req, reply) {
   const { rows } = await pool.query(`
