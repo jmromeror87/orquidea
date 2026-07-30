@@ -262,14 +262,25 @@ function KpiCard({ label, value, color, bg, emoji }) {
 }
 
 /* ─── Modal crear/editar usuario ─── */
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '')
+
 function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
   const esEdit = !!usuario
   const [f, setF] = useState({ nombre:usuario?.nombre||'', email:usuario?.email||'', rol:usuario?.rol||'operador', password:'' })
   const [sedesSel, setSedesSel] = useState(usuario?.sede_id ? [usuario.sede_id] : [])
   const [cargandoSedes, setCargandoSedes] = useState(esEdit)
+  const [foto, setFoto] = useState(null)
+  const [fotoPreview, setFotoPreview] = useState(usuario?.foto_url ? `${API_ORIGIN}${usuario.foto_url}` : null)
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
   const ch = k => e => { setF(x=>({...x,[k]:e.target.value})); setError('') }
+
+  const onFotoChange = e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFoto(file)
+    setFotoPreview(URL.createObjectURL(file))
+  }
 
   useEffect(() => {
     if (!esEdit) return
@@ -292,8 +303,16 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
     try {
       const body = { nombre:f.nombre, email:f.email, rol:f.rol, sedes: sedesSel, sede_id: sedesSel[0] }
       if (!esEdit) body.password = f.password
-      if (esEdit) await api.put(`/usuarios/${usuario.id}`, body)
-      else        await api.post('/usuarios', body)
+      let id = usuario?.id
+      if (esEdit) await api.put(`/usuarios/${id}`, body)
+      else        id = (await api.post('/usuarios', body)).data.data.id
+
+      if (foto) {
+        const fd = new FormData()
+        fd.append('foto', foto)
+        await api.post(`/usuarios/${id}/foto`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      }
+
       toast.success(esEdit ? 'Usuario actualizado' : 'Usuario creado')
       onGuardado()
     } catch(err) { setError(err.response?.data?.error||'Error al guardar'); toast.error(err.response?.data?.error||'Error al guardar') }
@@ -311,6 +330,25 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado }) {
         <form onSubmit={submit} noValidate>
           <div className="modal-body">
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px 16px' }}>
+              <div className="mfield" style={{ gridColumn:'span 2', display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{
+                  width:56, height:56, borderRadius:'50%', overflow:'hidden', flexShrink:0,
+                  background:'linear-gradient(135deg,#2E3192,#C9A020)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  color:'#fff', fontWeight:800, fontSize:20,
+                }}>
+                  {fotoPreview
+                    ? <img src={fotoPreview} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                    : (f.nombre?.charAt(0)?.toUpperCase() || '?')}
+                </div>
+                <div>
+                  <label htmlFor="foto-usuario" style={{ cursor:'pointer', fontSize:12.5, fontWeight:700, color:'#4338CA' }}>
+                    {fotoPreview ? 'Cambiar foto' : 'Agregar foto'}
+                  </label>
+                  <input id="foto-usuario" type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={onFotoChange} style={{ display:'none' }}/>
+                </div>
+              </div>
               <div className="mfield" style={{ gridColumn:'span 2' }}>
                 <label>Nombre completo *</label>
                 <input value={f.nombre} onChange={ch('nombre')} placeholder="Juan García"/>

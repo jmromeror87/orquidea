@@ -114,6 +114,7 @@ export async function login(request, reply) {
         nombre:       usuario.nombre,
         email:        usuario.email,
         rol:          usuario.rol,
+        foto_url:     usuario.foto_url,
         sede_id:      usuario.sede_id,
         sede_nombre:  usuario.sede_nombre,
         sedes:        sedesRes.rows,
@@ -125,7 +126,7 @@ export async function login(request, reply) {
 
 export async function me(request, reply) {
   const { rows } = await query(
-    `SELECT u.id, u.nombre, u.email, u.rol, u.activo,
+    `SELECT u.id, u.nombre, u.email, u.rol, u.activo, u.foto_url,
             u.sede_id, u.ultimo_acceso, u.debe_cambiar_pwd,
             s.nombre AS sede_nombre
      FROM usuarios u

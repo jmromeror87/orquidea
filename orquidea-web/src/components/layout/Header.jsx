@@ -14,6 +14,8 @@ import { Bell, LogOut, ChevronDown, MapPin } from 'lucide-react'
 import { useAuthStore } from '../../store/auth.store.js'
 import api from '../../services/api.js'
 
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '')
+
 const RUTAS = {
   '/dashboard':    { modulo:'Dashboard',            titulo:'Panel Principal',          sub:'Resumen de operaciones de la funeraria',        color:'#6366F1' },
   '/terceros':     { modulo:'Terceros',              titulo:'Terceros',                  sub:'Clientes, titulares, beneficiarios y difuntos', color:'#10B981' },
@@ -201,6 +203,7 @@ const CSS = `
     font-weight: 800;
     font-size: 13px;
     flex-shrink: 0;
+    overflow: hidden;
   }
   .hdr-user-info {}
   .hdr-user-name { font-size:12.5px; font-weight:700; color:#0F1035; line-height:1.1; }
@@ -328,7 +331,11 @@ export default function Header() {
 
           {/* Usuario dropdown */}
           <div className="hdr-user" onClick={e => { e.stopPropagation(); setOpen(o => !o) }}>
-            <div className="hdr-avatar">{usuario?.nombre?.charAt(0)?.toUpperCase()}</div>
+            <div className="hdr-avatar">
+              {usuario?.foto_url
+                ? <img src={`${API_ORIGIN}${usuario.foto_url}`} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:9 }}/>
+                : usuario?.nombre?.charAt(0)?.toUpperCase()}
+            </div>
             <div className="hdr-user-info">
               <div className="hdr-user-name">{usuario?.nombre}</div>
               <div className="hdr-user-rol">{ROL_LABELS[usuario?.rol] || usuario?.rol}</div>

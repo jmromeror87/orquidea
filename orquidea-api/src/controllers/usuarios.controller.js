@@ -18,12 +18,21 @@
  */
 import bcrypt from 'bcrypt'
 import { query } from '../config/database.js'
+import { pipeline } from 'node:stream/promises'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const FOTOS_DIR = path.join(__dirname, '..', 'uploads', 'usuarios')
+fs.mkdirSync(FOTOS_DIR, { recursive: true })
+const EXT_PERMITIDAS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
 
 const ROLES_VALIDOS = ['superadmin', 'administrador', 'contador', 'operador', 'asesor_comercial', 'consultor']
 const SALT_ROUNDS = 12
 
 const CAMPOS_USUARIO = `
-  u.id, u.nombre, u.email, u.rol, u.activo,
+  u.id, u.nombre, u.email, u.rol, u.activo, u.foto_url,
   u.sede_id, u.ultimo_acceso, u.debe_cambiar_pwd, u.creado_en,
   s.nombre AS sede_nombre,
   c.nombre AS creado_por_nombre
@@ -235,7 +244,38 @@ export async function cambiarPassword(request, reply) {
 
 export async function listarSedes(request, reply) {
   const { rows } = await query(
-    'SELECT id, nombre, ciudad, activo FROM sedes WHERE activo = true ORDER BY nombre'
+    'SELECT id, nombre, municipio, activo FROM sedes WHERE activo = true ORDER BY nombre'
   )
   return reply.send({ data: rows })
+}
+
+export async function subirFoto(request, reply) {
+  const { id } = request.params
+
+  const { rows: existe } = await query('SELECT id FROM usuarios WHERE id = $1', [id])
+  if (!existe[0]) return reply.status(404).send({ error: 'Usuario no encontrado' })
+
+  const data = await request.file()
+  if (!data) return reply.code(400).send({ error: 'No se recibió ningún archivo' })
+
+  const ext = path.extname(data.filename).toLowerCase()
+  if (!EXT_PERMITIDAS.has(ext)) {
+    return reply.code(400).send({ error: `Formato no permitido. Use: ${[...EXT_PERMITIDAS].join(', ')}` })
+  }
+
+  const nombreArchivo = `usuario_${id}_${Date.now()}${ext}`
+  const rutaLocal = path.join(FOTOS_DIR, nombreArchivo)
+  const urlPublica = `/uploads/usuarios/${nombreArchivo}`
+
+  const writeStream = fs.createWriteStream(rutaLocal)
+  await pipeline(data.file, writeStream)
+
+  if (data.file.truncated) {
+    fs.unlink(rutaLocal, () => {})
+    return reply.code(413).send({ error: 'La imagen supera el límite permitido.' })
+  }
+
+  await query('UPDATE usuarios SET foto_url = $1, actualizado = NOW() WHERE id = $2', [urlPublica, id])
+
+  return reply.send({ data: { foto_url: urlPublica } })
 }

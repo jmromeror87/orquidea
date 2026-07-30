@@ -19,7 +19,7 @@
 import { verifyToken, requireRole } from '../middlewares/auth.middleware.js'
 import {
   listar, obtener, crear, actualizar,
-  cambiarPassword, listarSedes, listarSedesUsuario,
+  cambiarPassword, listarSedes, listarSedesUsuario, subirFoto,
 } from '../controllers/usuarios.controller.js'
 
 const soloAdmins = requireRole('superadmin', 'administrador')
@@ -32,4 +32,5 @@ export default async function routes(fastify) {
   fastify.get('/:id/sedes-multiples', { preHandler: [verifyToken, soloAdmins] }, listarSedesUsuario)
   fastify.put('/:id',       { preHandler: [verifyToken, soloAdmins] }, actualizar)
   fastify.put('/:id/password', { preHandler: verifyToken },            cambiarPassword)
+  fastify.post('/:id/foto',    { preHandler: verifyToken },            subirFoto)
 }
