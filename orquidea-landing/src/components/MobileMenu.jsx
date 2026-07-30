@@ -106,7 +106,7 @@ export default function MobileMenu({ sedes = [], telefono = '315 878 6701', telH
             )}
 
             <div className="mt-auto flex flex-col gap-3 border-t border-stone-200 pt-4">
-              <a href="#" className="text-sm font-semibold text-brand-900">
+              <a href="https://app.funerariasanjoseabrego.com/login" className="text-sm font-semibold text-brand-900">
                 Inicia sesión
               </a>
               <a

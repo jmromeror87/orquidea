@@ -18,12 +18,12 @@
  */
 import BenefitIcon from './BenefitIcons'
 
-// TODO: sin destino real todavía — el sitio público no tiene portal de
-// clientes. Cuando exista, reemplazar href="#" por las rutas reales.
+// Por ahora apunta directo al login del ERP (app.funerariasanjoseabrego.com).
+// Cuando exista un portal de clientes propio en la landing, reemplazar este enlace.
 export default function AuthLinks() {
   return (
     <div className="hidden items-center lg:flex">
-      <a href="#" className="flex items-center gap-1.5 text-sm font-semibold text-brand-900 transition hover:text-gold-700">
+      <a href="https://app.funerariasanjoseabrego.com/login" className="flex items-center gap-1.5 text-sm font-semibold text-brand-900 transition hover:text-gold-700">
         <BenefitIcon name="usuario" className="h-4 w-4" />
         Inicia sesión
       </a>
