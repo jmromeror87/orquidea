@@ -152,7 +152,12 @@ export async function crear(request, reply) {
   }
 
   const urlActivacion = `${env.appUrl}/activar-cuenta/${token}`
-  const correo = await enviarCorreoActivacion({ para: emailNormalizado, nombre: nombre.trim(), url: urlActivacion })
+  let correo = { enviado: false, url: urlActivacion }
+  try {
+    correo = await enviarCorreoActivacion({ para: emailNormalizado, nombre: nombre.trim(), url: urlActivacion })
+  } catch (err) {
+    request.log.error({ err }, 'No se pudo enviar el correo de activación')
+  }
 
   return reply.status(201).send({
     data: rows[0],
