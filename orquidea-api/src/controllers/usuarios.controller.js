@@ -45,7 +45,7 @@ export async function listar(request, reply) {
   const { page = 1, limit = 20, buscar, rol, activo, sede_id } = request.query
   const offset = (page - 1) * limit
 
-  const condiciones = ['1=1']
+  const condiciones = ['u.oculto = false']
   const params = []
   let i = 1
 
@@ -106,7 +106,7 @@ export async function obtener(request, reply) {
      FROM usuarios u
      LEFT JOIN sedes s ON s.id = u.sede_id
      LEFT JOIN usuarios c ON c.id = u.creado_por
-     WHERE u.id = $1`,
+     WHERE u.id = $1 AND u.oculto = false`,
     [request.params.id]
   )
   if (!rows[0]) return reply.status(404).send({ error: 'Usuario no encontrado' })
