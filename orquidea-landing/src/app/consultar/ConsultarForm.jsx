@@ -41,6 +41,46 @@ const PAGO_ESTADO_LABEL = {
   pendiente: { texto: 'Estamos confirmando tu pago con el banco. Esto puede tardar unos segundos…', clase: 'bg-gold-50 text-gold-700 border-gold-200' },
 }
 
+const TIPO_PLAN_LABEL = { INDIVIDUAL: 'Individual', FAMILIAR: 'Familiar', AMPLIADO: 'Ampliado', COLECTIVO: 'Colectivo' }
+const METODO_LABEL = {
+  efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta', cheque: 'Cheque',
+  descuento_nomina: 'Descuento nómina', pse: 'PSE', pse_online: 'Pago en línea',
+}
+const fmtFecha = (d) => d ? new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+
+function Dato({ label, valor }) {
+  return (
+    <div>
+      <dt className="text-stone-500">{label}</dt>
+      <dd className="font-semibold text-brand-900">{valor}</dd>
+    </div>
+  )
+}
+
+function Seccion({ titulo, icono, children }) {
+  return (
+    <div className="mt-6 border-t border-stone-100 pt-6 first:mt-0 first:border-0 first:pt-0">
+      <h3 className="flex items-center gap-2 font-serif text-lg text-brand-900">
+        <span>{icono}</span> {titulo}
+      </h3>
+      <div className="mt-4">{children}</div>
+    </div>
+  )
+}
+
+const ATAUD_LABEL = { BASICO: 'Básico', MEDIANO: 'Mediano', PREMIUM: 'Premium', LUJO: 'Lujo' }
+
+const COBERTURA_ITEMS = (c) => [
+  c.cubre_ataud && { label: 'Ataúd', valor: ATAUD_LABEL[c.cubre_ataud] || c.cubre_ataud },
+  c.cubre_velacion_h && { label: 'Horas de velación', valor: `${c.cubre_velacion_h}h` },
+  c.cubre_traslado_local != null && { label: 'Traslado local', valor: c.cubre_traslado_local ? 'Incluido' : 'No incluido' },
+  c.cubre_traslado_nacional != null && { label: 'Traslado nacional', valor: c.cubre_traslado_nacional ? 'Incluido' : 'No incluido' },
+  c.cubre_flores != null && { label: 'Flores', valor: c.cubre_flores ? 'Incluido' : 'No incluido' },
+  c.cubre_cremacion != null && { label: 'Cremación', valor: c.cubre_cremacion ? 'Incluido' : 'No incluido' },
+  c.cubre_tramites != null && { label: 'Trámites legales', valor: c.cubre_tramites ? 'Incluido' : 'No incluido' },
+  c.cubre_lapida != null && { label: 'Lápida', valor: c.cubre_lapida ? 'Incluido' : 'No incluido' },
+].filter(Boolean)
+
 export default function ConsultarForm() {
   const searchParams = useSearchParams()
   const [tipo, setTipo] = useState('POLIZA')
@@ -161,42 +201,113 @@ export default function ConsultarForm() {
 
       {resultado && (
         <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif text-xl text-brand-900">
-              {tipo === 'POLIZA' ? resultado.plan : `Contrato ${resultado.tipo_contrato}`}
-            </h2>
+          {/* ── Encabezado: titular + estado ── */}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-serif text-xl text-brand-900">{resultado.titular?.nombre || '—'}</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                {tipo === 'POLIZA' ? `Póliza N° ${resultado.numero}` : `Contrato N° ${resultado.numero}`}
+                {' · '}CC {resultado.titular?.numero_documento}
+                {resultado.titular?.telefono && <> · {resultado.titular.telefono}</>}
+              </p>
+            </div>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${ESTADO_COLOR[resultado.estado] || 'bg-stone-100 text-stone-700'}`}>
               {ESTADO_LABEL[resultado.estado] || resultado.estado}
             </span>
           </div>
-          <dl className="mt-6 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-stone-500">Cuota mensual</dt>
-              <dd className="font-semibold text-brand-900">{cop(resultado.valor_cuota)}</dd>
-            </div>
-            <div>
-              <dt className="text-stone-500">Meses en mora</dt>
-              <dd className="font-semibold text-brand-900">{resultado.meses_mora || 0}</dd>
-            </div>
-            <div>
-              <dt className="text-stone-500">Saldo en mora</dt>
-              <dd className="font-semibold text-brand-900">{cop(resultado.saldo_mora)}</dd>
-            </div>
-            {resultado.pago_hasta && (
-              <div>
-                <dt className="text-stone-500">Pagado hasta</dt>
-                <dd className="font-semibold text-brand-900">
-                  {new Date(resultado.pago_hasta).toLocaleDateString('es-CO')}
-                </dd>
+
+          {/* ── Datos generales ── */}
+          <Seccion titulo={tipo === 'POLIZA' ? resultado.plan : resultado.paquete || 'Contrato'} icono="📄">
+            <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+              <Dato label="Cuota mensual" valor={`${cop(resultado.valor_cuota)}/mes`} />
+              {resultado.dia_cobro && <Dato label="Día de cobro" valor={`Día ${resultado.dia_cobro} de cada mes`} />}
+              <Dato label="Meses en mora" valor={resultado.meses_mora || 0} />
+              <Dato label="Saldo en mora" valor={cop(resultado.saldo_mora)} />
+              {resultado.ultimo_pago && <Dato label="Último pago" valor={fmtFecha(resultado.ultimo_pago)} />}
+              {resultado.pago_hasta && <Dato label="Pagado hasta" valor={fmtFecha(resultado.pago_hasta)} />}
+              <Dato label="Fecha inicio" valor={fmtFecha(resultado.fecha_inicio)} />
+              {resultado.fecha_fin_carencia && (
+                <Dato
+                  label="Fin carencia"
+                  valor={<>{fmtFecha(resultado.fecha_fin_carencia)} {resultado.en_carencia ? '⏳' : '✅'}</>}
+                />
+              )}
+              {tipo === 'CONTRATO' && resultado.valor_total != null && (
+                <>
+                  <Dato label="Valor total" valor={cop(resultado.valor_total)} />
+                  <Dato label="Valor pagado" valor={cop(resultado.valor_pagado)} />
+                </>
+              )}
+            </dl>
+          </Seccion>
+
+          {/* ── Afiliados / cobertura (solo pólizas) ── */}
+          {tipo === 'POLIZA' && (
+            <>
+              <Seccion titulo="Afiliados" icono="👥">
+                <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                  <Dato label="Tipo de plan" valor={TIPO_PLAN_LABEL[resultado.plan_tipo] || resultado.plan_tipo} />
+                  <Dato label="Máx. beneficiarios" valor={`${resultado.cobertura?.max_beneficiarios ?? '—'} personas`} />
+                  <Dato label="Afiliados actuales" valor={`${resultado.afiliados_actuales ?? 0} personas`} />
+                </dl>
+                {resultado.beneficiarios?.length > 0 && (
+                  <ul className="mt-4 divide-y divide-stone-100 rounded-lg border border-stone-100">
+                    {resultado.beneficiarios.map((b, i) => (
+                      <li key={i} className="flex items-center justify-between px-4 py-2 text-sm">
+                        <span className="font-medium text-brand-900">{b.nombre}</span>
+                        <span className="text-stone-500">{b.parentesco}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Seccion>
+
+              <Seccion titulo="Cobertura" icono="🛡️">
+                <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                  {COBERTURA_ITEMS(resultado.cobertura || {}).map((it, i) => (
+                    <Dato key={i} label={it.label} valor={it.valor} />
+                  ))}
+                  {Number(resultado.cobertura?.valor_excedente) > 0 && (
+                    <Dato label="Valor excedente" valor={cop(resultado.cobertura.valor_excedente)} />
+                  )}
+                </dl>
+              </Seccion>
+            </>
+          )}
+
+          {/* ── Historial de pagos ── */}
+          {resultado.pagos?.length > 0 && (
+            <Seccion titulo="Historial de pagos" icono="🧾">
+              <div className="overflow-x-auto rounded-lg border border-stone-100">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-stone-50 text-stone-500">
+                    <tr>
+                      <th className="px-4 py-2 font-semibold">Recibo</th>
+                      <th className="px-4 py-2 font-semibold">Mes</th>
+                      <th className="px-4 py-2 font-semibold">Fecha de pago</th>
+                      <th className="px-4 py-2 font-semibold">Método</th>
+                      <th className="px-4 py-2 text-right font-semibold">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {resultado.pagos.map((p, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-2 text-stone-600">#{p.numero_recibo}</td>
+                        <td className="px-4 py-2 text-stone-600">
+                          {new Date(p.mes_correspondiente).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}
+                        </td>
+                        <td className="px-4 py-2 text-stone-600">{fmtFecha(p.fecha_pago)}</td>
+                        <td className="px-4 py-2 text-stone-600">{METODO_LABEL[p.metodo_pago] || p.metodo_pago}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-brand-900">{cop(p.monto)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-            <div>
-              <dt className="text-stone-500">Fecha de inicio</dt>
-              <dd className="font-semibold text-brand-900">
-                {new Date(resultado.fecha_inicio).toLocaleDateString('es-CO')}
-              </dd>
-            </div>
-          </dl>
+            </Seccion>
+          )}
+
+          {/* ── Pagar saldo pendiente ── */}
           {Number(resultado.saldo_mora) > 0 && (
             <div className="mt-6 rounded-lg bg-gold-100 px-4 py-4 text-sm text-gold-700">
               <p>Tienes un saldo pendiente de <strong>{cop(resultado.saldo_mora)}</strong>.</p>
