@@ -997,7 +997,7 @@ function generarContratoPDF(data) {
   titulo('2. Plan Contratado')
   grid([
     [['Plan', p.plan_nombre], ['Cuota mensual', fmtCOP(p.valor_cuota)]],
-    [['Día de cobro', `Día ${p.dia_cobro} de cada mes`], ['Horas de velación cubiertas', p.horas_velacion ? `${p.horas_velacion} horas` : '—']],
+    [['Día de cobro', `Día ${p.dia_cobro} de cada mes`], ['Horas de velación cubiertas', p.cubre_velacion_h ? `${p.cubre_velacion_h} horas` : '—']],
     [['Período de carencia', `${p.meses_carencia} mes(es)`], ['Fin de carencia', fmtD(p.fecha_fin_carencia)]],
     [['Máx. beneficiarios', p.max_beneficiarios], ['Rango de edad beneficiarios', `${p.edad_min_beneficiario} - ${p.edad_max_beneficiario} años`]],
   ])

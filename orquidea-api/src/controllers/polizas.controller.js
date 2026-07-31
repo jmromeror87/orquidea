@@ -208,7 +208,7 @@ export async function contratoImpresion(req, reply) {
   const [pRes, benRes, empRes] = await Promise.all([
     pool.query(`
       SELECT p.*,
-        pl.nombre AS plan_nombre, pl.horas_velacion, pl.meses_carencia,
+        pl.nombre AS plan_nombre, pl.meses_carencia,
         pl.valor_afiliacion, pl.valor_beneficiario_adicional,
         pl.edad_min_beneficiario, pl.edad_max_beneficiario,
         t.nombres, t.apellidos, t.razon_social, t.tipo_persona,
