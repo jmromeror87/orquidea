@@ -157,7 +157,7 @@ export async function crear(req, reply) {
   const {
     tipo_documento_id, numero_documento, dv, tipo_persona = 'NATURAL',
     nombres, apellidos, razon_social, fecha_nacimiento, sexo, rh,
-    telefono, telefono_alt, email, direccion,
+    telefono, telefono_alt, email, direccion, barrio, vereda,
     departamento_id, municipio_id, zona_id, observaciones,
     roles = [],
   } = req.body
@@ -181,14 +181,15 @@ export async function crear(req, reply) {
       `INSERT INTO terceros
          (tipo_documento_id, numero_documento, dv, tipo_persona,
           nombres, apellidos, razon_social, fecha_nacimiento, sexo, rh,
-          telefono, telefono_alt, email, direccion,
+          telefono, telefono_alt, email, direccion, barrio, vereda,
           departamento_id, municipio_id, zona_id, observaciones, sede_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
       [tipo_documento_id, numero_documento, dv || null, tipo_persona,
        nombres || null, apellidos || null, razon_social || null,
        fecha_nacimiento || null, sexo || null, rh || null,
        telefono || null, telefono_alt || null, email || null, direccion || null,
+       barrio || null, vereda || null,
        departamento_id || null, municipio_id || null, zona_id || null,
        observaciones || null, sede_id]
     )
@@ -222,7 +223,7 @@ export async function actualizar(req, reply) {
   const {
     tipo_documento_id, numero_documento, dv, tipo_persona,
     nombres, apellidos, razon_social, fecha_nacimiento, sexo, rh,
-    telefono, telefono_alt, email, direccion,
+    telefono, telefono_alt, email, direccion, barrio, vereda,
     departamento_id, municipio_id, zona_id, observaciones, activo,
   } = req.body
 
@@ -247,6 +248,8 @@ export async function actualizar(req, reply) {
        telefono_alt      = COALESCE($13, telefono_alt),
        email             = COALESCE($14, email),
        direccion         = COALESCE($15, direccion),
+       barrio            = COALESCE($21, barrio),
+       vereda            = COALESCE($22, vereda),
        departamento_id   = COALESCE($16, departamento_id),
        municipio_id      = COALESCE($17, municipio_id),
        zona_id           = COALESCE($18, zona_id),
@@ -259,7 +262,8 @@ export async function actualizar(req, reply) {
      nombres || null, apellidos || null, razon_social || null, fecha_nacimiento || null,
      sexo || null, rh || null, telefono || null, telefono_alt || null,
      email || null, direccion || null, departamento_id || null,
-     municipio_id || null, zona_id || null, observaciones || null, activo ?? null]
+     municipio_id || null, zona_id || null, observaciones || null, activo ?? null,
+     barrio || null, vereda || null]
   )
   if (!rows.length) return reply.code(404).send({ data: null, error: 'Tercero no encontrado' })
   return reply.send({ data: rows[0], error: null })

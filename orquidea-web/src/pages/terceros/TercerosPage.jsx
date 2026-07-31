@@ -51,7 +51,7 @@ const BLANK_FORM = {
   nombres: '', apellidos: '', razon_social: '',
   fecha_nacimiento: '', sexo: '', rh: '',
   telefono: '', telefono_alt: '', email: '',
-  direccion: '', departamento_id: '', municipio_id: '', zona_id: '',
+  direccion: '', barrio: '', vereda: '', departamento_id: '', municipio_id: '', zona_id: '',
   observaciones: '',
   roles: ['CLIENTE'],
 }
@@ -470,6 +470,8 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
         telefono_alt:      tercero.telefono_alt || '',
         email:             tercero.email || '',
         direccion:         tercero.direccion || '',
+        barrio:            tercero.barrio || '',
+        vereda:            tercero.vereda || '',
         departamento_id:   tercero.departamento_id || '',
         municipio_id:      tercero.municipio_id || '',
         zona_id:           tercero.zona_id || '',
@@ -745,6 +747,16 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
             <input value={form.direccion} onChange={e => set('direccion', e.target.value)}
               placeholder="Calle, carrera, barrio…"
               style={{ borderColor: needs.direccion && !form.direccion ? '#F59E0B' : undefined }}/>
+          </div>
+          <div className="tp-grid3">
+            <div className="tp-field">
+              <label>Barrio</label>
+              <input value={form.barrio} onChange={e => set('barrio', e.target.value)} placeholder="Ej: Centro"/>
+            </div>
+            <div className="tp-field">
+              <label>Vereda</label>
+              <input value={form.vereda} onChange={e => set('vereda', e.target.value)} placeholder="Si vive en zona rural"/>
+            </div>
           </div>
           <div className="tp-grid3">
             <div className="tp-field">
@@ -1124,9 +1136,11 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                   <TpdCard icon="📍" title="Ubicación">
                     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                       <TpdField label="Dirección" value={data.direccion}/>
+                      <TpdField label="Barrio" value={data.barrio}/>
+                      <TpdField label="Vereda" value={data.vereda}/>
                       <TpdField label="Municipio / Departamento"
                         value={[data.municipio_nombre, data.departamento_nombre].filter(Boolean).join(', ') || null}/>
-                      <TpdField label="Barrio / Zona" value={data.zona_nombre}/>
+                      <TpdField label="Zona" value={data.zona_nombre}/>
                     </div>
                   </TpdCard>
                 </div>
