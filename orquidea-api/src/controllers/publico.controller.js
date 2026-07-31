@@ -43,14 +43,12 @@ function limitado(ip) {
 // ── Planes ────────────────────────────────────────────────────────────────
 // Fuente única: planes_poliza (el mismo catálogo usado al afiliar en el
 // módulo de Pólizas). "planes_catalogo" quedó deprecado — ver migración 057.
-const ATAUD_LABEL = { BASICO: 'Básico', MEDIANO: 'Mediano', PREMIUM: 'Premium', LUJO: 'Lujo' }
-
 function construirServiciosIncluidos(p) {
-  // Traslados, flores, cremación, trámites y lápida ya no son booleanos fijos
-  // del plan — ahora se configuran como servicios reales del catálogo
-  // (plan_servicios), que se agregan aparte más abajo.
+  // Ataúd, traslados, flores, cremación, trámites y lápida ya no son campos
+  // fijos del plan — ahora se configuran como servicios reales del catálogo
+  // (plan_servicios), que se agregan aparte más abajo. Solo la velación
+  // queda como campo estructurado propio del plan.
   return [
-    { nombre: `Ataúd ${ATAUD_LABEL[p.cubre_ataud] || p.cubre_ataud}`, incluido: true },
     { nombre: `Velación ${p.cubre_velacion_h}h`, incluido: true },
   ]
 }

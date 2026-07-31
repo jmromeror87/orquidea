@@ -21,8 +21,6 @@ const CATEGORIAS_SERVICIO = [
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
 
 const TIPOS = ['INDIVIDUAL', 'FAMILIAR', 'AMPLIADO', 'COLECTIVO']
-const ATAUD = ['BASICO', 'MEDIANO', 'PREMIUM', 'LUJO']
-
 const BLANK = {
   nombre: '', descripcion: '', tipo: 'FAMILIAR',
   max_beneficiarios: 1, valor_mensual: '', meses_carencia: 3,
@@ -307,7 +305,6 @@ export default function PlanesPolizaPage() {
                     </div>
                   </div>
                   <div className="pp-coberturas">
-                    <CoberturaChip label={`Ataúd ${p.cubre_ataud}`} activo />
                     {+p.valor_excedente > 0 &&
                       <span className="pp-chip si">Excedente {fmt(p.valor_excedente)}</span>}
                     {Array.isArray(p.coberturas_extra) && p.coberturas_extra.length > 0 && (
@@ -428,16 +425,10 @@ export default function PlanesPolizaPage() {
                 </div>
               </div>
 
-              {/* Cobertura */}
+              {/* Tiempo de velación */}
               <div className="pp-section">
-                <div className="pp-section-title">Cobertura incluida</div>
-                <div className="pp-row cols2" style={{ marginBottom:12 }}>
-                  <div className="pp-field">
-                    <label>Tipo de ataúd</label>
-                    <select value={form.cubre_ataud} onChange={e => set('cubre_ataud', e.target.value)}>
-                      {ATAUD.map(a => <option key={a}>{a}</option>)}
-                    </select>
-                  </div>
+                <div className="pp-section-title">Tiempo de velación</div>
+                <div className="pp-row cols2" style={{ marginBottom:4 }}>
                   <div className="pp-field">
                     <label>Horas de velación</label>
                     <input
@@ -445,11 +436,10 @@ export default function PlanesPolizaPage() {
                       value={form.cubre_velacion_h}
                       onChange={e => set('cubre_velacion_h', e.target.value)}
                     />
+                    <div style={{ fontSize:11.5, color:'#94a3b8', marginTop:4 }}>
+                      Cuántas horas dura el cuerpo en sala de velación con este plan.
+                    </div>
                   </div>
-                </div>
-                <div style={{ fontSize:11.5, color:'#94a3b8' }}>
-                  Traslados, flores, cremación, trámites y lápida ahora se configuran como
-                  servicios del catálogo (sección de abajo), no aquí.
                 </div>
               </div>
 
