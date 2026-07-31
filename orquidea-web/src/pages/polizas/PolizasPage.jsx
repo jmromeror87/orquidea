@@ -1104,7 +1104,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
     setGenerandoContrato(true)
     try {
       const r = await api.get(`/polizas/${id}/contrato-impresion`)
-      generarContratoPDF(r.data)
+      generarContratoPDF(r.data.data)
     } catch (e) {
       toast.error('Error al generar el contrato: ' + (e.response?.data?.error || e.message))
     } finally {
