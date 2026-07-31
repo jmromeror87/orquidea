@@ -96,15 +96,74 @@ export async function stats(req, reply) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function listarCategorias(req, reply) {
+  const { todas = '' } = req.query
+  const where = todas === '1' ? '' : 'WHERE c.activo = TRUE'
   const { rows } = await pool.query(`
     SELECT c.*, COUNT(p.id) AS total_productos
     FROM inv_categorias c
     LEFT JOIN inv_productos p ON p.categoria_id = c.id AND p.activo = TRUE
-    WHERE c.activo = TRUE
+    ${where}
     GROUP BY c.id
     ORDER BY c.nombre
   `)
   return reply.send(rows)
+}
+
+export async function crearCategoria(req, reply) {
+  const { nombre, descripcion, icono = '📦', color = '#6B7280' } = req.body
+  if (!nombre?.trim()) return reply.code(400).send({ error: 'nombre es obligatorio' })
+
+  try {
+    const { rows } = await pool.query(`
+      INSERT INTO inv_categorias (nombre, descripcion, icono, color)
+      VALUES ($1,$2,$3,$4)
+      RETURNING *`,
+      [nombre.trim(), descripcion || null, icono, color]
+    )
+    return reply.code(201).send(rows[0])
+  } catch (e) {
+    if (e.code === '23505') return reply.code(409).send({ error: 'Ya existe una categoría con ese nombre' })
+    throw e
+  }
+}
+
+export async function actualizarCategoria(req, reply) {
+  const { id } = req.params
+  const { nombre, descripcion, icono, color, activo } = req.body
+
+  try {
+    const { rows } = await pool.query(`
+      UPDATE inv_categorias SET
+        nombre      = COALESCE($1, nombre),
+        descripcion = COALESCE($2, descripcion),
+        icono       = COALESCE($3, icono),
+        color       = COALESCE($4, color),
+        activo      = COALESCE($5, activo)
+      WHERE id = $6
+      RETURNING *`,
+      [nombre?.trim() || null, descripcion, icono, color, activo != null ? Boolean(activo) : null, id]
+    )
+    if (!rows.length) return reply.code(404).send({ error: 'Categoría no encontrada' })
+    return reply.send(rows[0])
+  } catch (e) {
+    if (e.code === '23505') return reply.code(409).send({ error: 'Ya existe una categoría con ese nombre' })
+    throw e
+  }
+}
+
+export async function desactivarCategoria(req, reply) {
+  const { id } = req.params
+  const enUso = await pool.query(
+    `SELECT COUNT(*) FROM inv_productos WHERE categoria_id = $1 AND activo = TRUE`, [id]
+  )
+  if (+enUso.rows[0].count > 0) {
+    return reply.code(400).send({ error: `No se puede desactivar: hay ${enUso.rows[0].count} producto(s) activo(s) en esta categoría` })
+  }
+  const { rows } = await pool.query(
+    `UPDATE inv_categorias SET activo = FALSE WHERE id = $1 RETURNING id`, [id]
+  )
+  if (!rows.length) return reply.code(404).send({ error: 'Categoría no encontrada' })
+  return reply.send({ ok: true })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

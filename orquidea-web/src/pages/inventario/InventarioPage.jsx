@@ -22,6 +22,7 @@ import {
   Search, RefreshCw, Plus, Eye, Edit2, Truck,
   ChevronDown, ChevronUp, X, Check, Loader2,
   Warehouse, MapPin, ShoppingCart, FileText,
+  Settings, Trash2,
 } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
@@ -1067,7 +1068,7 @@ function ModalDetalleOC({ ocId, onClose, onRefresh }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // TAB: PRODUCTOS
 // ═══════════════════════════════════════════════════════════════════════════
-function TabProductos({ categorias, filtroStock, onClearFiltro }) {
+function TabProductos({ categorias, filtroStock, onClearFiltro, onCategoriasChanged }) {
   const [productos, setProductos] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -1078,6 +1079,7 @@ function TabProductos({ categorias, filtroStock, onClearFiltro }) {
   const [modalProd, setModalProd] = useState(null) // null | 'new' | {producto}
   const [modalDetalle, setModalDetalle] = useState(null)
   const [modalMov, setModalMov] = useState(null)
+  const [modalCategorias, setModalCategorias] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1118,6 +1120,9 @@ function TabProductos({ categorias, filtroStock, onClearFiltro }) {
           <AlertTriangle size={14}/> Solo críticos
         </button>
         <button className="inv-btn inv-btn-outline" onClick={load}><RefreshCw size={14}/></button>
+        <button className="inv-btn inv-btn-outline" onClick={() => setModalCategorias(true)}>
+          <Settings size={14}/> Categorías
+        </button>
         <button className="inv-btn inv-btn-primary" onClick={() => setModalProd('new')}><Plus size={14}/> Nuevo producto</button>
       </div>
 
@@ -1199,7 +1204,167 @@ function TabProductos({ categorias, filtroStock, onClearFiltro }) {
           onSaved={() => { setModalMov(null); load() }}
         />
       )}
+      {modalCategorias && (
+        <ModalCategorias
+          onClose={() => setModalCategorias(false)}
+          onChanged={() => { onCategoriasChanged && onCategoriasChanged() }}
+        />
+      )}
     </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL — Gestionar categorías de inventario
+// ═══════════════════════════════════════════════════════════════════════════
+const ICONOS_SUGERIDOS = ['📦','⚰️','🏺','🌸','🧴','👔','📋','🕯️','🚗','💐','🧵','🕊️']
+
+function ModalCategorias({ onClose, onChanged }) {
+  const [lista, setLista] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ nombre:'', descripcion:'', icono:'📦', color:'#6B7280' })
+  const [editando, setEditando] = useState(null) // null | id
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await api.get('/inventario/categorias', { params: { todas: 1 } })
+      setLista(r.data || [])
+    } catch {}
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const editar = (c) => {
+    setEditando(c.id)
+    setForm({ nombre:c.nombre, descripcion:c.descripcion||'', icono:c.icono, color:c.color })
+    setError('')
+  }
+  const nuevo = () => {
+    setEditando('new')
+    setForm({ nombre:'', descripcion:'', icono:'📦', color:'#6B7280' })
+    setError('')
+  }
+
+  const guardar = async () => {
+    if (!form.nombre.trim()) return setError('El nombre es obligatorio')
+    setSaving(true); setError('')
+    try {
+      if (editando === 'new') await api.post('/inventario/categorias', form)
+      else await api.put(`/inventario/categorias/${editando}`, form)
+      setEditando(null)
+      await cargar()
+      onChanged()
+    } catch (e) {
+      setError(e.response?.data?.error || 'Error al guardar')
+    } finally { setSaving(false) }
+  }
+
+  const desactivar = async (c) => {
+    if (!confirm(`¿Desactivar la categoría "${c.nombre}"?`)) return
+    try {
+      await api.delete(`/inventario/categorias/${c.id}`)
+      await cargar()
+      onChanged()
+    } catch (e) {
+      alert(e.response?.data?.error || 'Error al desactivar')
+    }
+  }
+
+  return (
+    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="inv-modal" style={{ maxWidth:520 }}>
+        <div className="inv-modal-head">
+          <span className="inv-modal-title">Categorías de inventario</span>
+          <button className="inv-close" onClick={onClose}><X size={18}/></button>
+        </div>
+        <div className="inv-modal-body">
+          {loading ? (
+            <div className="inv-loading"><Loader2 size={18} className="spin"/> Cargando…</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:16 }}>
+              {lista.map(c => (
+                <div key={c.id} style={{
+                  display:'flex', alignItems:'center', gap:10, padding:'8px 10px',
+                  border:'1.5px solid #E2E5F0', borderRadius:10,
+                  opacity: c.activo ? 1 : .5,
+                }}>
+                  <span style={{ fontSize:18 }}>{c.icono}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:600, fontSize:13, color:'#0F1035' }}>
+                      {c.nombre} {!c.activo && <span style={{ color:'#9CA3AF', fontWeight:400 }}>(inactiva)</span>}
+                    </div>
+                    <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.total_productos} producto(s)</div>
+                  </div>
+                  <button className="inv-btn inv-btn-outline inv-btn-sm" onClick={() => editar(c)} title="Editar">
+                    <Edit2 size={13}/>
+                  </button>
+                  {c.activo && (
+                    <button className="inv-btn inv-btn-outline inv-btn-sm" onClick={() => desactivar(c)} title="Desactivar">
+                      <Trash2 size={13}/>
+                    </button>
+                  )}
+                </div>
+              ))}
+              {lista.length === 0 && <div className="inv-empty">Sin categorías aún</div>}
+            </div>
+          )}
+
+          {editando ? (
+            <div style={{ border:'1.5px dashed #CBD5E1', borderRadius:12, padding:14 }}>
+              <div style={{ fontSize:12.5, fontWeight:700, color:'#0F1035', marginBottom:10 }}>
+                {editando === 'new' ? 'Nueva categoría' : 'Editar categoría'}
+              </div>
+              <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                <input
+                  value={form.nombre}
+                  onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                  placeholder="Nombre de la categoría"
+                  style={{ flex:1, border:'1.5px solid #E2E5F0', borderRadius:8, padding:'8px 10px', fontSize:13, outline:'none' }}
+                />
+                <input
+                  type="color"
+                  value={form.color}
+                  onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                  style={{ width:40, height:36, border:'1.5px solid #E2E5F0', borderRadius:8, padding:2, cursor:'pointer' }}
+                />
+              </div>
+              <input
+                value={form.descripcion}
+                onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
+                placeholder="Descripción (opcional)"
+                style={{ width:'100%', border:'1.5px solid #E2E5F0', borderRadius:8, padding:'8px 10px', fontSize:13, outline:'none', marginBottom:10, boxSizing:'border-box' }}
+              />
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+                {ICONOS_SUGERIDOS.map(ic => (
+                  <button
+                    type="button" key={ic}
+                    onClick={() => setForm(f => ({ ...f, icono: ic }))}
+                    style={{
+                      width:32, height:32, borderRadius:8, fontSize:16,
+                      border: form.icono === ic ? '2px solid #6366F1' : '1.5px solid #E2E5F0',
+                      background: form.icono === ic ? '#EEF2FF' : '#fff', cursor:'pointer',
+                    }}
+                  >{ic}</button>
+                ))}
+              </div>
+              {error && <div className="inv-alert inv-alert-error" style={{ marginBottom:10 }}>{error}</div>}
+              <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                <button className="inv-btn inv-btn-outline inv-btn-sm" onClick={() => setEditando(null)}>Cancelar</button>
+                <button className="inv-btn inv-btn-primary inv-btn-sm" onClick={guardar} disabled={saving}>
+                  {saving ? <Loader2 size={13} className="spin"/> : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="inv-btn inv-btn-primary" onClick={nuevo}><Plus size={14}/> Nueva categoría</button>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1564,6 +1729,7 @@ export default function InventarioPage() {
               categorias={categorias}
               filtroStock={filtroStockBajo}
               onClearFiltro={() => setFiltroStockBajo(false)}
+              onCategoriasChanged={loadStats}
             />
           )}
           {tab === 'bodegas' && <TabBodegas/>}

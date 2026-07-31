@@ -29,6 +29,9 @@ export default async function inventarioRoutes(fastify) {
 
   // Categorías
   fastify.get('/categorias',                     { preHandler: auth },   ctrl.listarCategorias)
+  fastify.post('/categorias',                    { preHandler: admins }, ctrl.crearCategoria)
+  fastify.put('/categorias/:id',                 { preHandler: admins }, ctrl.actualizarCategoria)
+  fastify.delete('/categorias/:id',               { preHandler: admins }, ctrl.desactivarCategoria)
 
   // Productos
   fastify.get('/productos',                      { preHandler: auth },   ctrl.listarProductos)
