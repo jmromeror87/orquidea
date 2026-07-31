@@ -821,16 +821,28 @@ export async function crearPlan(req, reply) {
     ? coberturas_extra.filter(c => c?.nombre?.trim())
     : []
 
+  // Código público (slug) para la URL de la landing — estable aunque luego
+  // se edite el nombre del plan.
+  const baseSlug = nombre.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  let codigo = baseSlug
+  let sufijo = 1
+  while ((await pool.query('SELECT 1 FROM planes_poliza WHERE codigo=$1', [codigo])).rows.length) {
+    sufijo++
+    codigo = `${baseSlug}-${sufijo}`
+  }
+
   const res = await pool.query(`
     INSERT INTO planes_poliza (
-      nombre, descripcion, tipo, max_beneficiarios, valor_mensual, meses_carencia,
+      nombre, codigo, descripcion, tipo, max_beneficiarios, valor_mensual, meses_carencia,
       cubre_ataud, cubre_velacion_h, cubre_traslado_local, cubre_traslado_nacional,
       cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida, valor_excedente,
       coberturas_extra
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
     RETURNING *`,
     [
-      nombre, descripcion||null, tipo, +max_beneficiarios, +valor_mensual, +meses_carencia,
+      nombre, codigo, descripcion||null, tipo, +max_beneficiarios, +valor_mensual, +meses_carencia,
       cubre_ataud, +cubre_velacion_h,
       Boolean(cubre_traslado_local), Boolean(cubre_traslado_nacional),
       Boolean(cubre_flores), Boolean(cubre_cremacion),

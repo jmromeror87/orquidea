@@ -24,8 +24,8 @@ import BenefitIcon from './BenefitIcons'
 const ESTILO_TIPO = {
   INDIVIDUAL: { icon: 'corazon', header: 'from-gold-500 to-gold-600', tagline: 'Protección personal, sin complicaciones' },
   FAMILIAR: { icon: 'familia', header: 'from-brand-700 to-brand-900', tagline: 'Tranquilidad y respaldo para tu familia' },
-  EMPRESARIAL: { icon: 'maletin', header: 'from-emerald-500 to-emerald-700', tagline: 'Bienestar exequial para tu equipo' },
-  CONVENIO: { icon: 'estrella', header: 'from-gold-600 to-brand-900', tagline: 'Beneficio especial por convenio' },
+  AMPLIADO: { icon: 'usuarioMas', header: 'from-emerald-500 to-emerald-700', tagline: 'Más cobertura para tu grupo familiar' },
+  COLECTIVO: { icon: 'maletin', header: 'from-gold-600 to-brand-900', tagline: 'Bienestar exequial para tu equipo' },
 }
 
 export default function PlanCard({ plan }) {
@@ -34,7 +34,8 @@ export default function PlanCard({ plan }) {
   const estilo = esPremium
     ? { icon: 'estrella', header: 'from-sky-400 to-sky-600', tagline: 'La cobertura más completa' }
     : ESTILO_TIPO[plan.tipo] || ESTILO_TIPO.INDIVIDUAL
-  const incluidos = Array.isArray(plan.servicios_incluidos) ? plan.servicios_incluidos : []
+  const todos = Array.isArray(plan.servicios_incluidos) ? plan.servicios_incluidos : []
+  const incluidos = todos.filter(item => item.incluido !== false)
 
   return (
     <Link

@@ -41,7 +41,8 @@ export default async function PlanDetallePage({ params }) {
   const empresa = Array.isArray(empresaRaw) ? null : empresaRaw
   const telHref = (empresa?.telefono_1 || '3158786701').replace(/\D/g, '')
 
-  const incluidos = Array.isArray(plan.servicios_incluidos) ? plan.servicios_incluidos : []
+  const todos = Array.isArray(plan.servicios_incluidos) ? plan.servicios_incluidos : []
+  const incluidos = todos.filter((item) => item.incluido !== false)
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-16">
@@ -53,21 +54,17 @@ export default async function PlanDetallePage({ params }) {
       <p className="mt-4 text-stone-600">{plan.descripcion}</p>
 
       <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6">
-        <dl className="grid grid-cols-2 gap-4 text-sm">
+        <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-stone-500">Beneficiarios</dt>
             <dd className="font-semibold text-brand-900">{plan.num_beneficiarios || 1}</dd>
           </div>
-          {plan.edad_max_titular && (
+          {plan.meses_carencia != null && (
             <div>
-              <dt className="text-stone-500">Edad máx. titular</dt>
-              <dd className="font-semibold text-brand-900">{plan.edad_max_titular} años</dd>
+              <dt className="text-stone-500">Período de carencia</dt>
+              <dd className="font-semibold text-brand-900">{plan.meses_carencia} meses</dd>
             </div>
           )}
-          <div>
-            <dt className="text-stone-500">Vigencia</dt>
-            <dd className="font-semibold text-brand-900">{plan.meses_vigencia} meses</dd>
-          </div>
         </dl>
       </div>
 
@@ -85,9 +82,13 @@ export default async function PlanDetallePage({ params }) {
         </div>
       )}
 
+      <p className="mt-10 text-sm text-stone-500">
+        Contáctanos para conocer el valor de la cuota mensual y las formas de pago disponibles para este plan.
+      </p>
+
       <a
         href={`tel:+57${telHref}`}
-        className="mt-10 inline-block rounded-full bg-gold-500 px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
+        className="mt-4 inline-block rounded-full bg-gold-500 px-6 py-3 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
       >
         Quiero afiliarme — llamar ahora
       </a>

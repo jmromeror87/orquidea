@@ -13,7 +13,6 @@ import { requireRole }     from '../middlewares/role.middleware.js'
 import {
   obtenerEmpresa, actualizarEmpresa, actualizarParametros,
   listarSedes, crearSede, actualizarSede,
-  listarPlanes, crearPlan, actualizarPlan,
   listarServicios, crearServicio, actualizarServicio,
 } from '../controllers/empresa.controller.js'
 
@@ -29,11 +28,6 @@ export default async function empresaRoutes(fastify) {
   fastify.get ('/sedes',       { preHandler: [verifyToken] }, listarSedes)
   fastify.post('/sedes',       { preHandler: soloAdmins    }, crearSede)
   fastify.put ('/sedes/:id',   { preHandler: soloAdmins    }, actualizarSede)
-
-  // ── Planes catálogo ───────────────────────────────────
-  fastify.get ('/planes',      { preHandler: [verifyToken] }, listarPlanes)
-  fastify.post('/planes',      { preHandler: soloAdmins    }, crearPlan)
-  fastify.put ('/planes/:id',  { preHandler: soloAdmins    }, actualizarPlan)
 
   // ── Servicios catálogo ────────────────────────────────
   fastify.get ('/servicios',   { preHandler: [verifyToken] }, listarServicios)

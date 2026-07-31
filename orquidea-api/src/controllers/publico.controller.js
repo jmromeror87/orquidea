@@ -41,18 +41,45 @@ function limitado(ip) {
 }
 
 // ── Planes ────────────────────────────────────────────────────────────────
+// Fuente única: planes_poliza (el mismo catálogo usado al afiliar en el
+// módulo de Pólizas). "planes_catalogo" quedó deprecado — ver migración 057.
+const ATAUD_LABEL = { BASICO: 'Básico', MEDIANO: 'Mediano', PREMIUM: 'Premium', LUJO: 'Lujo' }
+
+function construirServiciosIncluidos(p) {
+  return [
+    { nombre: `Ataúd ${ATAUD_LABEL[p.cubre_ataud] || p.cubre_ataud}`, incluido: true },
+    { nombre: `Velación ${p.cubre_velacion_h}h`, incluido: true },
+    { nombre: 'Traslado local', incluido: p.cubre_traslado_local },
+    { nombre: 'Traslado nacional', incluido: p.cubre_traslado_nacional },
+    { nombre: 'Flores', incluido: p.cubre_flores },
+    { nombre: 'Cremación', incluido: p.cubre_cremacion },
+    { nombre: 'Trámites legales', incluido: p.cubre_tramites },
+    { nombre: 'Lápida', incluido: p.cubre_lapida },
+  ]
+}
+
 export async function listarPlanesPublico(req, reply) {
   const { rows } = await pool.query(`
-    SELECT nombre, codigo, descripcion, tipo,
-           num_beneficiarios, edad_max_titular, edad_max_beneficiario,
-           valor_plan, valor_cuota_mensual, valor_seguro, valor_traslado,
-           valor_adicionales, periodicidades, servicios_incluidos,
-           meses_vigencia, orden_display
-    FROM planes_catalogo
+    SELECT nombre, codigo, descripcion, tipo, max_beneficiarios,
+           valor_mensual, meses_carencia,
+           cubre_ataud, cubre_velacion_h, cubre_traslado_local, cubre_traslado_nacional,
+           cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida, valor_excedente
+    FROM planes_poliza
     WHERE activo = TRUE
-    ORDER BY orden_display, nombre
+    ORDER BY valor_mensual, nombre
   `)
-  return reply.send({ data: rows })
+  // Sin precio a propósito: la landing no debe mostrar valores, solo la
+  // cobertura completa — el precio se da por llamada/WhatsApp.
+  const data = rows.map(p => ({
+    nombre: p.nombre,
+    codigo: p.codigo,
+    descripcion: p.descripcion,
+    tipo: p.tipo,
+    num_beneficiarios: p.max_beneficiarios,
+    meses_carencia: p.meses_carencia,
+    servicios_incluidos: construirServiciosIncluidos(p),
+  }))
+  return reply.send({ data })
 }
 
 // ── Servicios (catálogo de marketing) ───────────────────────────────────────

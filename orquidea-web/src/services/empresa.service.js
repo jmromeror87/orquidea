@@ -19,10 +19,6 @@ export const empresaService = {
   crearSede:     (data)   => api.post('/empresa/sedes', data),
   actualizarSede:(id, d)  => api.put(`/empresa/sedes/${id}`, d),
 
-  listarPlanes:   (params) => api.get('/empresa/planes', { params }),
-  crearPlan:      (data)   => api.post('/empresa/planes', data),
-  actualizarPlan: (id, d)  => api.put(`/empresa/planes/${id}`, d),
-
   listarServicios:    (params) => api.get('/empresa/servicios', { params }),
   crearServicio:      (data)   => api.post('/empresa/servicios', data),
   actualizarServicio: (id, d)  => api.put(`/empresa/servicios/${id}`, d),

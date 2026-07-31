@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Building2, MapPin, FileText, Sliders,
-  Heart, Package, Bell, Palette,
+  Package, Bell, Palette,
   Save, Plus, Pencil, CheckCircle2,
   AlertCircle, Loader2, ChevronRight, X,
   CreditCard, ToggleLeft, ToggleRight, Shield, DoorOpen, Users,
@@ -30,7 +30,6 @@ const TABS = [
   { id:'flota',          label:'Flota',              sub:'Vehículos y conductores', Icon:Truck, color:'#0891B2' },
   { id:'dian',           label:'DIAN',               sub:'Facturación electr.',  Icon:FileText,  color:'#F59E0B' },
   { id:'parametros',     label:'Parámetros',         sub:'Numeración / mora',    Icon:Sliders,   color:'#64748B' },
-  { id:'planes',         label:'Planes',             sub:'Catálogo exequial',    Icon:Heart,     color:'#EF4444' },
   { id:'servicios',      label:'Servicios',          sub:'Ítems de servicio',    Icon:Package,   color:'#0EA5E9' },
   { id:'paquetes',       label:'Paquetes',            sub:'Combos de servicio',   Icon:PackagePlus, color:'#7C3AED' },
   { id:'tipos_doc',      label:'Tipos Documento',    sub:'DIAN Colombia',        Icon:CreditCard, color:'#0891B2' },
@@ -771,7 +770,6 @@ export default function ConfiguracionPage() {
   const [empresa,   setEmpresa]  = useState(null)
   const [sedes,     setSedes]    = useState([])
   const [salas,     setSalas]    = useState([])
-  const [planes,    setPlanes]   = useState([])
   const [servs,     setServs]    = useState([])
   const [tiposDoc,  setTiposDoc] = useState([])
   const [loading,   setLoading]  = useState(true)
@@ -784,17 +782,15 @@ export default function ConfiguracionPage() {
   const cargar = useCallback(async () => {
     setLoading(true)
     try {
-      const [eR,sR,pR,svR,tdR,salR] = await Promise.all([
+      const [eR,sR,svR,tdR,salR] = await Promise.all([
         empresaService.obtener(),
         empresaService.listarSedes(),
-        empresaService.listarPlanes(),
         empresaService.listarServicios(),
         api.get('/tipos-documento'),
         api.get('/servicios/salas'),
       ])
       setEmpresa(eR.data.data)
       setSedes(sR.data.data)
-      setPlanes(pR.data.data)
       setServs(svR.data.data)
       setTiposDoc(tdR.data.data)
       setSalas(salR.data.data || [])
@@ -872,7 +868,6 @@ export default function ConfiguracionPage() {
             {tab === 'flota'          && <TabFlota />}
             {tab === 'dian'           && <TabDian            data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Parámetros DIAN actualizados')}}  onErr={()=>err('Error al guardar')} />}
             {tab === 'parametros'     && <TabParametros      data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Parámetros actualizados')}}        onErr={()=>err('Error al guardar')} />}
-            {tab === 'planes'         && <TabPlanes          planes={planes} saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Plan guardado')}}                      onErr={()=>err('Error al guardar')} />}
             {tab === 'servicios'      && <TabServicios       servs={servs}   saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Servicio guardado')}}                  onErr={()=>err('Error al guardar')} />}
             {tab === 'paquetes'       && <TabPaquetes />}
             {tab === 'tipos_doc'      && <TabTiposDocumento  tiposDoc={tiposDoc} saving={saving} setSaving={setSaving} onOk={()=>{api.get('/tipos-documento').then(r=>setTiposDoc(r.data.data));ok('Guardado')}} onErr={()=>err('Error al guardar')} />}
@@ -1889,76 +1884,6 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
         )}
       </SecCard>
     </>
-  )
-}
-
-/* ════════════════════════════════════
-   TAB PLANES
-════════════════════════════════════ */
-function TabPlanes({ planes, saving, setSaving, onOk, onErr }) {
-  const EMPTY = { nombre:'', codigo:'', tipo:'INDIVIDUAL', descripcion:'', num_beneficiarios:1, valor_plan:0, valor_cuota_mensual:0, valor_seguro:0, activo:true }
-  const [f, setF]       = useState(EMPTY)
-  const [editId, setId] = useState(null)
-  const [show, setShow] = useState(false)
-  const set = k => v => setF(x => ({...x,[k]:v}))
-  const fmt = n => Number(n||0).toLocaleString('es-CO')
-
-  const abrir = (p=null) => { setF(p?{...EMPTY,...p}:EMPTY); setId(p?.id||null); setShow(true) }
-  const guardar = async () => {
-    if (!f.nombre) return
-    setSaving(true)
-    try {
-      if (editId) await empresaService.actualizarPlan(editId,f); else await empresaService.crearPlan(f)
-      setShow(false); onOk()
-    } catch { onErr() } finally { setSaving(false) }
-  }
-
-  return (
-    <SecCard titulo="Catálogo de Planes Exequiales" sub="Planes disponibles para previsión funeraria" Icon={Heart} color="#EF4444">
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
-        <button className="btn-primary" onClick={() => abrir()}><Plus size={15}/> Nuevo Plan</button>
-      </div>
-      <div className="tbl-wrap">
-        <table className="tbl">
-          <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Beneficiarios</th><th>Cuota / mes</th><th>Estado</th><th></th></tr></thead>
-          <tbody>{planes.map(p => (
-            <tr key={p.id}>
-              <td><span className="code-tag">{p.codigo}</span></td>
-              <td style={{fontWeight:600}}>{p.nombre}</td>
-              <td><span className="badge badge-blue">{p.tipo}</span></td>
-              <td style={{textAlign:'center'}}>{p.num_beneficiarios}</td>
-              <td style={{fontWeight:700,color:'#059669'}}>${fmt(p.valor_cuota_mensual)}</td>
-              <td><span className={`badge ${p.activo?'badge-green':'badge-red'}`}>{p.activo?'Activo':'Inactivo'}</span></td>
-              <td><button className="btn-icon" onClick={() => abrir(p)}><Pencil size={13}/></button></td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
-
-      {show && (
-        <div className="form-panel">
-          <div className="form-panel-head">
-            <div className="form-panel-title">{editId?'Editar Plan':'Nuevo Plan'}</div>
-            <button className="form-panel-close" onClick={() => setShow(false)}><X size={16}/></button>
-          </div>
-          <div className="g3">
-            <div className="campo span2"><label>Nombre *</label><input value={f.nombre} onChange={e=>set('nombre')(e.target.value)} /></div>
-            <div className="campo"><label>Código</label><input value={f.codigo} onChange={e=>set('codigo')(e.target.value)} placeholder="PLAN-005" /></div>
-            <div className="campo"><label>Tipo</label><select value={f.tipo} onChange={e=>set('tipo')(e.target.value)}>{TIPOS_PLAN.map(o=><option key={o}>{o}</option>)}</select></div>
-            <div className="campo"><label>N° Beneficiarios</label><input value={f.num_beneficiarios} onChange={e=>set('num_beneficiarios')(e.target.value)} type="number" /></div>
-            <div className="campo" style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
-              <input type="checkbox" id="pactivo" checked={f.activo} onChange={e=>set('activo')(e.target.checked)} style={{width:16,height:16,accentColor:'#6366F1'}}/>
-              <label htmlFor="pactivo" style={{textTransform:'none',letterSpacing:0,fontSize:13,fontWeight:600,color:'#374151',cursor:'pointer'}}>Activo</label>
-            </div>
-            <div className="campo"><label>Valor Total Plan</label><input value={f.valor_plan} onChange={e=>set('valor_plan')(e.target.value)} type="number" /></div>
-            <div className="campo"><label>Cuota Mensual</label><input value={f.valor_cuota_mensual} onChange={e=>set('valor_cuota_mensual')(e.target.value)} type="number" /></div>
-            <div className="campo"><label>Valor Seguro</label><input value={f.valor_seguro} onChange={e=>set('valor_seguro')(e.target.value)} type="number" /></div>
-            <div className="campo span3"><label>Descripción</label><textarea value={f.descripcion} onChange={e=>set('descripcion')(e.target.value)} rows={2} /></div>
-          </div>
-          <BtnBar saving={saving} onGuardar={guardar} onCancelar={() => setShow(false)} />
-        </div>
-      )}
-    </SecCard>
   )
 }
 
