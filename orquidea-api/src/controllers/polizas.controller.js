@@ -28,6 +28,7 @@ const SELECT_LIST = `
     p.meses_mora, p.ultimo_pago, p.fecha_inicio, p.fecha_fin_carencia,
     p.fecha_cancelacion, p.motivo_cancelacion, p.observaciones, p.creado_en,
     p.pago_hasta,
+    p.costo_afiliacion, p.afiliacion_pagada, p.afiliacion_fecha_pago, p.afiliacion_metodo_pago,
     -- Titular
     t.id   AS titular_id,
     COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS titular_nombre,
@@ -218,6 +219,12 @@ export async function crear(req, reply) {
   if (beneficiarios.length > plan.max_beneficiarios)
     return reply.code(400).send({ error: `El plan permite máximo ${plan.max_beneficiarios} beneficiarios` })
 
+  // Costo de afiliación: solo se cobra si este titular nunca ha tenido
+  // ninguna póliza antes (activa, cancelada o vencida — cualquier estado).
+  const COSTO_AFILIACION_PRIMERA_VEZ = 20000
+  const previasRes = await pool.query('SELECT 1 FROM polizas WHERE titular_id = $1 LIMIT 1', [titular_id])
+  const costoAfiliacion = previasRes.rows.length === 0 ? COSTO_AFILIACION_PRIMERA_VEZ : 0
+
   const db = await pool.connect()
   try {
     await db.query('BEGIN')
@@ -226,13 +233,13 @@ export async function crear(req, reply) {
     const ins = await db.query(`
       INSERT INTO polizas (
         titular_id, plan_id, valor_cuota, dia_cobro,
-        fecha_inicio, observaciones, usuario_id, sede_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      RETURNING id, numero`,
+        fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING id, numero, costo_afiliacion`,
       [
         titular_id, plan_id, valor_cuota, dia_cobro,
         fecha_inicio || new Date().toISOString().split('T')[0],
-        observaciones || null, req.user.id, sedeParaCrear(req),
+        observaciones || null, req.user.id, sedeParaCrear(req), costoAfiliacion,
       ]
     )
 
@@ -275,6 +282,38 @@ export async function crear(req, reply) {
   } catch (e) {
     await db.query('ROLLBACK'); throw e
   } finally { db.release() }
+}
+
+// ── Cobrar costo de afiliación (primera vez) ────────────────────────────────
+
+export async function cobrarAfiliacion(req, reply) {
+  const { id } = req.params
+  const { metodo_pago = 'efectivo' } = req.body
+  const { sedeIds } = resolverSede(req)
+
+  const res = await pool.query('SELECT * FROM polizas WHERE id = $1', [id])
+  if (!res.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
+  const pol = res.rows[0]
+
+  if (sedeIds !== null && !sedeIds.includes(pol.sede_id))
+    return reply.code(403).send({ error: 'La póliza no pertenece a tu sede' })
+  if (Number(pol.costo_afiliacion) <= 0)
+    return reply.code(400).send({ error: 'Esta póliza no tiene costo de afiliación pendiente' })
+  if (pol.afiliacion_pagada)
+    return reply.code(400).send({ error: 'El costo de afiliación ya fue pagado' })
+
+  const upd = await pool.query(`
+    UPDATE polizas SET
+      afiliacion_pagada = TRUE,
+      afiliacion_fecha_pago = CURRENT_DATE,
+      afiliacion_metodo_pago = $1,
+      afiliacion_usuario_id = $2,
+      actualizado = NOW()
+    WHERE id = $3
+    RETURNING id, costo_afiliacion, afiliacion_pagada, afiliacion_fecha_pago, afiliacion_metodo_pago
+  `, [metodo_pago, req.user.id, id])
+
+  return reply.send({ data: upd.rows[0] })
 }
 
 // ── Actualizar ────────────────────────────────────────────────────────────

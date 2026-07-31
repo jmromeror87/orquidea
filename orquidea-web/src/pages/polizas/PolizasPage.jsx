@@ -317,8 +317,13 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
         await api.put(`/polizas/${poliza.id}`, form)
         toast.success('Póliza actualizada con éxito')
       } else {
-        await api.post('/polizas', { ...form, titular_id: titularId, beneficiarios: bens })
-        toast.success('Póliza afiliada con éxito')
+        const res = await api.post('/polizas', { ...form, titular_id: titularId, beneficiarios: bens })
+        const costoAfiliacion = Number(res.data.data?.costo_afiliacion || 0)
+        toast.success(
+          costoAfiliacion > 0
+            ? `Póliza afiliada con éxito. Recuerda cobrar el costo de afiliación de ${fmt(costoAfiliacion)} (primera vez).`
+            : 'Póliza afiliada con éxito'
+        )
       }
       onSaved()
     } catch (e) {
@@ -916,6 +921,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   const [motivoTransf, setMotivoTransf] = useState('')
   const [savingTransf, setSavingTransf] = useState(false)
   const [historialTransf, setHistorialTransf] = useState([])
+  const [cobrandoAfiliacion, setCobrandoAfiliacion] = useState(false)
   const { usuario } = useAuthStore()
   const { label: fmtMetodo } = useFormasPago()
   const esEditor = ['superadmin','administrador','operador','asesor_comercial'].includes(usuario?.rol)
@@ -928,6 +934,19 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   }, [id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  const cobrarAfiliacion = async () => {
+    setCobrandoAfiliacion(true)
+    try {
+      await api.post(`/polizas/${id}/cobrar-afiliacion`, { metodo_pago: 'efectivo' })
+      toast.success('Costo de afiliación cobrado')
+      cargar()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al cobrar la afiliación')
+    } finally {
+      setCobrandoAfiliacion(false)
+    }
+  }
 
   useEffect(() => {
     if (busqBen.length < 1) return setCandBen([])
@@ -1299,6 +1318,38 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
               </PldCard>
 
             ) : tab === 'pagos' ? (
+              <>
+                {Number(data.costo_afiliacion) > 0 && (
+                  <div style={{
+                    display:'flex', alignItems:'center', justifyContent:'space-between', gap:12,
+                    padding:'14px 16px', borderRadius:12, marginBottom:14,
+                    background: data.afiliacion_pagada ? '#F0FDF4' : '#FFFBEB',
+                    border:`1.5px solid ${data.afiliacion_pagada ? '#A7F3D0' : '#FDE68A'}`,
+                  }}>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:700, color: data.afiliacion_pagada ? '#047857' : '#B45309' }}>
+                        {data.afiliacion_pagada
+                          ? `Costo de afiliación pagado — ${fmt(data.costo_afiliacion)}`
+                          : `Costo de afiliación pendiente — ${fmt(data.costo_afiliacion)}`}
+                      </div>
+                      <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:2 }}>
+                        {data.afiliacion_pagada
+                          ? `Pagado el ${fmtDate(data.afiliacion_fecha_pago)}`
+                          : 'Se cobra una única vez, aparte de la cuota mensual (primera afiliación del titular).'}
+                      </div>
+                    </div>
+                    {!data.afiliacion_pagada && esEditor && (
+                      <button onClick={cobrarAfiliacion} disabled={cobrandoAfiliacion}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px',
+                          background:'#B45309', border:'none', borderRadius:10, color:'#fff',
+                          fontSize:12.5, fontWeight:700, cursor:'pointer', flexShrink:0,
+                          opacity: cobrandoAfiliacion ? .6 : 1 }}>
+                        {cobrandoAfiliacion ? <Loader2 size={13} className="pl-spin"/> : <CreditCard size={13}/>}
+                        Cobrar afiliación
+                      </button>
+                    )}
+                  </div>
+                )}
               <PldCard icon="💳" title="Historial de pagos">
                 {(data.pagos||[]).length === 0 ? (
                   <div className="pl-empty" style={{ padding:40 }}>
@@ -1352,6 +1403,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                   ))
                 )}
               </PldCard>
+              </>
 
             ) : (
               <>
