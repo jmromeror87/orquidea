@@ -781,7 +781,7 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
               </select>
             </div>
             <div className="tp-field">
-              <label>Barrio / Zona</label>
+              <label>Zona</label>
               <select value={form.zona_id} onChange={e => set('zona_id', e.target.value)} disabled={!zonas.length}>
                 <option value="">— Seleccionar —</option>
                 {zonas.map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
