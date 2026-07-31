@@ -221,9 +221,9 @@ export async function crear(req, reply) {
 
   // Costo de afiliación: solo se cobra si este titular nunca ha tenido
   // ninguna póliza antes (activa, cancelada o vencida — cualquier estado).
-  const COSTO_AFILIACION_PRIMERA_VEZ = 20000
+  // El monto es propio de cada plan (valor_afiliacion), no un fijo global.
   const previasRes = await pool.query('SELECT 1 FROM polizas WHERE titular_id = $1 LIMIT 1', [titular_id])
-  const costoAfiliacion = previasRes.rows.length === 0 ? COSTO_AFILIACION_PRIMERA_VEZ : 0
+  const costoAfiliacion = previasRes.rows.length === 0 ? Number(plan.valor_afiliacion) : 0
 
   const db = await pool.connect()
   try {
@@ -825,6 +825,10 @@ export async function crearPlan(req, reply) {
     valor_excedente = 0,
     coberturas_extra = [],
     servicios_ids = [],
+    valor_afiliacion = 20000,
+    valor_beneficiario_adicional = 0,
+    edad_min_beneficiario = 0,
+    edad_max_beneficiario = 65,
   } = req.body
 
   if (!nombre) return reply.code(400).send({ error: 'nombre es obligatorio' })
@@ -851,8 +855,9 @@ export async function crearPlan(req, reply) {
       nombre, codigo, descripcion, tipo, max_beneficiarios, valor_mensual, meses_carencia,
       cubre_ataud, cubre_velacion_h, cubre_traslado_local, cubre_traslado_nacional,
       cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida, valor_excedente,
-      coberturas_extra
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      coberturas_extra, valor_afiliacion, valor_beneficiario_adicional,
+      edad_min_beneficiario, edad_max_beneficiario
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
     RETURNING *`,
     [
       nombre, codigo, descripcion||null, tipo, +max_beneficiarios, +valor_mensual, +meses_carencia,
@@ -861,6 +866,8 @@ export async function crearPlan(req, reply) {
       Boolean(cubre_flores), Boolean(cubre_cremacion),
       Boolean(cubre_tramites), Boolean(cubre_lapida), +valor_excedente,
       JSON.stringify(extras),
+      +valor_afiliacion, +valor_beneficiario_adicional,
+      +edad_min_beneficiario, +edad_max_beneficiario,
     ]
   )
 
@@ -884,6 +891,8 @@ export async function actualizarPlan(req, reply) {
     cubre_traslado_local, cubre_traslado_nacional,
     cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida,
     valor_excedente, activo, coberturas_extra, servicios_ids,
+    valor_afiliacion, valor_beneficiario_adicional,
+    edad_min_beneficiario, edad_max_beneficiario,
   } = req.body
 
   const extrasParam = coberturas_extra != null
@@ -910,7 +919,11 @@ export async function actualizarPlan(req, reply) {
       cubre_lapida          = COALESCE($14, cubre_lapida),
       valor_excedente       = COALESCE($15, valor_excedente),
       activo                = COALESCE($16, activo),
-      coberturas_extra      = COALESCE($17::jsonb, coberturas_extra)
+      coberturas_extra      = COALESCE($17::jsonb, coberturas_extra),
+      valor_afiliacion             = COALESCE($19, valor_afiliacion),
+      valor_beneficiario_adicional = COALESCE($20, valor_beneficiario_adicional),
+      edad_min_beneficiario        = COALESCE($21, edad_min_beneficiario),
+      edad_max_beneficiario        = COALESCE($22, edad_max_beneficiario)
     WHERE id = $18
     RETURNING *`,
     [
@@ -930,6 +943,10 @@ export async function actualizarPlan(req, reply) {
       activo != null ? Boolean(activo) : null,
       extrasParam,
       id,
+      valor_afiliacion != null ? +valor_afiliacion : null,
+      valor_beneficiario_adicional != null ? +valor_beneficiario_adicional : null,
+      edad_min_beneficiario != null ? +edad_min_beneficiario : null,
+      edad_max_beneficiario != null ? +edad_max_beneficiario : null,
     ]
   )
   if (!res.rows.length) return reply.code(404).send({ error: 'Plan no encontrado' })

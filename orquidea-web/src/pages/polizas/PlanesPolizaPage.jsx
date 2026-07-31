@@ -31,6 +31,10 @@ const BLANK = {
   valor_excedente: 0,
   coberturas_extra: [],
   servicios_ids: [],
+  valor_afiliacion: 20000,
+  valor_beneficiario_adicional: 0,
+  edad_min_beneficiario: 0,
+  edad_max_beneficiario: 65,
 }
 
 const CSS = `
@@ -293,7 +297,7 @@ export default function PlanesPolizaPage() {
                     </div>
                     <div className="pp-kpi">
                       <div className="pp-kpi-label"><Users size={11} /> Beneficiarios</div>
-                      <div className="pp-kpi-val">Máx. {p.max_beneficiarios}</div>
+                      <div className="pp-kpi-val">Máx. {p.max_beneficiarios} ({p.edad_min_beneficiario}-{p.edad_max_beneficiario} años)</div>
                     </div>
                     <div className="pp-kpi">
                       <div className="pp-kpi-label"><Clock size={11} /> Carencia</div>
@@ -305,6 +309,9 @@ export default function PlanesPolizaPage() {
                     </div>
                   </div>
                   <div className="pp-coberturas">
+                    <span className="pp-chip si">Afiliación {fmt(p.valor_afiliacion)}</span>
+                    {+p.valor_beneficiario_adicional > 0 &&
+                      <span className="pp-chip si">+{fmt(p.valor_beneficiario_adicional)}/benef. adicional</span>}
                     {+p.valor_excedente > 0 &&
                       <span className="pp-chip si">Excedente {fmt(p.valor_excedente)}</span>}
                     {Array.isArray(p.coberturas_extra) && p.coberturas_extra.length > 0 && (
@@ -380,6 +387,24 @@ export default function PlanesPolizaPage() {
                     />
                   </div>
                 </div>
+                <div className="pp-row cols2">
+                  <div className="pp-field">
+                    <label>Edad mínima beneficiario</label>
+                    <input
+                      type="number" min={0} max={100}
+                      value={form.edad_min_beneficiario}
+                      onChange={e => set('edad_min_beneficiario', e.target.value)}
+                    />
+                  </div>
+                  <div className="pp-field">
+                    <label>Edad máxima beneficiario</label>
+                    <input
+                      type="number" min={0} max={100}
+                      value={form.edad_max_beneficiario}
+                      onChange={e => set('edad_max_beneficiario', e.target.value)}
+                    />
+                  </div>
+                </div>
                 <div className="pp-row">
                   <div className="pp-field">
                     <label>Descripción</label>
@@ -419,6 +444,29 @@ export default function PlanesPolizaPage() {
                       type="number" min={0}
                       value={form.valor_excedente}
                       onChange={e => set('valor_excedente', e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <div className="pp-row cols2">
+                  <div className="pp-field">
+                    <label>Valor de afiliación (COP)</label>
+                    <input
+                      type="number" min={0}
+                      value={form.valor_afiliacion}
+                      onChange={e => set('valor_afiliacion', e.target.value)}
+                      placeholder="20000"
+                    />
+                    <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>
+                      Solo se cobra una vez, en la primera póliza del titular.
+                    </div>
+                  </div>
+                  <div className="pp-field">
+                    <label>Valor por beneficiario adicional (COP)</label>
+                    <input
+                      type="number" min={0}
+                      value={form.valor_beneficiario_adicional}
+                      onChange={e => set('valor_beneficiario_adicional', e.target.value)}
                       placeholder="0"
                     />
                   </div>
