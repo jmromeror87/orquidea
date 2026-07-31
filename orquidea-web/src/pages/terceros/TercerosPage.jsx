@@ -250,6 +250,10 @@ const CSS = `
   .tp-mbody::-webkit-scrollbar { width:4px; }
   .tp-mbody::-webkit-scrollbar-thumb { background:#E2E5F0; border-radius:4px; }
   .tp-mfoot  { padding:14px 22px; border-top:1.5px solid #ECEDF8; display:flex; gap:10px; justify-content:flex-end; }
+  .tp-btn-mini { white-space:nowrap; font-size:11px; font-weight:700; padding:0 10px; border-radius:8px;
+                 border:1.5px solid #ECEDF8; background:#F8F9FF; color:#2E3192; cursor:pointer; }
+  .tp-btn-mini:hover { background:#EEF2FF; }
+  .tp-btn-mini:disabled { opacity:.5; cursor:not-allowed; }
 
   /* ─ Form ─ */
   .tp-section { font-size:10px; font-weight:800; letter-spacing:1px; color:#9CA3AF;
@@ -450,6 +454,9 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
   const [formDef, setFormDef] = useState(BLANK_FORM_DEF)
   const [saving, setSaving]   = useState(false)
   const [err, setErr]         = useState('')
+  const [nuevaZonaTipo, setNuevaZonaTipo] = useState('') // 'BARRIO' | 'VEREDA' | ''
+  const [nuevaZonaNombre, setNuevaZonaNombre] = useState('')
+  const [creandoZona, setCreandoZona] = useState(false)
   const editing = !!tercero
 
   useEffect(() => {
@@ -485,6 +492,25 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
 
   const set    = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const setDef = (k, v) => setFormDef(p => ({ ...p, [k]: v }))
+
+  const crearZonaRapida = async (campo, tipo) => {
+    if (!nuevaZonaNombre.trim()) return
+    setCreandoZona(true)
+    try {
+      const r = await api.post('/territorio/zonas', {
+        municipio_id: form.municipio_id, nombre: nuevaZonaNombre.trim(), tipo,
+      })
+      await cargarZonas(form.municipio_id)
+      set(campo, r.data.data.nombre)
+      setNuevaZonaTipo('')
+      setNuevaZonaNombre('')
+      toast.success(`${tipo === 'BARRIO' ? 'Barrio' : 'Vereda'} creado y asignado`)
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo crear')
+    } finally {
+      setCreandoZona(false)
+    }
+  }
 
   const toggleRol = (rol) => {
     setForm(p => ({
@@ -750,20 +776,10 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
           </div>
           <div className="tp-grid3">
             <div className="tp-field">
-              <label>Barrio</label>
-              <input value={form.barrio} onChange={e => set('barrio', e.target.value)} placeholder="Ej: Centro"/>
-            </div>
-            <div className="tp-field">
-              <label>Vereda</label>
-              <input value={form.vereda} onChange={e => set('vereda', e.target.value)} placeholder="Si vive en zona rural"/>
-            </div>
-          </div>
-          <div className="tp-grid3">
-            <div className="tp-field">
               <label>Departamento</label>
               <select value={form.departamento_id} onChange={e => {
                 set('departamento_id', e.target.value)
-                set('municipio_id', ''); set('zona_id', '')
+                set('municipio_id', ''); set('zona_id', ''); set('barrio', ''); set('vereda', '')
                 cargarMpios(e.target.value)
               }}>
                 <option value="">— Seleccionar —</option>
@@ -773,7 +789,7 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
             <div className="tp-field">
               <label>Municipio</label>
               <select value={form.municipio_id} onChange={e => {
-                set('municipio_id', e.target.value); set('zona_id', '')
+                set('municipio_id', e.target.value); set('zona_id', ''); set('barrio', ''); set('vereda', '')
                 cargarZonas(e.target.value)
               }} disabled={!mpios.length}>
                 <option value="">— Seleccionar —</option>
@@ -786,6 +802,60 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
                 <option value="">— Seleccionar —</option>
                 {zonas.map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
               </select>
+            </div>
+          </div>
+          <div className="tp-grid3">
+            <div className="tp-field">
+              <label>Barrio</label>
+              {nuevaZonaTipo === 'BARRIO' ? (
+                <div style={{ display:'flex', gap:6 }}>
+                  <input autoFocus value={nuevaZonaNombre} onChange={e => setNuevaZonaNombre(e.target.value)}
+                    placeholder="Nombre del barrio" style={{ flex:1 }}
+                    onKeyDown={e => e.key === 'Enter' && crearZonaRapida('barrio', 'BARRIO')}/>
+                  <button type="button" className="tp-btn-mini" disabled={creandoZona}
+                    onClick={() => crearZonaRapida('barrio', 'BARRIO')}>Guardar</button>
+                  <button type="button" className="tp-btn-mini" onClick={() => { setNuevaZonaTipo(''); setNuevaZonaNombre('') }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:6 }}>
+                  <select style={{ flex:1 }} value={form.barrio}
+                    onChange={e => set('barrio', e.target.value)}
+                    disabled={!form.municipio_id}>
+                    <option value="">— Seleccionar —</option>
+                    {zonas.filter(z => z.tipo === 'BARRIO').map(z => (
+                      <option key={z.id} value={z.nombre}>{z.nombre}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="tp-btn-mini" disabled={!form.municipio_id}
+                    onClick={() => setNuevaZonaTipo('BARRIO')} title="Crear nuevo barrio">+ Nuevo</button>
+                </div>
+              )}
+            </div>
+            <div className="tp-field">
+              <label>Vereda</label>
+              {nuevaZonaTipo === 'VEREDA' ? (
+                <div style={{ display:'flex', gap:6 }}>
+                  <input autoFocus value={nuevaZonaNombre} onChange={e => setNuevaZonaNombre(e.target.value)}
+                    placeholder="Nombre de la vereda" style={{ flex:1 }}
+                    onKeyDown={e => e.key === 'Enter' && crearZonaRapida('vereda', 'VEREDA')}/>
+                  <button type="button" className="tp-btn-mini" disabled={creandoZona}
+                    onClick={() => crearZonaRapida('vereda', 'VEREDA')}>Guardar</button>
+                  <button type="button" className="tp-btn-mini" onClick={() => { setNuevaZonaTipo(''); setNuevaZonaNombre('') }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:6 }}>
+                  <select style={{ flex:1 }} value={form.vereda}
+                    onChange={e => set('vereda', e.target.value)}
+                    disabled={!form.municipio_id}>
+                    <option value="">— Seleccionar —</option>
+                    {zonas.filter(z => z.tipo === 'VEREDA').map(z => (
+                      <option key={z.id} value={z.nombre}>{z.nombre}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="tp-btn-mini" disabled={!form.municipio_id}
+                    onClick={() => setNuevaZonaTipo('VEREDA')} title="Crear nueva vereda">+ Nuevo</button>
+                </div>
+              )}
             </div>
           </div>
 

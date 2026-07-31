@@ -35,7 +35,7 @@ export default async function territorioRoutes(fastify) {
 
   // ── Zonas / barrios / veredas ──
   fastify.get('/zonas',         { preHandler:[verifyToken] }, listarZonas)
-  fastify.post('/zonas',        { preHandler:[verifyToken, requireRole(...ADMIN)] }, crearZona)
+  fastify.post('/zonas',        { preHandler:[verifyToken] }, crearZona)
   fastify.put('/zonas/:id',     { preHandler:[verifyToken, requireRole(...ADMIN)] }, actualizarZona)
   fastify.delete('/zonas/:id',  { preHandler:[verifyToken, requireRole(...ADMIN)] }, eliminarZona)
 }
