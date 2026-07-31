@@ -27,9 +27,9 @@ const BLANK = {
   nombre: '', descripcion: '', tipo: 'FAMILIAR',
   max_beneficiarios: 1, valor_mensual: '', meses_carencia: 3,
   cubre_ataud: 'BASICO', cubre_velacion_h: 4,
-  cubre_traslado_local: true, cubre_traslado_nacional: false,
+  cubre_traslado_local: false, cubre_traslado_nacional: false,
   cubre_flores: false, cubre_cremacion: false,
-  cubre_tramites: true, cubre_lapida: false,
+  cubre_tramites: false, cubre_lapida: false,
   valor_excedente: 0,
   coberturas_extra: [],
   servicios_ids: [],
@@ -308,12 +308,6 @@ export default function PlanesPolizaPage() {
                   </div>
                   <div className="pp-coberturas">
                     <CoberturaChip label={`Ataúd ${p.cubre_ataud}`} activo />
-                    <CoberturaChip label="Traslado local"    activo={p.cubre_traslado_local} />
-                    <CoberturaChip label="Traslado nacional" activo={p.cubre_traslado_nacional} />
-                    <CoberturaChip label="Flores"     activo={p.cubre_flores} />
-                    <CoberturaChip label="Cremación"  activo={p.cubre_cremacion} />
-                    <CoberturaChip label="Trámites"   activo={p.cubre_tramites} />
-                    <CoberturaChip label="Lápida"     activo={p.cubre_lapida} />
                     {+p.valor_excedente > 0 &&
                       <span className="pp-chip si">Excedente {fmt(p.valor_excedente)}</span>}
                     {Array.isArray(p.coberturas_extra) && p.coberturas_extra.length > 0 && (
@@ -453,13 +447,9 @@ export default function PlanesPolizaPage() {
                     />
                   </div>
                 </div>
-                <div className="pp-checks">
-                  <Toggle label="Traslado local"    checked={form.cubre_traslado_local}    onChange={v => set('cubre_traslado_local', v)} />
-                  <Toggle label="Traslado nacional" checked={form.cubre_traslado_nacional} onChange={v => set('cubre_traslado_nacional', v)} />
-                  <Toggle label="Flores"            checked={form.cubre_flores}            onChange={v => set('cubre_flores', v)} />
-                  <Toggle label="Cremación"         checked={form.cubre_cremacion}         onChange={v => set('cubre_cremacion', v)} />
-                  <Toggle label="Trámites"          checked={form.cubre_tramites}          onChange={v => set('cubre_tramites', v)} />
-                  <Toggle label="Lápida"            checked={form.cubre_lapida}            onChange={v => set('cubre_lapida', v)} />
+                <div style={{ fontSize:11.5, color:'#94a3b8' }}>
+                  Traslados, flores, cremación, trámites y lápida ahora se configuran como
+                  servicios del catálogo (sección de abajo), no aquí.
                 </div>
               </div>
 

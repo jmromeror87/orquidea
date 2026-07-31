@@ -46,15 +46,12 @@ function limitado(ip) {
 const ATAUD_LABEL = { BASICO: 'Básico', MEDIANO: 'Mediano', PREMIUM: 'Premium', LUJO: 'Lujo' }
 
 function construirServiciosIncluidos(p) {
+  // Traslados, flores, cremación, trámites y lápida ya no son booleanos fijos
+  // del plan — ahora se configuran como servicios reales del catálogo
+  // (plan_servicios), que se agregan aparte más abajo.
   return [
     { nombre: `Ataúd ${ATAUD_LABEL[p.cubre_ataud] || p.cubre_ataud}`, incluido: true },
     { nombre: `Velación ${p.cubre_velacion_h}h`, incluido: true },
-    { nombre: 'Traslado local', incluido: p.cubre_traslado_local },
-    { nombre: 'Traslado nacional', incluido: p.cubre_traslado_nacional },
-    { nombre: 'Flores', incluido: p.cubre_flores },
-    { nombre: 'Cremación', incluido: p.cubre_cremacion },
-    { nombre: 'Trámites legales', incluido: p.cubre_tramites },
-    { nombre: 'Lápida', incluido: p.cubre_lapida },
   ]
 }
 
