@@ -200,6 +200,57 @@ export async function obtener(req, reply) {
   })
 }
 
+// ── Datos para generar el contrato de previsión exequial en PDF ─────────────
+
+export async function contratoImpresion(req, reply) {
+  const { id } = req.params
+
+  const [pRes, benRes, empRes] = await Promise.all([
+    pool.query(`
+      SELECT p.*,
+        pl.nombre AS plan_nombre, pl.horas_velacion, pl.meses_carencia,
+        pl.valor_afiliacion, pl.valor_beneficiario_adicional,
+        pl.edad_min_beneficiario, pl.edad_max_beneficiario,
+        t.nombres, t.apellidos, t.razon_social, t.tipo_persona,
+        COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS titular_nombre,
+        t.numero_documento AS titular_doc, td.sigla AS titular_tipo_doc,
+        t.fecha_nacimiento AS titular_fecha_nacimiento, t.telefono AS titular_tel,
+        t.email AS titular_email, t.direccion AS titular_direccion,
+        t.barrio AS titular_barrio, t.vereda AS titular_vereda,
+        m.nombre AS titular_municipio, d.nombre AS titular_departamento
+      FROM polizas p
+      JOIN terceros t ON t.id = p.titular_id
+      JOIN planes_poliza pl ON pl.id = p.plan_id
+      LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
+      LEFT JOIN geo_municipios m ON m.id = t.municipio_id
+      LEFT JOIN geo_departamentos d ON d.id = t.departamento_id
+      WHERE p.id = $1`, [id]),
+    pool.query(`
+      SELECT COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre,
+        t.numero_documento AS documento, td.sigla AS tipo_doc,
+        t.fecha_nacimiento, pb.parentesco
+      FROM poliza_beneficiarios pb
+      JOIN terceros t ON t.id = pb.tercero_id
+      LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
+      WHERE pb.poliza_id = $1 AND pb.activo
+      ORDER BY pb.creado_en`, [id]),
+    pool.query(`
+      SELECT razon_social AS nombre_empresa, COALESCE(nombre_comercial, razon_social) AS nombre_comercial,
+        nit, direccion, telefono_1 AS telefono, email, municipio, representante_legal
+      FROM empresa LIMIT 1`),
+  ])
+
+  if (!pRes.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
+
+  return reply.send({
+    data: {
+      poliza: pRes.rows[0],
+      beneficiarios: benRes.rows,
+      empresa: empRes.rows[0] || {},
+    },
+  })
+}
+
 // ── Crear ─────────────────────────────────────────────────────────────────
 
 export async function crear(req, reply) {

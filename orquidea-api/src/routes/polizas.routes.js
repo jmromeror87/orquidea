@@ -14,7 +14,7 @@ import {
   stats, listar, obtener, crear, actualizar, cancelar, reactivar, historialCancelaciones,
   registrarPago, agregarBeneficiario, quitarBeneficiario, cobrarAfiliacion,
   verificarElegibilidad, ejecutar, planes, crearPlan, actualizarPlan, desactivarPlan,
-  buscar, beneficiarios, transferirTitular, historialTransferencias,
+  buscar, beneficiarios, transferirTitular, historialTransferencias, contratoImpresion,
 } from '../controllers/polizas.controller.js'
 
 const auth     = [verifyToken]
@@ -34,6 +34,7 @@ export default async function polizasRoutes(fastify) {
   fastify.get('/',                             { preHandler: auth },     listar)
   fastify.get('/:id',                          { preHandler: auth },     obtener)
   fastify.get('/:id/elegibilidad',             { preHandler: auth },     verificarElegibilidad)
+  fastify.get('/:id/contrato-impresion',       { preHandler: auth },     contratoImpresion)
   fastify.post('/',                            { preHandler: editores }, crear)
   fastify.put('/:id',                          { preHandler: editores }, actualizar)
   fastify.delete('/:id',                       { preHandler: admins },   cancelar)

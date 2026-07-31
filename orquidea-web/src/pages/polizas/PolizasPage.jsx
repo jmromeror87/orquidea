@@ -21,8 +21,10 @@ import {
   ChevronLeft, ChevronRight, User, Phone, Mail, Calendar,
   AlertTriangle, CheckCircle2, Clock, Ban, Edit2, Eye,
   CreditCard, Heart, PlusCircle, Trash2, Star, ArrowLeftRight,
-  DollarSign, Users, AlertCircle, Settings,
+  DollarSign, Users, AlertCircle, Settings, FileText,
 } from 'lucide-react'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
@@ -904,6 +906,168 @@ function ModalPago({ poliza, onClose, onSaved }) {
   )
 }
 
+// ── Generación PDF: Contrato de Previsión Exequial ─────────────────────────
+
+function generarContratoPDF(data) {
+  const { poliza: p, beneficiarios = [], empresa = {} } = data
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
+
+  const W = 210, PL = 15, PR = 15, CW = W - PL - PR
+  const BLACK = [0,0,0], DARK = [30,30,30], GRAY = [90,90,90], LGRAY = [180,180,180], WHITE = [255,255,255]
+  const fmtD = d => { if (!d) return '—'; const v = d.includes('T') ? d : d+'T12:00:00'; const dt = new Date(v); return isNaN(dt)?'—':dt.toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric',timeZone:'UTC'}) }
+  const fmtCOP = v => v!=null ? new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(v)) : '—'
+
+  let y = 14
+
+  doc.setDrawColor(...BLACK); doc.setLineWidth(1.2); doc.line(PL, y, W-PR, y)
+  y += 5
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...BLACK)
+  doc.text((empresa.nombre_empresa || 'Funeraria San José de Ábrego').toUpperCase(), PL, y)
+  y += 5
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...GRAY)
+  const infoEmp = [
+    empresa.nit && `NIT: ${empresa.nit}`,
+    empresa.direccion, empresa.municipio,
+    empresa.telefono && `Tel: ${empresa.telefono}`, empresa.email,
+  ].filter(Boolean).join('   |   ')
+  doc.text(infoEmp, PL, y)
+  y += 3
+
+  doc.setLineWidth(0.3); doc.setDrawColor(...LGRAY); doc.line(PL, y, W-PR, y)
+  y += 4
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...BLACK)
+  doc.text('CONTRATO DE PREVISIÓN EXEQUIAL', W/2, y, { align:'center' })
+  y += 5
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(9)
+  doc.text(`Póliza N° ${p.numero}`, PL, y)
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...GRAY)
+  doc.text(`Fecha de emisión: ${fmtD(new Date().toISOString())}`, W-PR, y, { align:'right' })
+  doc.text(`Plan: ${p.plan_nombre}`, PL + 55, y)
+  y += 3
+
+  doc.setLineWidth(0.8); doc.setDrawColor(...BLACK); doc.line(PL, y, W-PR, y)
+  y += 5
+
+  const titulo = (txt) => {
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...BLACK)
+    doc.text(txt.toUpperCase(), PL, y)
+    y += 1
+    doc.setLineWidth(0.4); doc.setDrawColor(...BLACK); doc.line(PL, y, W-PR, y)
+    y += 4
+  }
+  const grid = (filas) => {
+    const colW = CW / 2
+    filas.forEach(fila => {
+      let x = PL
+      fila.forEach(([lbl, val]) => {
+        doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...GRAY)
+        doc.text(`${lbl}:`, x, y)
+        doc.setFont('helvetica','bold'); doc.setTextColor(...DARK)
+        const lw = doc.getTextWidth(`${lbl}: `)
+        doc.text(String(val||'—'), x + lw, y)
+        x += colW
+      })
+      y += 5
+    })
+    y += 1
+  }
+  const sep = () => {
+    doc.setLineWidth(0.15); doc.setDrawColor(...LGRAY); doc.line(PL, y, W-PR, y)
+    y += 5
+  }
+
+  // ── 1. Contratante / Titular ──
+  titulo('1. Datos del Contratante / Titular')
+  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(...BLACK)
+  doc.text(p.titular_nombre || '—', PL, y)
+  y += 5
+  grid([
+    [[p.titular_tipo_doc||'Documento', p.titular_doc], ['Fecha de nacimiento', fmtD(p.titular_fecha_nacimiento)]],
+    [['Teléfono', p.titular_tel], ['Email', p.titular_email]],
+    [['Dirección', p.titular_direccion], ['Barrio', p.titular_barrio]],
+    [['Vereda', p.titular_vereda], ['Municipio', [p.titular_municipio, p.titular_departamento].filter(Boolean).join(', ')]],
+  ])
+  sep()
+
+  // ── 2. Plan contratado ──
+  titulo('2. Plan Contratado')
+  grid([
+    [['Plan', p.plan_nombre], ['Cuota mensual', fmtCOP(p.valor_cuota)]],
+    [['Día de cobro', `Día ${p.dia_cobro} de cada mes`], ['Horas de velación cubiertas', p.horas_velacion ? `${p.horas_velacion} horas` : '—']],
+    [['Período de carencia', `${p.meses_carencia} mes(es)`], ['Fin de carencia', fmtD(p.fecha_fin_carencia)]],
+    [['Máx. beneficiarios', p.max_beneficiarios], ['Rango de edad beneficiarios', `${p.edad_min_beneficiario} - ${p.edad_max_beneficiario} años`]],
+  ])
+  sep()
+
+  // ── 3. Afiliación ──
+  titulo('3. Costo de Afiliación')
+  grid([
+    [['Valor de afiliación', fmtCOP(p.costo_afiliacion)], ['Estado', p.afiliacion_pagada ? 'Pagada' : (Number(p.costo_afiliacion)>0 ? 'Pendiente' : 'No aplica')]],
+    ...(p.afiliacion_pagada ? [[['Fecha de pago', fmtD(p.afiliacion_fecha_pago)], ['Método de pago', p.afiliacion_metodo_pago||'—']]] : []),
+    ...(Number(p.valor_beneficiario_adicional) > 0 ? [[['Valor por beneficiario adicional', fmtCOP(p.valor_beneficiario_adicional)], ['', '']]] : []),
+  ])
+  sep()
+
+  // ── 4. Beneficiarios ──
+  titulo('4. Beneficiarios Designados')
+  if (beneficiarios.length > 0) {
+    autoTable(doc, {
+      startY: y,
+      margin: { left:PL, right:PR },
+      styles: { fontSize:8, cellPadding:2.5, textColor:DARK, lineColor:LGRAY, lineWidth:0.15 },
+      headStyles: { fillColor:BLACK, textColor:WHITE, fontStyle:'bold', fontSize:7.5 },
+      head: [['NOMBRE','DOCUMENTO','PARENTESCO','FECHA DE NACIMIENTO']],
+      body: beneficiarios.map(b => [
+        b.nombre||'—', `${b.tipo_doc||''} ${b.documento||''}`.trim()||'—',
+        b.parentesco||'—', fmtD(b.fecha_nacimiento),
+      ]),
+    })
+    y = doc.lastAutoTable.finalY + 5
+  } else {
+    doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(...GRAY)
+    doc.text('Sin beneficiarios registrados a la fecha.', PL, y)
+    y += 6
+  }
+  sep()
+
+  // ── 5. Cláusulas generales ──
+  if (y > 220) { doc.addPage(); y = 14 }
+  titulo('5. Cláusulas Generales')
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...DARK)
+  const clausulas = [
+    `El presente contrato de previsión exequial ampara al titular y a los beneficiarios designados, dentro de los límites de edad, cobertura y condiciones establecidos en el plan "${p.plan_nombre}" descrito en este documento.`,
+    `El periodo de carencia es de ${p.meses_carencia} mes(es) contado(s) desde la fecha de inicio de la póliza. Durante este período, el servicio funerario no está cubierto salvo lo dispuesto por la ley para casos de muerte accidental.`,
+    `El no pago de la cuota mensual dentro de los términos acordados podrá generar la suspensión o cancelación de la cobertura, de acuerdo con las políticas de la funeraria.`,
+    `Los datos personales del contratante, titular y beneficiarios serán tratados conforme a la política de tratamiento de datos de la funeraria.`,
+  ]
+  clausulas.forEach((txt, i) => {
+    const lines = doc.splitTextToSize(`${i+1}. ${txt}`, CW)
+    doc.text(lines, PL, y)
+    y += lines.length * 3.6 + 2
+  })
+  y += 6
+
+  // ── Firmas ──
+  if (y > 250) { doc.addPage(); y = 14 }
+  y += 12
+  doc.setLineWidth(0.3); doc.setDrawColor(...BLACK)
+  doc.line(PL, y, PL+70, y)
+  doc.line(W-PR-70, y, W-PR, y)
+  y += 4
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...GRAY)
+  doc.text('Firma del Contratante / Titular', PL, y)
+  doc.text(`Firma autorizada — ${empresa.nombre_comercial || empresa.nombre_empresa || ''}`, W-PR-70, y)
+  y += 4
+  doc.text(p.titular_doc ? `C.C. ${p.titular_doc}` : '', PL, y)
+  doc.text(empresa.representante_legal || '', W-PR-70, y)
+
+  doc.save(`Contrato-Poliza-${p.numero}.pdf`)
+}
+
 // ── Modal Ficha ───────────────────────────────────────────────────────────
 
 function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar }) {
@@ -934,6 +1098,19 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   }, [id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  const [generandoContrato, setGenerandoContrato] = useState(false)
+  const generarContrato = async () => {
+    setGenerandoContrato(true)
+    try {
+      const r = await api.get(`/polizas/${id}/contrato-impresion`)
+      generarContratoPDF(r.data)
+    } catch (e) {
+      toast.error('Error al generar el contrato: ' + (e.response?.data?.error || e.message))
+    } finally {
+      setGenerandoContrato(false)
+    }
+  }
 
   const cobrarAfiliacion = async () => {
     setCobrandoAfiliacion(true)
@@ -1075,6 +1252,14 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
             )}
           </div>
           <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+            {!loading && (
+              <button onClick={generarContrato} disabled={generandoContrato}
+                style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 14px',
+                  background:'rgba(255,255,255,.12)', border:'1.5px solid rgba(255,255,255,.25)',
+                  borderRadius:10, color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer' }}>
+                {generandoContrato ? <Loader2 size={13} className="pl-spin"/> : <FileText size={13}/>} Generar contrato
+              </button>
+            )}
             {!loading && esEditor && !['CANCELADA','EJECUTADA'].includes(data?.estado) && (
               <>
                 <button onClick={() => onPagar(data)}
