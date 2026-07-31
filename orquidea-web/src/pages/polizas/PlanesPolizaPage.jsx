@@ -9,9 +9,14 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, CheckCircle, XCircle, ShieldCheck, Users, Clock, DollarSign, ToggleLeft, ToggleRight, PlusCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle, XCircle, ShieldCheck, Users, Clock, DollarSign, ToggleLeft, ToggleRight, PlusCircle, Search, Package } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
+
+const CATEGORIAS_SERVICIO = [
+  'ATAUD','URNA','TRASLADO','SALA_VELACION','DOCUMENTOS',
+  'CREMACION','INHUMACION','PREPARACION','FLORES','ADICIONAL','GENERAL',
+]
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
 
@@ -27,6 +32,7 @@ const BLANK = {
   cubre_tramites: true, cubre_lapida: false,
   valor_excedente: 0,
   coberturas_extra: [],
+  servicios_ids: [],
 }
 
 const CSS = `
@@ -140,6 +146,10 @@ export default function PlanesPolizaPage() {
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
   const [mostrarInactivos, setMostrarInactivos] = useState(false)
+  const [catalogo, setCatalogo] = useState([])
+  const [buscarServ, setBuscarServ] = useState('')
+  const [nuevoServ, setNuevoServ] = useState(null) // null | { nombre, categoria, precio_base }
+  const [creandoServ, setCreandoServ] = useState(false)
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -152,11 +162,45 @@ export default function PlanesPolizaPage() {
 
   useEffect(() => { cargar() }, [cargar])
 
+  useEffect(() => {
+    api.get('/empresa/servicios').then(({ data }) => setCatalogo(data.data || [])).catch(() => {})
+  }, [])
+
   const abrirNuevo = () => { setForm(BLANK); setError(''); setModal('nuevo') }
   const abrirEditar = (p) => {
-    setForm({ ...p, coberturas_extra: Array.isArray(p.coberturas_extra) ? p.coberturas_extra : [] })
+    setForm({
+      ...p,
+      coberturas_extra: Array.isArray(p.coberturas_extra) ? p.coberturas_extra : [],
+      servicios_ids: Array.isArray(p.servicios) ? p.servicios.map(s => s.id) : [],
+    })
     setError('')
     setModal(p)
+  }
+
+  const toggleServicio = (id) => setForm(f => ({
+    ...f,
+    servicios_ids: f.servicios_ids.includes(id)
+      ? f.servicios_ids.filter(x => x !== id)
+      : [...f.servicios_ids, id],
+  }))
+
+  const crearServicioRapido = async () => {
+    if (!nuevoServ?.nombre?.trim()) return
+    setCreandoServ(true)
+    try {
+      const { data } = await api.post('/empresa/servicios', {
+        nombre: nuevoServ.nombre.trim(),
+        categoria: nuevoServ.categoria || 'GENERAL',
+        precio_base: +nuevoServ.precio_base || 0,
+      })
+      const creado = data.data
+      setCatalogo(c => [...c, creado])
+      setForm(f => ({ ...f, servicios_ids: [...f.servicios_ids, creado.id] }))
+      setNuevoServ(null)
+      toast.success('Servicio creado y agregado al plan')
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Error al crear el servicio')
+    } finally { setCreandoServ(false) }
   }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -276,6 +320,13 @@ export default function PlanesPolizaPage() {
                       <div className="pp-card-extra">
                         {p.coberturas_extra.map((c, i) => (
                           <CoberturaChip key={i} label={c.nombre} activo={c.incluido !== false} />
+                        ))}
+                      </div>
+                    )}
+                    {Array.isArray(p.servicios) && p.servicios.length > 0 && (
+                      <div className="pp-card-extra">
+                        {p.servicios.map(s => (
+                          <span key={s.id} className="pp-chip si"><Package size={11}/> {s.nombre}</span>
                         ))}
                       </div>
                     )}
@@ -410,6 +461,100 @@ export default function PlanesPolizaPage() {
                   <Toggle label="Trámites"          checked={form.cubre_tramites}          onChange={v => set('cubre_tramites', v)} />
                   <Toggle label="Lápida"            checked={form.cubre_lapida}            onChange={v => set('cubre_lapida', v)} />
                 </div>
+              </div>
+
+              {/* Servicios del catálogo (Configuración > Servicios) */}
+              <div className="pp-section">
+                <div className="pp-section-title">Servicios del catálogo</div>
+                <div style={{ fontSize:12, color:'#64748b', marginBottom:10 }}>
+                  Asigne a este plan los servicios reales configurados en Configuración → Servicios.
+                  Si el servicio que necesita no existe, créelo aquí mismo sin salir del formulario.
+                </div>
+
+                <div style={{ position:'relative', marginBottom:10 }}>
+                  <Search size={14} style={{ position:'absolute', left:10, top:10, color:'#94a3b8' }} />
+                  <input
+                    type="text"
+                    value={buscarServ}
+                    onChange={e => setBuscarServ(e.target.value)}
+                    placeholder="Buscar servicio del catálogo…"
+                    style={{ width:'100%', border:'1.5px solid #e2e8f0', borderRadius:8, padding:'8px 12px 8px 32px', fontSize:13, outline:'none', boxSizing:'border-box' }}
+                  />
+                </div>
+
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, maxHeight:180, overflowY:'auto', padding:'2px 2px 4px' }}>
+                  {catalogo
+                    .filter(s => s.nombre.toLowerCase().includes(buscarServ.toLowerCase()))
+                    .map(s => {
+                      const activo = form.servicios_ids.includes(s.id)
+                      return (
+                        <button
+                          type="button"
+                          key={s.id}
+                          onClick={() => toggleServicio(s.id)}
+                          style={{
+                            display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
+                            border:`1.5px solid ${activo ? '#059669' : '#e2e8f0'}`, borderRadius:20,
+                            background: activo ? '#d1fae5' : '#fff', color: activo ? '#065f46' : '#475569',
+                            fontSize:12.5, fontWeight:600, cursor:'pointer',
+                          }}
+                        >
+                          {activo && <CheckCircle size={12}/>} {s.nombre}
+                          <span style={{ opacity:.7 }}>· {fmt(s.precio_base)}</span>
+                        </button>
+                      )
+                    })}
+                  {catalogo.length === 0 && (
+                    <span style={{ fontSize:12.5, color:'#94a3b8' }}>Aún no hay servicios configurados.</span>
+                  )}
+                </div>
+
+                {form.servicios_ids.length > 0 && (
+                  <div style={{ fontSize:11.5, color:'#059669', fontWeight:600, marginTop:8 }}>
+                    {form.servicios_ids.length} servicio(s) asignado(s) a este plan
+                  </div>
+                )}
+
+                {!nuevoServ ? (
+                  <button
+                    type="button"
+                    onClick={() => setNuevoServ({ nombre: buscarServ, categoria: 'GENERAL', precio_base: '' })}
+                    className="pp-add-extra"
+                    style={{ marginTop:10 }}
+                  >
+                    <Package size={15}/> Crear servicio nuevo en el catálogo
+                  </button>
+                ) : (
+                  <div style={{ marginTop:10, padding:12, border:'1.5px dashed #cbd5e1', borderRadius:10, display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+                    <input
+                      type="text" placeholder="Nombre del servicio"
+                      value={nuevoServ.nombre}
+                      onChange={e => setNuevoServ(n => ({ ...n, nombre: e.target.value }))}
+                      style={{ flex:'2 1 160px', border:'1.5px solid #e2e8f0', borderRadius:8, padding:'7px 10px', fontSize:13, outline:'none' }}
+                    />
+                    <select
+                      value={nuevoServ.categoria}
+                      onChange={e => setNuevoServ(n => ({ ...n, categoria: e.target.value }))}
+                      style={{ flex:'1 1 120px', border:'1.5px solid #e2e8f0', borderRadius:8, padding:'7px 10px', fontSize:13 }}
+                    >
+                      {CATEGORIAS_SERVICIO.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <input
+                      type="number" min={0} placeholder="Precio"
+                      value={nuevoServ.precio_base}
+                      onChange={e => setNuevoServ(n => ({ ...n, precio_base: e.target.value }))}
+                      style={{ flex:'1 1 100px', border:'1.5px solid #e2e8f0', borderRadius:8, padding:'7px 10px', fontSize:13, outline:'none' }}
+                    />
+                    <button type="button" onClick={crearServicioRapido} disabled={creandoServ}
+                      className="pp-btn-save" style={{ padding:'7px 14px', fontSize:12.5 }}>
+                      {creandoServ ? 'Creando…' : 'Crear y agregar'}
+                    </button>
+                    <button type="button" onClick={() => setNuevoServ(null)}
+                      className="pp-btn-cancel" style={{ padding:'7px 14px', fontSize:12.5 }}>
+                      Cancelar
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Coberturas adicionales personalizadas */}

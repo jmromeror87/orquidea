@@ -796,7 +796,19 @@ export async function ejecutar(req, reply) {
 export async function planes(req, reply) {
   const { todos = '' } = req.query
   const where = todos === '1' ? '' : 'WHERE activo'
-  const res = await pool.query(`SELECT * FROM planes_poliza ${where} ORDER BY valor_mensual`)
+  const res = await pool.query(`
+    SELECT p.*,
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'id', sc.id, 'nombre', sc.nombre, 'categoria', sc.categoria, 'precio_base', sc.precio_base
+        ) ORDER BY sc.nombre)
+        FROM plan_servicios ps JOIN servicios_catalogo sc ON sc.id = ps.servicio_id
+        WHERE ps.plan_id = p.id
+      ), '[]') AS servicios
+    FROM planes_poliza p
+    ${where}
+    ORDER BY valor_mensual
+  `)
   return reply.send({ data: res.rows })
 }
 
@@ -812,6 +824,7 @@ export async function crearPlan(req, reply) {
     cubre_tramites = true, cubre_lapida = false,
     valor_excedente = 0,
     coberturas_extra = [],
+    servicios_ids = [],
   } = req.body
 
   if (!nombre) return reply.code(400).send({ error: 'nombre es obligatorio' })
@@ -850,6 +863,16 @@ export async function crearPlan(req, reply) {
       JSON.stringify(extras),
     ]
   )
+
+  const planId = res.rows[0].id
+  const idsServicios = Array.isArray(servicios_ids) ? [...new Set(servicios_ids.filter(Boolean))] : []
+  for (const servicioId of idsServicios) {
+    await pool.query(
+      `INSERT INTO plan_servicios (plan_id, servicio_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+      [planId, servicioId]
+    )
+  }
+
   return reply.code(201).send({ data: res.rows[0] })
 }
 
@@ -860,7 +883,7 @@ export async function actualizarPlan(req, reply) {
     cubre_ataud, cubre_velacion_h,
     cubre_traslado_local, cubre_traslado_nacional,
     cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida,
-    valor_excedente, activo, coberturas_extra,
+    valor_excedente, activo, coberturas_extra, servicios_ids,
   } = req.body
 
   const extrasParam = coberturas_extra != null
@@ -910,6 +933,19 @@ export async function actualizarPlan(req, reply) {
     ]
   )
   if (!res.rows.length) return reply.code(404).send({ error: 'Plan no encontrado' })
+
+  // Si mandan la lista de servicios, reemplaza las asignaciones existentes
+  if (Array.isArray(servicios_ids)) {
+    await pool.query('DELETE FROM plan_servicios WHERE plan_id = $1', [id])
+    const idsServicios = [...new Set(servicios_ids.filter(Boolean))]
+    for (const servicioId of idsServicios) {
+      await pool.query(
+        `INSERT INTO plan_servicios (plan_id, servicio_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [id, servicioId]
+      )
+    }
+  }
+
   return reply.send({ data: res.rows[0] })
 }
 

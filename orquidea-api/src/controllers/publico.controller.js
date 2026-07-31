@@ -60,13 +60,18 @@ function construirServiciosIncluidos(p) {
 
 export async function listarPlanesPublico(req, reply) {
   const { rows } = await pool.query(`
-    SELECT nombre, codigo, descripcion, tipo, max_beneficiarios,
-           valor_mensual, meses_carencia,
-           cubre_ataud, cubre_velacion_h, cubre_traslado_local, cubre_traslado_nacional,
-           cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida, valor_excedente
-    FROM planes_poliza
-    WHERE activo = TRUE
-    ORDER BY valor_mensual, nombre
+    SELECT p.id, p.nombre, p.codigo, p.descripcion, p.tipo, p.max_beneficiarios,
+           p.valor_mensual, p.meses_carencia,
+           p.cubre_ataud, p.cubre_velacion_h, p.cubre_traslado_local, p.cubre_traslado_nacional,
+           p.cubre_flores, p.cubre_cremacion, p.cubre_tramites, p.cubre_lapida, p.valor_excedente,
+           COALESCE((
+             SELECT json_agg(sc.nombre ORDER BY sc.nombre)
+             FROM plan_servicios ps JOIN servicios_catalogo sc ON sc.id = ps.servicio_id AND sc.activo = TRUE
+             WHERE ps.plan_id = p.id
+           ), '[]') AS servicios_catalogo
+    FROM planes_poliza p
+    WHERE p.activo = TRUE
+    ORDER BY p.valor_mensual, p.nombre
   `)
   // Sin precio a propósito: la landing no debe mostrar valores, solo la
   // cobertura completa — el precio se da por llamada/WhatsApp.
@@ -77,7 +82,10 @@ export async function listarPlanesPublico(req, reply) {
     tipo: p.tipo,
     num_beneficiarios: p.max_beneficiarios,
     meses_carencia: p.meses_carencia,
-    servicios_incluidos: construirServiciosIncluidos(p),
+    servicios_incluidos: [
+      ...construirServiciosIncluidos(p),
+      ...p.servicios_catalogo.map(nombre => ({ nombre, incluido: true })),
+    ],
   }))
   return reply.send({ data })
 }
