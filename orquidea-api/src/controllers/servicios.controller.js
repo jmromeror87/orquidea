@@ -296,14 +296,9 @@ export async function obtener(req, reply) {
         -- Plan de la póliza
         ppl.nombre             AS poliza_plan,
         ppl.tipo               AS poliza_plan_tipo,
-        ppl.cubre_ataud        AS poliza_cubre_ataud,
-        ppl.cubre_velacion_h   AS poliza_cubre_velacion_h,
-        ppl.cubre_traslado_local    AS poliza_cubre_traslado_local,
-        ppl.cubre_traslado_nacional AS poliza_cubre_traslado_nacional,
-        ppl.cubre_flores       AS poliza_cubre_flores,
-        ppl.cubre_cremacion    AS poliza_cubre_cremacion,
-        ppl.cubre_tramites     AS poliza_cubre_tramites,
-        ppl.valor_excedente    AS poliza_valor_excedente,
+        pol.servicios_incluidos AS poliza_servicios,
+        pol.cubre_velacion_h   AS poliza_cubre_velacion_h,
+        pol.valor_excedente    AS poliza_valor_excedente,
         ppl.valor_mensual      AS poliza_valor_mensual,
         -- Titular de la póliza
         tpol.id                AS poliza_titular_id,
@@ -404,29 +399,20 @@ export async function obtener(req, reply) {
 
 // ── Crear ─────────────────────────────────────────────────────────────────
 
-// ── Mapeo plan → ítems de catálogo ───────────────────────────────────────
-const ATAUD_MAP = { BASICO: 'ATD-001', MEDIANO: 'ATD-002', PREMIUM: 'ATD-003', LUJO: 'ATD-003' }
-
-async function itemsDesdeplan(planId, db) {
-  const p = await db.query(`SELECT * FROM planes_poliza WHERE id=$1`, [planId])
+// ── Ítems de catálogo cubiertos por una póliza ───────────────────────────
+// Se leen desde servicios_incluidos, congelado en la póliza al momento de
+// la venta (migración 061) — no desde el plan en vivo, para que editar el
+// plan después no cambie retroactivamente lo que esta póliza ya cubre.
+// El precio se re-consulta en servicios_catalogo por si cambió desde la venta.
+async function itemsDesdePoliza(polizaId, db) {
+  const p = await db.query(`SELECT servicios_incluidos FROM polizas WHERE id=$1`, [polizaId])
   if (!p.rows.length) return []
-  const plan = p.rows[0]
-
-  const codigos = ['PRE-001'] // Preparación siempre incluida
-  codigos.push(ATAUD_MAP[plan.cubre_ataud] || 'ATD-001')
-  if (plan.cubre_velacion_h >= 24) codigos.push('SVL-002')
-  else codigos.push('SVL-001')
-  if (plan.cubre_traslado_local)    codigos.push('TRS-001')
-  if (plan.cubre_traslado_nacional) codigos.push('TRS-003')
-  if (plan.cubre_flores)            codigos.push('FLR-001')
-  if (plan.cubre_cremacion)         codigos.push('CRM-001')
-  else                              codigos.push('INH-001')
-  if (plan.cubre_tramites)          codigos.push('DOC-001')
-  if (plan.cubre_lapida)            codigos.push('DOC-002')
+  const ids = (p.rows[0].servicios_incluidos || []).map(s => s.id)
+  if (!ids.length) return []
 
   const res = await db.query(
-    `SELECT id, codigo, nombre, precio_base FROM servicios_catalogo WHERE codigo = ANY($1) AND activo`,
-    [codigos]
+    `SELECT id, codigo, nombre, precio_base FROM servicios_catalogo WHERE id = ANY($1) AND activo`,
+    [ids]
   )
   return res.rows
 }
@@ -434,12 +420,12 @@ async function itemsDesdeplan(planId, db) {
 // ── Preview plan (para mostrar en frontend antes de crear) ─────────────────
 export async function previewPlan(req, reply) {
   const { poliza_id } = req.params
-  const polRes = await pool.query(`SELECT plan_id FROM polizas WHERE id=$1`, [poliza_id])
+  const polRes = await pool.query(`SELECT id FROM polizas WHERE id=$1`, [poliza_id])
   if (!polRes.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
 
   const db = await pool.connect()
   try {
-    const items = await itemsDesdeplan(polRes.rows[0].plan_id, db)
+    const items = await itemsDesdePoliza(poliza_id, db)
     const total = items.reduce((s, i) => s + Number(i.precio_base), 0)
     return reply.send({ data: { items, total } })
   } finally { db.release() }
@@ -572,9 +558,9 @@ export async function crear(req, reply) {
 
     // ── Auto-cargar ítems del plan (si viene de póliza) ──────────────────
     if (poliza_id) {
-      const polRes = await db.query(`SELECT plan_id FROM polizas WHERE id=$1`, [poliza_id])
+      const polRes = await db.query(`SELECT id FROM polizas WHERE id=$1`, [poliza_id])
       if (polRes.rows.length) {
-        const planItems = await itemsDesdeplan(polRes.rows[0].plan_id, db)
+        const planItems = await itemsDesdePoliza(poliza_id, db)
         // items_extras del body (adicionales que el operador agregó)
         const extras = req.body.items_extras || []
         for (const item of planItems) {

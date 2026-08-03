@@ -428,18 +428,24 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
               <div style={{ fontSize:11, fontWeight:800, color:'#059669', letterSpacing:.5,
                 textTransform:'uppercase', marginBottom:8 }}>Cobertura del plan</div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                <CoberturaTag ok label={`Ataúd ${planActual.cubre_ataud}`}/>
                 <CoberturaTag ok label={`Velación ${planActual.cubre_velacion_h}h`}/>
-                <CoberturaTag ok={planActual.cubre_traslado_local}   label="Traslado local"/>
-                <CoberturaTag ok={planActual.cubre_traslado_nacional} label="Traslado nacional"/>
-                <CoberturaTag ok={planActual.cubre_flores}     label="Flores"/>
-                <CoberturaTag ok={planActual.cubre_cremacion}  label="Cremación"/>
-                <CoberturaTag ok={planActual.cubre_tramites}   label="Trámites"/>
-                <CoberturaTag ok={planActual.cubre_lapida}     label="Lápida"/>
+                {Array.isArray(planActual.servicios) && planActual.servicios.map(s => (
+                  <CoberturaTag key={s.id} ok label={s.nombre}/>
+                ))}
                 {Array.isArray(planActual.coberturas_extra) && planActual.coberturas_extra.map((c, i) => (
-                  <CoberturaTag key={i} ok={c.incluido !== false} label={c.nombre}/>
+                  <CoberturaTag key={`ex-${i}`} ok={c.incluido !== false} label={c.nombre}/>
                 ))}
               </div>
+              {(!planActual.servicios || planActual.servicios.length === 0) && (
+                <div style={{ fontSize:11, color:'#92400E', marginTop:6 }}>
+                  ⚠️ Este plan aún no tiene servicios del catálogo asignados.{' '}
+                  {esAdmin && (
+                    <a href="/polizas/planes" target="_blank" rel="noopener" style={{ color:'#059669', fontWeight:700 }}>
+                      Asignarlos →
+                    </a>
+                  )}
+                </div>
+              )}
               <div style={{ fontSize:11, color:'#065F46', marginTop:8, fontWeight:600 }}>
                 ⏳ Carencia: {planActual.meses_carencia} meses · 👥 Máx. beneficiarios: {planActual.max_beneficiarios}
               </div>
@@ -1003,8 +1009,24 @@ function generarContratoPDF(data) {
   ])
   sep()
 
-  // ── 3. Afiliación ──
-  titulo('3. Costo de Afiliación')
+  // ── 3. Servicios incluidos en el plan ──
+  titulo('3. Servicios Incluidos en el Plan')
+  const serviciosPlan = Array.isArray(p.servicios_incluidos) ? p.servicios_incluidos : []
+  if (serviciosPlan.length > 0) {
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...DARK)
+    const texto = serviciosPlan.map(s => s.nombre).join('  •  ')
+    const lines = doc.splitTextToSize(texto, CW)
+    doc.text(lines, PL, y)
+    y += lines.length * 4 + 3
+  } else {
+    doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(...GRAY)
+    doc.text('Sin servicios adicionales asignados al plan a la fecha.', PL, y)
+    y += 6
+  }
+  sep()
+
+  // ── 4. Afiliación ──
+  titulo('4. Costo de Afiliación')
   grid([
     [['Valor de afiliación', fmtCOP(p.costo_afiliacion)], ['Estado', p.afiliacion_pagada ? 'Pagada' : (Number(p.costo_afiliacion)>0 ? 'Pendiente' : 'No aplica')]],
     ...(p.afiliacion_pagada ? [[['Fecha de pago', fmtD(p.afiliacion_fecha_pago)], ['Método de pago', p.afiliacion_metodo_pago||'—']]] : []),
@@ -1012,8 +1034,8 @@ function generarContratoPDF(data) {
   ])
   sep()
 
-  // ── 4. Beneficiarios ──
-  titulo('4. Beneficiarios Designados')
+  // ── 5. Beneficiarios ──
+  titulo('5. Beneficiarios Designados')
   if (beneficiarios.length > 0) {
     autoTable(doc, {
       startY: y,
@@ -1034,9 +1056,9 @@ function generarContratoPDF(data) {
   }
   sep()
 
-  // ── 5. Cláusulas generales ──
+  // ── 6. Cláusulas generales ──
   if (y > 220) { doc.addPage(); y = 14 }
-  titulo('5. Cláusulas Generales')
+  titulo('6. Cláusulas Generales')
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...DARK)
   const clausulas = [
     `El presente contrato de previsión exequial ampara al titular y a los beneficiarios designados, dentro de los límites de edad, cobertura y condiciones establecidos en el plan "${p.plan_nombre}" descrito en este documento.`,
@@ -1595,18 +1617,19 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                 <PldCard icon="✅" title={`Plan: ${data.plan_nombre}`}
                   accentColor="#059669" accentBg="linear-gradient(90deg,#ECFDF5,#D1FAE5)">
                   <div style={{ display:'flex', flexWrap:'wrap', gap:7 }}>
-                    <CoberturaTag ok label={`Ataúd ${data.cubre_ataud}`}/>
                     <CoberturaTag ok label={`Velación ${data.cubre_velacion_h} horas`}/>
-                    <CoberturaTag ok={data.cubre_traslado_local}    label="Traslado local"/>
-                    <CoberturaTag ok={data.cubre_traslado_nacional} label="Traslado nacional"/>
-                    <CoberturaTag ok={data.cubre_flores}    label="Flores y coronas"/>
-                    <CoberturaTag ok={data.cubre_cremacion} label="Cremación"/>
-                    <CoberturaTag ok={data.cubre_tramites}  label="Trámites legales"/>
-                    <CoberturaTag ok={data.cubre_lapida}    label="Lápida"/>
+                    {Array.isArray(data.servicios_incluidos) && data.servicios_incluidos.map(s => (
+                      <CoberturaTag key={s.id} ok label={s.nombre}/>
+                    ))}
                     {Array.isArray(data.coberturas_extra) && data.coberturas_extra.map((c, i) => (
-                      <CoberturaTag key={i} ok={c.incluido !== false} label={c.nombre}/>
+                      <CoberturaTag key={`ex-${i}`} ok={c.incluido !== false} label={c.nombre}/>
                     ))}
                   </div>
+                  {(!data.servicios_incluidos || data.servicios_incluidos.length === 0) && (
+                    <div style={{ fontSize:11, color:'#92400E', marginTop:8 }}>
+                      Esta póliza no tiene servicios adicionales congelados (el plan no tenía servicios asignados al momento de la venta).
+                    </div>
+                  )}
                 </PldCard>
 
                 <div className="pld-grid2">

@@ -43,7 +43,7 @@ const SELECT_LIST = `
     p.cubre_ataud, p.cubre_velacion_h,
     p.cubre_traslado_local, p.cubre_traslado_nacional,
     p.cubre_flores, p.cubre_cremacion, p.cubre_tramites, p.cubre_lapida,
-    p.coberturas_extra,
+    p.coberturas_extra, p.servicios_incluidos,
     -- Asesor
     u.nombre AS asesor_nombre,
     -- Sede
@@ -276,6 +276,15 @@ export async function crear(req, reply) {
   const previasRes = await pool.query('SELECT 1 FROM polizas WHERE titular_id = $1 LIMIT 1', [titular_id])
   const costoAfiliacion = previasRes.rows.length === 0 ? Number(plan.valor_afiliacion) : 0
 
+  // Congelar los servicios reales asignados al plan (plan_servicios) al
+  // momento de la venta — igual que la cobertura booleana (migración 034),
+  // para que editar el plan después no cambie lo que esta póliza ya cubre.
+  const serviciosPlanRes = await pool.query(`
+    SELECT sc.id, sc.nombre, sc.categoria, sc.precio_base
+    FROM plan_servicios ps JOIN servicios_catalogo sc ON sc.id = ps.servicio_id
+    WHERE ps.plan_id = $1 AND sc.activo
+    ORDER BY sc.nombre`, [plan_id])
+
   const db = await pool.connect()
   try {
     await db.query('BEGIN')
@@ -284,13 +293,15 @@ export async function crear(req, reply) {
     const ins = await db.query(`
       INSERT INTO polizas (
         titular_id, plan_id, valor_cuota, dia_cobro,
-        fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion,
+        servicios_incluidos
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
       RETURNING id, numero, costo_afiliacion`,
       [
         titular_id, plan_id, valor_cuota, dia_cobro,
         fecha_inicio || new Date().toISOString().split('T')[0],
         observaciones || null, req.user.id, sedeParaCrear(req), costoAfiliacion,
+        JSON.stringify(serviciosPlanRes.rows),
       ]
     )
 
@@ -399,6 +410,13 @@ export async function actualizar(req, reply) {
     // de carencia contado desde HOY (nunca se reduce la carencia ya cumplida).
     nuevaCarencia = `GREATEST(fecha_fin_carencia, CURRENT_DATE + INTERVAL '${+plan.meses_carencia} months')`
     camposPlan = plan
+
+    const serviciosPlanRes = await pool.query(`
+      SELECT sc.id, sc.nombre, sc.categoria, sc.precio_base
+      FROM plan_servicios ps JOIN servicios_catalogo sc ON sc.id = ps.servicio_id
+      WHERE ps.plan_id = $1 AND sc.activo
+      ORDER BY sc.nombre`, [plan_id])
+    camposPlan.servicios_incluidos = serviciosPlanRes.rows
   }
 
   const res = await pool.query(`
@@ -418,6 +436,7 @@ export async function actualizar(req, reply) {
       cubre_lapida            = COALESCE($14, cubre_lapida),
       valor_excedente         = COALESCE($15, valor_excedente),
       coberturas_extra        = COALESCE($16::jsonb, coberturas_extra),
+      servicios_incluidos     = COALESCE($17::jsonb, servicios_incluidos),
       fecha_fin_carencia      = ${nuevaCarencia || 'fecha_fin_carencia'},
       actualizado             = NOW()
     WHERE id = $5 AND estado NOT IN ('CANCELADA','EJECUTADA')
@@ -435,6 +454,7 @@ export async function actualizar(req, reply) {
       camposPlan?.cubre_lapida ?? null,
       camposPlan?.valor_excedente ?? null,
       camposPlan ? JSON.stringify(camposPlan.coberturas_extra || []) : null,
+      camposPlan ? JSON.stringify(camposPlan.servicios_incluidos || []) : null,
     ]
   )
   if (!res.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada o no editable' })

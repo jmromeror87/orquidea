@@ -69,17 +69,11 @@ function Seccion({ titulo, icono, children }) {
   )
 }
 
-const ATAUD_LABEL = { BASICO: 'Básico', MEDIANO: 'Mediano', PREMIUM: 'Premium', LUJO: 'Lujo' }
-
 const COBERTURA_ITEMS = (c) => [
-  c.cubre_ataud && { label: 'Ataúd', valor: ATAUD_LABEL[c.cubre_ataud] || c.cubre_ataud },
   c.cubre_velacion_h && { label: 'Horas de velación', valor: `${c.cubre_velacion_h}h` },
-  c.cubre_traslado_local != null && { label: 'Traslado local', valor: c.cubre_traslado_local ? 'Incluido' : 'No incluido' },
-  c.cubre_traslado_nacional != null && { label: 'Traslado nacional', valor: c.cubre_traslado_nacional ? 'Incluido' : 'No incluido' },
-  c.cubre_flores != null && { label: 'Flores', valor: c.cubre_flores ? 'Incluido' : 'No incluido' },
-  c.cubre_cremacion != null && { label: 'Cremación', valor: c.cubre_cremacion ? 'Incluido' : 'No incluido' },
-  c.cubre_tramites != null && { label: 'Trámites legales', valor: c.cubre_tramites ? 'Incluido' : 'No incluido' },
-  c.cubre_lapida != null && { label: 'Lápida', valor: c.cubre_lapida ? 'Incluido' : 'No incluido' },
+  ...(Array.isArray(c.servicios_incluidos) ? c.servicios_incluidos.map(s => (
+    { label: s.nombre, valor: 'Incluido' }
+  )) : []),
 ].filter(Boolean)
 
 export default function ConsultarForm({ waNumero = '573158786701' }) {

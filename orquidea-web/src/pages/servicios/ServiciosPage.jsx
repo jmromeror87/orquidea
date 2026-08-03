@@ -3195,13 +3195,10 @@ function TabPoliza({ data }) {
   const ben = data.poliza_beneficiario
 
   const coberturas = [
-    { label:'Ataúd',              val: data.poliza_cubre_ataud, tipo:'text' },
-    { label:'Velación',           val: data.poliza_cubre_velacion_h ? `${data.poliza_cubre_velacion_h} horas` : null, tipo:'text' },
-    { label:'Traslado local',     val: data.poliza_cubre_traslado_local,     tipo:'bool' },
-    { label:'Traslado nacional',  val: data.poliza_cubre_traslado_nacional,  tipo:'bool' },
-    { label:'Flores',             val: data.poliza_cubre_flores,             tipo:'bool' },
-    { label:'Cremación',          val: data.poliza_cubre_cremacion,          tipo:'bool' },
-    { label:'Trámites',           val: data.poliza_cubre_tramites,           tipo:'bool' },
+    { label:'Velación', val: data.poliza_cubre_velacion_h ? `${data.poliza_cubre_velacion_h} horas` : null, tipo:'text' },
+    ...(Array.isArray(data.poliza_servicios) ? data.poliza_servicios.map(s => (
+      { label: s.nombre, val: true, tipo:'bool' }
+    )) : []),
   ]
 
   return (

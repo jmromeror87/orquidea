@@ -149,9 +149,7 @@ export async function consultarEstado(req, reply) {
     const { rows } = await pool.query(`
       SELECT p.id, p.numero, p.estado, p.valor_cuota, p.dia_cobro, p.meses_mora, p.saldo_mora,
              p.pago_hasta, p.ultimo_pago, p.fecha_inicio, p.fecha_fin_carencia,
-             p.max_beneficiarios, p.cubre_ataud, p.cubre_velacion_h,
-             p.cubre_traslado_local, p.cubre_traslado_nacional, p.cubre_flores,
-             p.cubre_cremacion, p.cubre_tramites, p.cubre_lapida, p.valor_excedente,
+             p.max_beneficiarios, p.cubre_velacion_h, p.servicios_incluidos, p.valor_excedente,
              pl.nombre AS plan, pl.tipo AS plan_tipo,
              t.nombres, t.apellidos, t.razon_social, t.numero_documento, t.telefono
       FROM polizas p
@@ -202,14 +200,8 @@ export async function consultarEstado(req, reply) {
         en_carencia: pol.fecha_fin_carencia ? new Date(pol.fecha_fin_carencia) > new Date() : false,
         cobertura: {
           max_beneficiarios: pol.max_beneficiarios,
-          cubre_ataud: pol.cubre_ataud,
           cubre_velacion_h: pol.cubre_velacion_h,
-          cubre_traslado_local: pol.cubre_traslado_local,
-          cubre_traslado_nacional: pol.cubre_traslado_nacional,
-          cubre_flores: pol.cubre_flores,
-          cubre_cremacion: pol.cubre_cremacion,
-          cubre_tramites: pol.cubre_tramites,
-          cubre_lapida: pol.cubre_lapida,
+          servicios_incluidos: pol.servicios_incluidos || [],
           valor_excedente: pol.valor_excedente,
         },
         afiliados_actuales: benefRows.length,
