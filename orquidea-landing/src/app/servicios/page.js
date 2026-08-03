@@ -25,6 +25,22 @@ export const metadata = {
   description: 'Ataúdes, urnas, traslados, salas de velación, cremación y más.',
 }
 
+// Convierte una descripción larga (a veces con **negritas** o listas * tipo
+// markdown escritas por el admin en Configuración→Servicios) en un resumen
+// corto y limpio para la tarjeta pública — la gente no lee párrafos largos.
+function resumen(texto, max = 110) {
+  if (!texto) return ''
+  const limpio = texto
+    .replace(/\*\*/g, '')
+    .replace(/\n?\*\s*/g, ' · ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (limpio.length <= max) return limpio
+  const corte = limpio.slice(0, max)
+  const ultimoEspacio = corte.lastIndexOf(' ')
+  return `${corte.slice(0, ultimoEspacio > 0 ? ultimoEspacio : max)}…`
+}
+
 const CATEGORIAS = {
   ATAUD:         { label: 'Ataúdes',              icon: 'ataud' },
   URNA:          { label: 'Urnas',                icon: 'urna' },
@@ -83,7 +99,7 @@ export default async function ServiciosPage() {
                         <BenefitIcon name={meta.icon} className="h-4 w-4" />
                       </span>
                     </div>
-                    {s.descripcion && <p className="mt-1.5 flex-1 text-sm text-stone-600">{s.descripcion}</p>}
+                    {s.descripcion && <p className="mt-1.5 flex-1 text-sm text-stone-600">{resumen(s.descripcion)}</p>}
                     <div className="mt-4 border-t border-stone-100 pt-3">
                       <a
                         href={`https://wa.me/${waNumero}?text=Hola%2C%20quiero%20informaci%C3%B3n%20sobre%20este%20servicio`}
