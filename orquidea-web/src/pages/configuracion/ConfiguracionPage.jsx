@@ -17,6 +17,7 @@ import {
   CreditCard, ToggleLeft, ToggleRight, Shield, DoorOpen, Users,
   PackagePlus, Trash2, GripVertical,
   Truck, UserSquare2,
+  MessageCircle, Smartphone, RefreshCw, XCircle, Send, Wifi, WifiOff,
 } from 'lucide-react'
 import { empresaService } from '../../services/empresa.service.js'
 import api from '../../services/api.js'
@@ -135,6 +136,30 @@ const CSS = `
   .info-box { background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px;
               padding:12px 16px; font-size:12.5px; color:#1D4ED8;
               margin-bottom:18px; display:flex; gap:10px; align-items:flex-start; line-height:1.5; }
+
+  /* ── WhatsApp / SMS status cards ── */
+  .wa-status-row { display:flex; align-items:center; justify-content:space-between;
+                   padding:12px 16px; border:1.5px solid #ECEDF8; border-radius:12px; margin-bottom:14px; }
+  .wa-status-label { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; color:#374151; }
+  .wa-status-badge { padding:5px 12px; border-radius:20px; font-size:12px; font-weight:800; }
+  .wa-status-body { display:flex; flex-direction:column; align-items:center; text-align:center;
+                    padding:20px; border:1.5px solid #ECEDF8; border-radius:14px; gap:4px; }
+  .wa-status-title { font-size:15px; font-weight:800; margin-top:6px; }
+  .wa-status-sub { font-size:12px; color:#6B7280; max-width:340px; }
+  .wa-status-info { display:flex; flex-direction:column; gap:6px; margin-top:14px; width:100%; max-width:320px; }
+  .wa-status-info div { display:flex; justify-content:space-between; font-size:12.5px;
+                         padding:6px 0; border-bottom:1px solid #F0F1F8; }
+  .wa-status-info span { color:#6B7280; }
+  .wa-status-info strong { color:#0F1035; }
+  .wa-status-footer { text-align:center; font-size:11px; color:#9CA3AF; margin-top:10px; }
+  .spin { animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .sms-log-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .sms-log-table th { text-align:left; color:#9CA3AF; font-weight:700; font-size:10.5px;
+                       text-transform:uppercase; letter-spacing:.4px; padding:6px 10px; border-bottom:1.5px solid #ECEDF8; }
+  .sms-log-table td { padding:8px 10px; border-bottom:1px solid #F0F1F8; color:#374151; }
+  .sms-log-msg { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   /* ── Buttons ── */
   .btn-primary { display:inline-flex; align-items:center; gap:7px;
@@ -2165,6 +2190,7 @@ function TabNotificaciones({ data, saving, setSaving, onOk, onErr }) {
   const guardar = async () => { setSaving(true); try { onOk((await empresaService.actualizarParametros(f)).data.data) } catch { onErr() } finally { setSaving(false) } }
 
   return (
+    <>
     <SecCard titulo="Notificaciones" sub="Integración con WhatsApp Business y correo SMTP" Icon={Bell} color="#EC4899">
       <div className="info-box"><span>🔒</span><span>Los tokens y contraseñas se guardan cifrados. Dejar en blanco para conservar el valor actual.</span></div>
       <Div label="WhatsApp Business API (Meta)" />
@@ -2182,6 +2208,156 @@ function TabNotificaciones({ data, saving, setSaving, onOk, onErr }) {
         <div className="campo"><label>Nombre del Remitente</label><input value={f.smtp_de_nombre} onChange={e=>set('smtp_de_nombre')(e.target.value)} placeholder="Funeraria San José" /></div>
       </div>
       <BtnBar saving={saving} onGuardar={guardar} />
+    </SecCard>
+
+    <WhatsAppEstadoCard />
+    <SmsEstadoCard />
+    </>
+  )
+}
+
+/* ── Card: WhatsApp (whatsapp-web.js) — estado de sesión + QR ── */
+function WhatsAppEstadoCard() {
+  const [estado, setEstado] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [reiniciando, setReiniciando] = useState(false)
+
+  const cargar = useCallback(async () => {
+    try {
+      const r = await api.get('/notificaciones/whatsapp/estado')
+      setEstado(r.data.data)
+    } catch { setEstado({ ready:false, estado:'error_conexion' }) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    cargar()
+    const t = setInterval(cargar, 3000)
+    return () => clearInterval(t)
+  }, [cargar])
+
+  const reiniciar = async () => {
+    setReiniciando(true)
+    try {
+      await api.post('/notificaciones/whatsapp/reiniciar')
+      toast.success('Reiniciando sesión de WhatsApp — escanea el nuevo código QR')
+      await cargar()
+    } catch { toast.error('No se pudo reiniciar la sesión') }
+    finally { setReiniciando(false) }
+  }
+
+  const conectado = estado?.ready
+  const badge = conectado
+    ? { label:'Conectado', bg:'#ECFDF5', fg:'#059669', Icon:Wifi }
+    : estado?.estado === 'esperando_qr'
+      ? { label:'Esperando escaneo', bg:'#FFFBEB', fg:'#D97706', Icon:Smartphone }
+      : { label:'Desconectado', bg:'#FEF2F2', fg:'#DC2626', Icon:WifiOff }
+
+  return (
+    <SecCard titulo="WhatsApp" sub="Sesión estilo WhatsApp Web (escanea con el celular de la funeraria)" Icon={MessageCircle} color="#25D366">
+      <div className="wa-status-row">
+        <span className="wa-status-label"><badge.Icon size={15}/> Estado</span>
+        <span className="wa-status-badge" style={{ background:badge.bg, color:badge.fg }}>{badge.label}</span>
+      </div>
+
+      {loading ? (
+        <div className="wa-status-body"><Loader2 size={22} className="spin"/></div>
+      ) : conectado ? (
+        <div className="wa-status-body">
+          <CheckCircle2 size={44} color="#059669"/>
+          <div className="wa-status-title" style={{ color:'#059669' }}>Sesión activa</div>
+          <div className="wa-status-sub">WhatsApp conectado y listo para enviar notificaciones.</div>
+          <div className="wa-status-info">
+            <div><span>Número conectado</span><strong>+{estado.numero}</strong></div>
+            <div><span>Vinculado el</span><strong>{estado.conectado_desde ? new Date(estado.conectado_desde).toLocaleString('es-CO') : '—'}</strong></div>
+          </div>
+        </div>
+      ) : estado?.qr ? (
+        <div className="wa-status-body">
+          <img src={estado.qr} alt="QR WhatsApp" width={220} height={220} style={{ borderRadius:14, boxShadow:'0 8px 24px rgba(0,0,0,.12)' }}/>
+          <div className="wa-status-sub">Escanea con WhatsApp → Dispositivos vinculados → Vincular dispositivo</div>
+        </div>
+      ) : (
+        <div className="wa-status-body">
+          <XCircle size={44} color="#DC2626"/>
+          <div className="wa-status-title" style={{ color:'#DC2626' }}>Sin sesión activa</div>
+          <div className="wa-status-sub">
+            {estado?.estado === 'no_configurado' ? 'El servicio de WhatsApp aún no está configurado.' : `Estado: ${estado?.estado || 'desconocido'}`}
+          </div>
+        </div>
+      )}
+
+      <button className="btn-primary" style={{ background:'#25D366', marginTop:14 }} onClick={reiniciar} disabled={reiniciando}>
+        {reiniciando ? <Loader2 size={14} className="spin"/> : <RefreshCw size={14}/>} Reiniciar y generar QR
+      </button>
+      <div className="wa-status-footer">El estado se actualiza automáticamente cada 3 segundos</div>
+    </SecCard>
+  )
+}
+
+/* ── Card: SMS (LabsMobile) — saldo + historial de envíos ── */
+function SmsEstadoCard() {
+  const [saldo, setSaldo] = useState(null)
+  const [log, setLog] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [rs, rl] = await Promise.all([
+        api.get('/notificaciones/sms/saldo'),
+        api.get('/notificaciones/log?canal=SMS&limit=15'),
+      ])
+      setSaldo(rs.data.data.saldo)
+      setLog(rl.data.data)
+    } catch { /* silencioso */ }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const fmtF = f => new Date(f).toLocaleString('es-CO', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+
+  return (
+    <SecCard titulo="SMS" sub="Proveedor: LabsMobile" Icon={Send} color="#6366F1">
+      <div className="wa-status-row">
+        <span className="wa-status-label"><Send size={15}/> Saldo disponible</span>
+        <span className="wa-status-badge" style={{ background: saldo > 5 ? '#ECFDF5' : '#FEF2F2', color: saldo > 5 ? '#059669' : '#DC2626' }}>
+          {saldo == null ? '—' : `${saldo} créditos`}
+        </span>
+      </div>
+      {saldo != null && saldo < 5 && (
+        <div className="info-box" style={{ marginTop:10 }}><span>⚠️</span><span>Saldo bajo — recarga en tu cuenta de LabsMobile para seguir enviando SMS.</span></div>
+      )}
+
+      <Div label="Últimos mensajes enviados" />
+      {loading ? (
+        <div className="wa-status-body"><Loader2 size={22} className="spin"/></div>
+      ) : log.length === 0 ? (
+        <div className="wa-status-sub" style={{ textAlign:'center', padding:'14px 0' }}>Aún no se ha enviado ningún SMS.</div>
+      ) : (
+        <table className="sms-log-table">
+          <thead>
+            <tr><th>Destinatario</th><th>Mensaje</th><th>Estado</th><th>Fecha</th></tr>
+          </thead>
+          <tbody>
+            {log.map(m => (
+              <tr key={m.id}>
+                <td>{m.destinatario}</td>
+                <td className="sms-log-msg" title={m.mensaje}>{m.mensaje}</td>
+                <td>
+                  <span className="wa-status-badge" style={{
+                    background: m.estado === 'ENVIADO' ? '#ECFDF5' : '#FEF2F2',
+                    color: m.estado === 'ENVIADO' ? '#059669' : '#DC2626', fontSize:11 }}>
+                    {m.estado}
+                  </span>
+                </td>
+                <td>{fmtF(m.creado_en)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </SecCard>
   )
 }

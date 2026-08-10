@@ -13,6 +13,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import { env } from '../config/env.js'
+import pool from '../config/database.js'
 
 const API_BASE = 'https://api.labsmobile.com'
 
@@ -36,14 +37,24 @@ export async function consultarSaldoSMS() {
 }
 
 // mensaje: máx ~160 caracteres para 1 crédito (LabsMobile cobra por segmento GSM-7).
-export async function enviarSMS({ numero, mensaje }) {
+export async function enviarSMS({ numero, mensaje, usuarioId = null }) {
+  const registrar = (estado, extra = {}) => pool.query(
+    `INSERT INTO notificaciones_log (canal, destinatario, mensaje, estado, proveedor, referencia, error, usuario_id)
+     VALUES ('SMS',$1,$2,$3,'LabsMobile',$4,$5,$6)`,
+    [numero, mensaje, estado, extra.referencia || null, extra.error || null, usuarioId]
+  ).catch(e => console.error('[sms] no se pudo registrar en log:', e.message))
+
   if (!env.labsmobile.user || !env.labsmobile.token) {
     console.warn(`[sms] LabsMobile no configurado. Mensaje para ${numero}: ${mensaje}`)
+    await registrar('ERROR', { error: 'LabsMobile no configurado' })
     return { enviado: false, motivo: 'no_configurado' }
   }
 
   const msisdn = normalizarMsisdn(numero)
-  if (!msisdn) return { enviado: false, motivo: 'numero_invalido' }
+  if (!msisdn) {
+    await registrar('ERROR', { error: 'Número inválido' })
+    return { enviado: false, motivo: 'numero_invalido' }
+  }
 
   const r = await fetch(`${API_BASE}/json/send`, {
     method: 'POST',
@@ -58,7 +69,9 @@ export async function enviarSMS({ numero, mensaje }) {
 
   if (data.code !== 0) {
     console.error(`[sms] Error LabsMobile enviando a ${msisdn}:`, data)
+    await registrar('ERROR', { error: data.message || JSON.stringify(data) })
     return { enviado: false, motivo: data.message || 'error_api', data }
   }
+  await registrar('ENVIADO', { referencia: data.subid })
   return { enviado: true, subid: data.subid }
 }

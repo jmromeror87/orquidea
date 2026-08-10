@@ -44,6 +44,10 @@ export const env = {
     token: process.env.LABSMOBILE_TOKEN || '',
     remitente: process.env.LABSMOBILE_REMITENTE || 'Orquidea',
   },
+  whatsapp: {
+    serviceUrl:    process.env.WHATSAPP_SERVICE_URL    || '',
+    internalToken: process.env.WHATSAPP_INTERNAL_TOKEN || '',
+  },
   wompi: {
     publicKey:      process.env.WOMPI_PUBLIC_KEY      || '',
     privateKey:      process.env.WOMPI_PRIVATE_KEY     || '',

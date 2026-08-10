@@ -57,6 +57,7 @@ import posRoutes           from './routes/pos.routes.js'
 import publicoRoutes       from './routes/publico.routes.js'
 import memorialesRoutes    from './routes/memoriales.routes.js'
 import leadsRoutes         from './routes/leads.routes.js'
+import notificacionesRoutes from './routes/notificaciones.routes.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -129,6 +130,7 @@ app.register(posRoutes,           { prefix: '/api/pos' })
 app.register(publicoRoutes,       { prefix: '/api/publico' })
 app.register(memorialesRoutes,    { prefix: '/api/memoriales' })
 app.register(leadsRoutes,         { prefix: '/api/leads' })
+app.register(notificacionesRoutes, { prefix: '/api/notificaciones' })
 
 // ── Cron: recalcular mora de pólizas cada noche a las 2:00 AM ────────
 function programarCronMora() {
