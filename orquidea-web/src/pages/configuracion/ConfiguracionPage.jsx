@@ -137,6 +137,14 @@ const CSS = `
               padding:12px 16px; font-size:12.5px; color:#1D4ED8;
               margin-bottom:18px; display:flex; gap:10px; align-items:flex-start; line-height:1.5; }
 
+  /* ── Notificaciones: sub-tabs ── */
+  .notif-subtabs { display:flex; gap:6px; margin-bottom:18px; border-bottom:1.5px solid #ECEDF8; padding-bottom:0; }
+  .notif-subtab { display:flex; align-items:center; gap:7px; padding:10px 18px; border:none; background:none;
+                  font-size:13px; font-weight:700; color:#9CA3AF; cursor:pointer; border-radius:10px 10px 0 0;
+                  border-bottom:2.5px solid transparent; transition:all .15s; margin-bottom:-1.5px; }
+  .notif-subtab:hover { color:#4B5065; background:#FAFBFF; }
+  .notif-subtab.active { color:#2E3192; border-bottom-color:#2E3192; background:#F8F9FF; }
+
   /* ── WhatsApp / SMS status cards ── */
   .wa-status-row { display:flex; align-items:center; justify-content:space-between;
                    padding:12px 16px; border:1.5px solid #ECEDF8; border-radius:12px; margin-bottom:14px; }
@@ -2183,7 +2191,14 @@ function TabTiposDocumento({ tiposDoc, saving, setSaving, onOk, onErr }) {
 /* ════════════════════════════════════
    TAB NOTIFICACIONES
 ════════════════════════════════════ */
+const NOTIF_SUBTABS = [
+  { id:'correo',   label:'Correo (SMTP)', Icon:Send },
+  { id:'whatsapp', label:'WhatsApp',      Icon:MessageCircle },
+  { id:'sms',      label:'SMS',           Icon:Smartphone },
+]
+
 function TabNotificaciones({ data, saving, setSaving, onOk, onErr }) {
+  const [sub, setSub] = useState('correo')
   const [f, setF] = useState({ wa_token:'', wa_phone_id:'', wa_business_id:'', smtp_host:'', smtp_puerto:587, smtp_usuario:'', smtp_password:'', smtp_de_nombre:'' })
   useEffect(() => { if (data) setF(x => ({...x,...data})) }, [data])
   const set = k => v => setF(x => ({...x,[k]:v}))
@@ -2191,27 +2206,44 @@ function TabNotificaciones({ data, saving, setSaving, onOk, onErr }) {
 
   return (
     <>
-    <SecCard titulo="Notificaciones" sub="Integración con WhatsApp Business y correo SMTP" Icon={Bell} color="#EC4899">
-      <div className="info-box"><span>🔒</span><span>Los tokens y contraseñas se guardan cifrados. Dejar en blanco para conservar el valor actual.</span></div>
-      <Div label="WhatsApp Business API (Meta)" />
-      <div className="g2">
-        <div className="campo"><label>Phone Number ID</label><input value={f.wa_phone_id} onChange={e=>set('wa_phone_id')(e.target.value)} /></div>
-        <div className="campo"><label>Business Account ID</label><input value={f.wa_business_id} onChange={e=>set('wa_business_id')(e.target.value)} /></div>
-        <div className="campo span2"><label>Token de Acceso</label><input value={f.wa_token} onChange={e=>set('wa_token')(e.target.value)} type="password" placeholder="Ingrese para actualizar" /></div>
-      </div>
-      <Div label="Correo Electrónico SMTP" />
-      <div className="g3">
-        <div className="campo span2"><label>Servidor SMTP</label><input value={f.smtp_host} onChange={e=>set('smtp_host')(e.target.value)} placeholder="smtp.gmail.com" /></div>
-        <div className="campo"><label>Puerto</label><input value={f.smtp_puerto} onChange={e=>set('smtp_puerto')(e.target.value)} type="number" /></div>
-        <div className="campo"><label>Usuario / Email</label><input value={f.smtp_usuario} onChange={e=>set('smtp_usuario')(e.target.value)} /></div>
-        <div className="campo"><label>Contraseña</label><input value={f.smtp_password} onChange={e=>set('smtp_password')(e.target.value)} type="password" placeholder="Ingrese para actualizar" /></div>
-        <div className="campo"><label>Nombre del Remitente</label><input value={f.smtp_de_nombre} onChange={e=>set('smtp_de_nombre')(e.target.value)} placeholder="Funeraria San José" /></div>
-      </div>
-      <BtnBar saving={saving} onGuardar={guardar} />
-    </SecCard>
+    <div className="notif-subtabs">
+      {NOTIF_SUBTABS.map(t => (
+        <button key={t.id} className={`notif-subtab${sub === t.id ? ' active' : ''}`} onClick={() => setSub(t.id)}>
+          <t.Icon size={15}/> {t.label}
+        </button>
+      ))}
+    </div>
 
-    <WhatsAppEstadoCard />
-    <SmsEstadoCard />
+    {sub === 'correo' && (
+      <SecCard titulo="Correo Electrónico" sub="Envío transaccional (SMTP)" Icon={Bell} color="#EC4899">
+        <div className="info-box"><span>🔒</span><span>Los tokens y contraseñas se guardan cifrados. Dejar en blanco para conservar el valor actual.</span></div>
+        <div className="g3">
+          <div className="campo span2"><label>Servidor SMTP</label><input value={f.smtp_host} onChange={e=>set('smtp_host')(e.target.value)} placeholder="smtp.gmail.com" /></div>
+          <div className="campo"><label>Puerto</label><input value={f.smtp_puerto} onChange={e=>set('smtp_puerto')(e.target.value)} type="number" /></div>
+          <div className="campo"><label>Usuario / Email</label><input value={f.smtp_usuario} onChange={e=>set('smtp_usuario')(e.target.value)} /></div>
+          <div className="campo"><label>Contraseña</label><input value={f.smtp_password} onChange={e=>set('smtp_password')(e.target.value)} type="password" placeholder="Ingrese para actualizar" /></div>
+          <div className="campo"><label>Nombre del Remitente</label><input value={f.smtp_de_nombre} onChange={e=>set('smtp_de_nombre')(e.target.value)} placeholder="Funeraria San José" /></div>
+        </div>
+        <BtnBar saving={saving} onGuardar={guardar} />
+      </SecCard>
+    )}
+
+    {sub === 'whatsapp' && (
+      <>
+        <WhatsAppEstadoCard />
+        <SecCard titulo="WhatsApp Business API (Meta)" sub="Alternativa oficial — opcional, no se usa mientras la sesión QR esté activa" Icon={MessageCircle} color="#25D366">
+          <div className="info-box"><span>🔒</span><span>Los tokens se guardan cifrados. Dejar en blanco para conservar el valor actual.</span></div>
+          <div className="g2">
+            <div className="campo"><label>Phone Number ID</label><input value={f.wa_phone_id} onChange={e=>set('wa_phone_id')(e.target.value)} /></div>
+            <div className="campo"><label>Business Account ID</label><input value={f.wa_business_id} onChange={e=>set('wa_business_id')(e.target.value)} /></div>
+            <div className="campo span2"><label>Token de Acceso</label><input value={f.wa_token} onChange={e=>set('wa_token')(e.target.value)} type="password" placeholder="Ingrese para actualizar" /></div>
+          </div>
+          <BtnBar saving={saving} onGuardar={guardar} />
+        </SecCard>
+      </>
+    )}
+
+    {sub === 'sms' && <SmsEstadoCard />}
     </>
   )
 }
