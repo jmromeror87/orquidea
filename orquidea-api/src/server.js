@@ -27,6 +27,7 @@ import 'dotenv/config'
 
 import { env } from './config/env.js'
 import pool from './config/database.js'
+import { ejecutarRecordatoriosPago } from './cron/recordatoriosPago.js'
 
 // ── Rutas ─────────────────────────────────────────────────────────
 import { errorHandler }    from './middlewares/errorHandler.js'
@@ -159,11 +160,30 @@ function programarCronMora() {
   console.log(`[CRON] Mora programada para las 2:00 AM (en ${Math.round(msHasta2am/60000)} min)`)
 }
 
+// ── Cron: recordatorios de pago (WhatsApp/SMS) cada mañana a las 9:00 AM ──
+// Corre después del recálculo de mora (2am) para tener meses_mora/saldo_mora
+// del día ya actualizados. Avisa: cuota vence en 3 días, y pólizas en mora.
+function programarCronRecordatorios() {
+  const ahora   = new Date()
+  const proxima9am = new Date(ahora)
+  proxima9am.setHours(9, 0, 0, 0)
+  if (proxima9am <= ahora) proxima9am.setDate(proxima9am.getDate() + 1)
+  const msHasta9am = proxima9am - ahora
+
+  setTimeout(async () => {
+    await ejecutarRecordatoriosPago()
+    setInterval(ejecutarRecordatoriosPago, 24 * 60 * 60 * 1000)
+  }, msHasta9am)
+
+  console.log(`[CRON] Recordatorios de pago programados para las 9:00 AM (en ${Math.round(msHasta9am/60000)} min)`)
+}
+
 // ── Start ─────────────────────────────────────────────────────────
 try {
   await app.listen({ port: env.port, host: env.host })
   console.log(`🌸 Orquídea API corriendo en http://localhost:${env.port}`)
   programarCronMora()
+  programarCronRecordatorios()
 } catch (err) {
   app.log.error(err)
   process.exit(1)
