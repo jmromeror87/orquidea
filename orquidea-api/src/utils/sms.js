@@ -67,7 +67,7 @@ export async function enviarSMS({ numero, mensaje, usuarioId = null }) {
   })
   const data = await r.json()
 
-  if (data.code !== 0) {
+  if (Number(data.code) !== 0) {
     console.error(`[sms] Error LabsMobile enviando a ${msisdn}:`, data)
     await registrar('ERROR', { error: data.message || JSON.stringify(data) })
     return { enviado: false, motivo: data.message || 'error_api', data }
