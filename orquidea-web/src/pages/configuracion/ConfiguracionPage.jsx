@@ -144,6 +144,8 @@ const CSS = `
                   border-bottom:2.5px solid transparent; transition:all .15s; margin-bottom:-1.5px; }
   .notif-subtab:hover { color:#4B5065; background:#FAFBFF; }
   .notif-subtab.active { color:#2E3192; border-bottom-color:#2E3192; background:#F8F9FF; }
+  .notif-subtabs-nested { margin-bottom:14px; border-bottom:1.5px solid #F0F1F8; }
+  .notif-subtabs-nested .notif-subtab { padding:7px 14px; font-size:12px; }
 
   /* ── WhatsApp / SMS status cards ── */
   .wa-status-row { display:flex; align-items:center; justify-content:space-between;
@@ -2197,8 +2199,14 @@ const NOTIF_SUBTABS = [
   { id:'sms',      label:'SMS',           Icon:Smartphone },
 ]
 
+const WA_SUBTABS = [
+  { id:'qr',  label:'Sesión QR' },
+  { id:'api', label:'API Oficial (Meta)' },
+]
+
 function TabNotificaciones({ data, saving, setSaving, onOk, onErr }) {
   const [sub, setSub] = useState('correo')
+  const [waSub, setWaSub] = useState('qr')
   const [f, setF] = useState({ wa_token:'', wa_phone_id:'', wa_business_id:'', smtp_host:'', smtp_puerto:587, smtp_usuario:'', smtp_password:'', smtp_de_nombre:'' })
   useEffect(() => { if (data) setF(x => ({...x,...data})) }, [data])
   const set = k => v => setF(x => ({...x,[k]:v}))
@@ -2230,16 +2238,27 @@ function TabNotificaciones({ data, saving, setSaving, onOk, onErr }) {
 
     {sub === 'whatsapp' && (
       <>
-        <WhatsAppEstadoCard />
-        <SecCard titulo="WhatsApp Business API (Meta)" sub="Alternativa oficial — opcional, no se usa mientras la sesión QR esté activa" Icon={MessageCircle} color="#25D366">
-          <div className="info-box"><span>🔒</span><span>Los tokens se guardan cifrados. Dejar en blanco para conservar el valor actual.</span></div>
-          <div className="g2">
-            <div className="campo"><label>Phone Number ID</label><input value={f.wa_phone_id} onChange={e=>set('wa_phone_id')(e.target.value)} /></div>
-            <div className="campo"><label>Business Account ID</label><input value={f.wa_business_id} onChange={e=>set('wa_business_id')(e.target.value)} /></div>
-            <div className="campo span2"><label>Token de Acceso</label><input value={f.wa_token} onChange={e=>set('wa_token')(e.target.value)} type="password" placeholder="Ingrese para actualizar" /></div>
-          </div>
-          <BtnBar saving={saving} onGuardar={guardar} />
-        </SecCard>
+        <div className="notif-subtabs notif-subtabs-nested">
+          {WA_SUBTABS.map(t => (
+            <button key={t.id} className={`notif-subtab${waSub === t.id ? ' active' : ''}`} onClick={() => setWaSub(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {waSub === 'qr' && <WhatsAppEstadoCard />}
+
+        {waSub === 'api' && (
+          <SecCard titulo="WhatsApp Business API (Meta)" sub="Alternativa oficial — opcional, no se usa mientras la sesión QR esté activa" Icon={MessageCircle} color="#25D366">
+            <div className="info-box"><span>🔒</span><span>Los tokens se guardan cifrados. Dejar en blanco para conservar el valor actual.</span></div>
+            <div className="g2">
+              <div className="campo"><label>Phone Number ID</label><input value={f.wa_phone_id} onChange={e=>set('wa_phone_id')(e.target.value)} /></div>
+              <div className="campo"><label>Business Account ID</label><input value={f.wa_business_id} onChange={e=>set('wa_business_id')(e.target.value)} /></div>
+              <div className="campo span2"><label>Token de Acceso</label><input value={f.wa_token} onChange={e=>set('wa_token')(e.target.value)} type="password" placeholder="Ingrese para actualizar" /></div>
+            </div>
+            <BtnBar saving={saving} onGuardar={guardar} />
+          </SecCard>
+        )}
       </>
     )}
 
