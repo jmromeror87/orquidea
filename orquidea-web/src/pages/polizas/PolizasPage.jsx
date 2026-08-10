@@ -21,7 +21,7 @@ import {
   ChevronLeft, ChevronRight, User, Phone, Mail, Calendar,
   AlertTriangle, CheckCircle2, Clock, Ban, Edit2, Eye,
   CreditCard, Heart, PlusCircle, Trash2, Star, ArrowLeftRight,
-  DollarSign, Users, AlertCircle, Settings, FileText,
+  DollarSign, Users, AlertCircle, Settings, FileText, MessageCircle, Send,
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -1090,6 +1090,110 @@ function generarContratoPDF(data) {
   doc.save(`Contrato-Poliza-${p.numero}.pdf`)
 }
 
+// ── Modal: Enviar mensaje manual (WhatsApp / SMS) al titular ───────────────
+function plantillasMensaje(p) {
+  const fmt = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(v||0)
+  const fmtF = f => f ? new Date(f).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric', timeZone:'UTC' }) : '—'
+  return [
+    { label:'Póliza vigente', texto:
+      `Hola ${p.titular_nombre}, te confirmamos que tu póliza N° ${p.numero} (Plan ${p.plan_nombre}) está VIGENTE y al día. Gracias por confiar en nosotros. — Funeraria San José de Ábrego` },
+    { label:'Póliza suspendida / mora', texto:
+      `Hola ${p.titular_nombre}, tu póliza N° ${p.numero} presenta ${p.meses_mora || 0} mes(es) en mora. Ponte al día para evitar la suspensión de tu cobertura. Cualquier duda escríbenos. — Funeraria San José de Ábrego` },
+    { label:'Recordatorio de pago', texto:
+      `Hola ${p.titular_nombre}, te recordamos que tu cuota de la póliza N° ${p.numero} es de ${fmt(p.valor_cuota)}, con corte el día ${p.dia_cobro} de cada mes. — Funeraria San José de Ábrego` },
+    { label:'Póliza próxima a cancelar', texto:
+      `Hola ${p.titular_nombre}, tu póliza N° ${p.numero} está próxima a ser cancelada por falta de pago. Comunícate con nosotros lo antes posible para evitarlo. — Funeraria San José de Ábrego` },
+    { label:'Personalizado', texto:'' },
+  ]
+}
+
+function ModalEnviarMensaje({ poliza, onClose }) {
+  const plantillas = plantillasMensaje(poliza)
+  const [telefono, setTelefono] = useState(poliza.titular_tel || '')
+  const [canal, setCanal] = useState('WHATSAPP')
+  const [plantilla, setPlantilla] = useState(0)
+  const [mensaje, setMensaje] = useState(plantillas[0].texto)
+  const [enviando, setEnviando] = useState(false)
+
+  const elegirPlantilla = i => { setPlantilla(i); setMensaje(plantillas[i].texto) }
+
+  const enviar = async () => {
+    if (!telefono.trim()) return toast.error('Ingresa un teléfono válido')
+    if (!mensaje.trim()) return toast.error('El mensaje no puede estar vacío')
+    setEnviando(true)
+    try {
+      const r = await api.post('/notificaciones/enviar', { telefono, mensaje, canal })
+      toast.success(`Mensaje enviado por ${r.data.data.canal === 'SMS' ? 'SMS' : 'WhatsApp'}`)
+      onClose()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo enviar el mensaje')
+    } finally { setEnviando(false) }
+  }
+
+  return (
+    <div className="pl-drawer-overlay" style={{ zIndex:60 }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background:'#fff', borderRadius:18, width:480, maxWidth:'92vw', maxHeight:'88vh',
+        overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ background:'linear-gradient(135deg,#25D366,#128C7E)', padding:'18px 22px',
+          display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <MessageCircle size={20} color="#fff"/>
+            <div style={{ color:'#fff', fontWeight:800, fontSize:15 }}>Enviar mensaje al titular</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer' }}>
+            <X size={18} color="#fff"/>
+          </button>
+        </div>
+
+        <div style={{ padding:'20px 22px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div>
+            <label style={{ fontSize:11, fontWeight:800, color:'#6B7280', textTransform:'uppercase', letterSpacing:.4 }}>Canal</label>
+            <div style={{ display:'flex', gap:8, marginTop:6 }}>
+              {[['WHATSAPP','WhatsApp'],['SMS','SMS']].map(([v,l]) => (
+                <button key={v} onClick={() => setCanal(v)}
+                  style={{ flex:1, padding:'9px 0', borderRadius:10, cursor:'pointer', fontWeight:700, fontSize:12.5,
+                    border: canal===v ? '1.5px solid #059669' : '1.5px solid #E2E5F0',
+                    background: canal===v ? '#ECFDF5' : '#fff', color: canal===v ? '#059669' : '#6B7280' }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize:11, fontWeight:800, color:'#6B7280', textTransform:'uppercase', letterSpacing:.4 }}>Teléfono</label>
+            <input value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="3001234567"
+              style={{ width:'100%', marginTop:6, padding:'10px 12px', borderRadius:10, border:'1.5px solid #E2E5F0', fontSize:13 }}/>
+          </div>
+
+          <div>
+            <label style={{ fontSize:11, fontWeight:800, color:'#6B7280', textTransform:'uppercase', letterSpacing:.4 }}>Plantilla rápida</label>
+            <select value={plantilla} onChange={e => elegirPlantilla(+e.target.value)}
+              style={{ width:'100%', marginTop:6, padding:'10px 12px', borderRadius:10, border:'1.5px solid #E2E5F0', fontSize:13 }}>
+              {plantillas.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ fontSize:11, fontWeight:800, color:'#6B7280', textTransform:'uppercase', letterSpacing:.4 }}>Mensaje</label>
+            <textarea value={mensaje} onChange={e => setMensaje(e.target.value)} rows={5}
+              style={{ width:'100%', marginTop:6, padding:'10px 12px', borderRadius:10, border:'1.5px solid #E2E5F0',
+                fontSize:13, resize:'vertical', fontFamily:'inherit' }}/>
+          </div>
+
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:4 }}>
+            <button className="pl-btn pl-btn-ghost" onClick={onClose}>Cancelar</button>
+            <button className="pl-btn pl-btn-primary" onClick={enviar} disabled={enviando}
+              style={{ background:'#25D366' }}>
+              {enviando ? <Loader2 size={14} className="pl-spin"/> : <Send size={14}/>} Enviar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal Ficha ───────────────────────────────────────────────────────────
 
 function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar }) {
@@ -1122,6 +1226,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   useEffect(() => { cargar() }, [cargar])
 
   const [generandoContrato, setGenerandoContrato] = useState(false)
+  const [showMensaje, setShowMensaje] = useState(false)
   const generarContrato = async () => {
     setGenerandoContrato(true)
     try {
@@ -1282,6 +1387,14 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                 {generandoContrato ? <Loader2 size={13} className="pl-spin"/> : <FileText size={13}/>} Generar contrato
               </button>
             )}
+            {!loading && (
+              <button onClick={() => setShowMensaje(true)}
+                style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 14px',
+                  background:'rgba(255,255,255,.12)', border:'1.5px solid rgba(255,255,255,.25)',
+                  borderRadius:10, color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer' }}>
+                <MessageCircle size={13}/> Enviar mensaje
+              </button>
+            )}
             {!loading && esEditor && !['CANCELADA','EJECUTADA'].includes(data?.estado) && (
               <>
                 <button onClick={() => onPagar(data)}
@@ -1306,6 +1419,8 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
             </button>
           </div>
         </div>
+
+        {showMensaje && <ModalEnviarMensaje poliza={data} onClose={() => setShowMensaje(false)} />}
 
         {/* Body: sidebar + content */}
         <div style={{ flex:1, display:'flex', overflow:'hidden' }}>

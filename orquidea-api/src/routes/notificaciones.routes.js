@@ -15,14 +15,16 @@
 import { verifyToken } from '../middlewares/auth.middleware.js'
 import { requireRole } from '../middlewares/role.middleware.js'
 import {
-  whatsappEstado, whatsappReiniciar, smsSaldo, listarLog,
+  whatsappEstado, whatsappReiniciar, smsSaldo, listarLog, enviarManual,
 } from '../controllers/notificaciones.controller.js'
 
 export default async function notificacionesRoutes(fastify) {
-  const admins = [verifyToken, requireRole('superadmin', 'administrador')]
+  const admins   = [verifyToken, requireRole('superadmin', 'administrador')]
+  const editores = [verifyToken, requireRole('superadmin', 'administrador', 'operador', 'asesor_comercial')]
 
-  fastify.get('/whatsapp/estado',      { preHandler: admins }, whatsappEstado)
-  fastify.post('/whatsapp/reiniciar',  { preHandler: admins }, whatsappReiniciar)
-  fastify.get('/sms/saldo',            { preHandler: admins }, smsSaldo)
-  fastify.get('/log',                  { preHandler: admins }, listarLog)
+  fastify.get('/whatsapp/estado',      { preHandler: admins },   whatsappEstado)
+  fastify.post('/whatsapp/reiniciar',  { preHandler: admins },   whatsappReiniciar)
+  fastify.get('/sms/saldo',            { preHandler: admins },   smsSaldo)
+  fastify.get('/log',                  { preHandler: admins },   listarLog)
+  fastify.post('/enviar',              { preHandler: editores }, enviarManual)
 }

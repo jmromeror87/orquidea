@@ -13,8 +13,8 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import pool from '../config/database.js'
-import { estadoWhatsApp, reiniciarWhatsApp } from '../utils/whatsapp.js'
-import { consultarSaldoSMS } from '../utils/sms.js'
+import { estadoWhatsApp, reiniciarWhatsApp, enviarWhatsApp } from '../utils/whatsapp.js'
+import { consultarSaldoSMS, enviarSMS } from '../utils/sms.js'
 
 export async function whatsappEstado(req, reply) {
   try {
@@ -41,6 +41,30 @@ export async function smsSaldo(req, reply) {
   } catch (e) {
     return reply.send({ data: { saldo: null, error: e.message } })
   }
+}
+
+export async function enviarManual(req, reply) {
+  const { telefono, mensaje, canal = 'WHATSAPP' } = req.body
+  if (!telefono || !mensaje?.trim())
+    return reply.code(400).send({ error: 'telefono y mensaje son obligatorios' })
+
+  const usuarioId = req.user.id
+
+  if (canal === 'SMS') {
+    const r = await enviarSMS({ numero: telefono, mensaje, usuarioId })
+    if (!r.enviado) return reply.code(502).send({ error: r.motivo || 'No se pudo enviar el SMS' })
+    return reply.send({ data: { enviado: true, canal: 'SMS' } })
+  }
+
+  const wa = await enviarWhatsApp({ telefono, mensaje, usuarioId })
+  if (wa.enviado) return reply.send({ data: { enviado: true, canal: 'WHATSAPP' } })
+
+  if (canal === 'AMBOS' || canal === 'WHATSAPP_O_SMS') {
+    const sms = await enviarSMS({ numero: telefono, mensaje, usuarioId })
+    if (sms.enviado) return reply.send({ data: { enviado: true, canal: 'SMS', motivoWhatsapp: wa.motivo } })
+  }
+
+  return reply.code(502).send({ error: wa.motivo || 'No se pudo enviar el mensaje' })
 }
 
 export async function listarLog(req, reply) {
