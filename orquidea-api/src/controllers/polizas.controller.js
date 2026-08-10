@@ -11,6 +11,8 @@
 import pool from '../config/database.js'
 import { generarComision } from '../utils/comisiones.js'
 import { resolverSede, sedeParaCrear } from '../utils/sede.js'
+import { enviarWhatsApp } from '../utils/whatsapp.js'
+import { enviarSMS } from '../utils/sms.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -200,6 +202,37 @@ export async function obtener(req, reply) {
   })
 }
 
+// ── Notificar al titular por WhatsApp (o SMS si falla) al afiliarse ────────
+// No bloquea ni revienta la creación de la póliza si el envío falla.
+async function notificarNuevaPoliza({ titularId, numero, planNombre, fechaFinCarencia, totalBeneficiarios }) {
+  try {
+    const t = await pool.query(
+      `SELECT COALESCE(nombres||' '||apellidos, razon_social) AS nombre, telefono FROM terceros WHERE id=$1`,
+      [titularId]
+    )
+    const titular = t.rows[0]
+    if (!titular?.telefono) return
+
+    const fechaCarencia = fechaFinCarencia
+      ? new Date(fechaFinCarencia).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric', timeZone:'UTC' })
+      : '—'
+
+    const mensaje =
+      `Hola ${titular.nombre}, tu afiliación a Funeraria San José de Ábrego fue exitosa. ` +
+      `Póliza N° ${numero} — Plan ${planNombre}. ` +
+      `Periodo de carencia hasta el ${fechaCarencia}. ` +
+      `Beneficiarios registrados: ${totalBeneficiarios}. ` +
+      `Cualquier duda escríbenos por este medio.`
+
+    const wa = await enviarWhatsApp({ telefono: titular.telefono, mensaje })
+    if (!wa.enviado) {
+      await enviarSMS({ numero: titular.telefono, mensaje })
+    }
+  } catch (e) {
+    console.error('[polizas] error notificando nueva póliza:', e.message)
+  }
+}
+
 // ── Datos para generar el contrato de previsión exequial en PDF ─────────────
 
 export async function contratoImpresion(req, reply) {
@@ -296,7 +329,7 @@ export async function crear(req, reply) {
         fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion,
         servicios_incluidos
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-      RETURNING id, numero, costo_afiliacion`,
+      RETURNING id, numero, costo_afiliacion, fecha_fin_carencia`,
       [
         titular_id, plan_id, valor_cuota, dia_cobro,
         fecha_inicio || new Date().toISOString().split('T')[0],
@@ -340,6 +373,15 @@ export async function crear(req, reply) {
     })
 
     await db.query('COMMIT')
+
+    notificarNuevaPoliza({
+      titularId: titular_id,
+      numero: ins.rows[0].numero,
+      planNombre: plan.nombre,
+      fechaFinCarencia: ins.rows[0].fecha_fin_carencia,
+      totalBeneficiarios: beneficiarios.length,
+    })
+
     return reply.code(201).send({ data: ins.rows[0] })
   } catch (e) {
     await db.query('ROLLBACK'); throw e
