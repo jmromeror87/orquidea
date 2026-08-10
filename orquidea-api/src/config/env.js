@@ -39,6 +39,11 @@ export const env = {
     fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
     fromName:  process.env.SMTP_FROM_NAME  || 'Orquídea ERP',
   },
+  labsmobile: {
+    user:  process.env.LABSMOBILE_USER  || '',
+    token: process.env.LABSMOBILE_TOKEN || '',
+    remitente: process.env.LABSMOBILE_REMITENTE || 'Orquidea',
+  },
   wompi: {
     publicKey:      process.env.WOMPI_PUBLIC_KEY      || '',
     privateKey:      process.env.WOMPI_PRIVATE_KEY     || '',
