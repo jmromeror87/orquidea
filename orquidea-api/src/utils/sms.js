@@ -17,6 +17,20 @@ import pool from '../config/database.js'
 
 const API_BASE = 'https://api.labsmobile.com'
 
+// LabsMobile responde siempre en inglés — se traducen los mensajes más comunes.
+const ERRORES_LABSMOBILE = {
+  'the account has no enough credit for this sending': 'La cuenta no tiene saldo suficiente para enviar este mensaje',
+  'invalid credentials': 'Credenciales de LabsMobile inválidas',
+  'invalid recipient': 'Número de destino inválido',
+  'invalid message': 'Mensaje inválido',
+  'message too long': 'El mensaje es demasiado largo',
+}
+
+function traducirErrorLabsMobile(mensaje) {
+  if (!mensaje) return mensaje
+  return ERRORES_LABSMOBILE[mensaje.trim().toLowerCase()] || mensaje
+}
+
 function auth() {
   return 'Basic ' + Buffer.from(`${env.labsmobile.user}:${env.labsmobile.token}`).toString('base64')
 }
@@ -68,9 +82,10 @@ export async function enviarSMS({ numero, mensaje, usuarioId = null }) {
   const data = await r.json()
 
   if (Number(data.code) !== 0) {
+    const errorEs = traducirErrorLabsMobile(data.message) || JSON.stringify(data)
     console.error(`[sms] Error LabsMobile enviando a ${msisdn}:`, data)
-    await registrar('ERROR', { error: data.message || JSON.stringify(data) })
-    return { enviado: false, motivo: data.message || 'error_api', data }
+    await registrar('ERROR', { error: errorEs })
+    return { enviado: false, motivo: errorEs, data }
   }
   await registrar('ENVIADO', { referencia: data.subid })
   return { enviado: true, subid: data.subid }
