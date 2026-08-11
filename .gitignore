@@ -24,3 +24,7 @@ orquidea-api/src/uploads/documentos/*
 # OS
 .DS_Store
 Thumbs.db
+whatsapp-service/node_modules/
+whatsapp-service/.wwebjs_auth/
+whatsapp-service/.wwebjs_cache/
+whatsapp-service/.env
