@@ -34,6 +34,9 @@ const TABS = [
   { id:'servicios',      label:'Servicios',          sub:'Ítems de servicio',    Icon:Package,   color:'#0EA5E9' },
   { id:'paquetes',       label:'Paquetes',            sub:'Combos de servicio',   Icon:PackagePlus, color:'#7C3AED' },
   { id:'tipos_doc',      label:'Tipos Documento',    sub:'DIAN Colombia',        Icon:CreditCard, color:'#0891B2' },
+  { id:'listas_valores', label:'Listas de Valores',  sub:'Sexo / Estado civil / Ocupación / Parentesco', Icon:UserSquare2, color:'#DB2777' },
+  { id:'roles_personal', label:'Roles de Personal',  sub:'Funciones y costo interno', Icon:Users, color:'#1D4ED8' },
+  { id:'tipos_traslado', label:'Tipos de Traslado',  sub:'Costeo de traslados', Icon:Truck, color:'#0891B2' },
   { id:'formas_pago',    label:'Formas de Pago',     sub:'Métodos de cobro',     Icon:CreditCard, color:'#059669' },
   { id:'notificaciones', label:'Notificaciones',     sub:'WhatsApp / Email',     Icon:Bell,      color:'#EC4899' },
   { id:'apariencia',     label:'Apariencia',         sub:'Colores del sistema',  Icon:Palette,   color:'#C9A020' },
@@ -906,6 +909,9 @@ export default function ConfiguracionPage() {
             {tab === 'servicios'      && <TabServicios       servs={servs}   saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Servicio guardado')}}                  onErr={()=>err('Error al guardar')} />}
             {tab === 'paquetes'       && <TabPaquetes />}
             {tab === 'tipos_doc'      && <TabTiposDocumento  tiposDoc={tiposDoc} saving={saving} setSaving={setSaving} onOk={()=>{api.get('/tipos-documento').then(r=>setTiposDoc(r.data.data));ok('Guardado')}} onErr={()=>err('Error al guardar')} />}
+            {tab === 'listas_valores' && <TabListasValores />}
+            {tab === 'roles_personal' && <TabRolesPersonal />}
+            {tab === 'tipos_traslado' && <TabTiposTraslado />}
             {tab === 'formas_pago'    && <TabFormasPago />}
             {tab === 'notificaciones' && <TabNotificaciones  data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Notificaciones actualizadas')}}    onErr={()=>err('Error al guardar')} />}
             {tab === 'apariencia'     && <TabApariencia      data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Apariencia actualizada')}}          onErr={()=>err('Error al guardar')} />}
@@ -2179,6 +2185,425 @@ function TabTiposDocumento({ tiposDoc, saving, setSaving, onOk, onErr }) {
                   <input type="checkbox" checked={f.es_extranjero} onChange={e=>set('es_extranjero')(e.target.checked)} style={{width:16,height:16,accentColor:'#6366F1'}}/>
                   <span style={{fontSize:13,fontWeight:600,color:'#374151',textTransform:'none',letterSpacing:0}}>Es documento extranjero</span>
                 </label>
+              </div>
+            </div>
+            <BtnBar saving={saving} onGuardar={guardar} onCancelar={() => setShow(false)} />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  )
+}
+
+/* ════════════════════════════════════
+   TAB LISTAS DE VALORES
+════════════════════════════════════ */
+const LISTAS_TIPOS = [
+  { tipo:'SEXO',         label:'Sexo' },
+  { tipo:'ESTADO_CIVIL', label:'Estado civil' },
+  { tipo:'OCUPACION',    label:'Ocupación' },
+  { tipo:'PARENTESCO',   label:'Parentesco' },
+]
+
+function TabListasValores() {
+  const [tipo,    setTipo]    = useState('SEXO')
+  const [items,   setItems]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [show,    setShow]    = useState(false)
+  const [editId,  setEditId]  = useState(null)
+  const [f,       setF]       = useState({ etiqueta:'', orden:0 })
+
+  const cargar = useCallback(() => {
+    setLoading(true)
+    api.get('/listas-valores', { params: { tipo } })
+      .then(r => setItems(r.data.data || []))
+      .finally(() => setLoading(false))
+  }, [tipo])
+  useEffect(() => { cargar() }, [cargar])
+
+  const abrir = (it=null) => {
+    setF(it ? { etiqueta: it.etiqueta, orden: it.orden } : { etiqueta:'', orden: items.length })
+    setEditId(it?.id || null)
+    setShow(true)
+  }
+
+  const guardar = async () => {
+    if (!f.etiqueta.trim()) return
+    setSaving(true)
+    try {
+      if (editId) { await api.put(`/listas-valores/${editId}`, f); toast.success('Valor actualizado con éxito') }
+      else        { await api.post('/listas-valores', { tipo, ...f }); toast.success('Valor creado con éxito') }
+      setShow(false); cargar()
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Error al guardar')
+    } finally { setSaving(false) }
+  }
+
+  const toggle = async (it) => {
+    try {
+      await api.patch(`/listas-valores/${it.id}/toggle`)
+      toast.success(it.activo ? 'Valor desactivado con éxito' : 'Valor activado con éxito')
+      cargar()
+    } catch { toast.error('Error al guardar') }
+  }
+
+  const activos = items.filter(i => i.activo).length
+
+  return (
+    <>
+    <SecCard titulo="Listas de Valores" sub="Catálogos usados en los formularios de terceros — cualquier usuario puede agregar un valor nuevo al vuelo desde el mismo campo" Icon={UserSquare2} color="#DB2777">
+
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, gap:12, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {LISTAS_TIPOS.map(t => (
+            <button key={t.tipo} onClick={() => setTipo(t.tipo)}
+              style={{ padding:'7px 14px', borderRadius:9, border:'1.5px solid',
+                borderColor: tipo===t.tipo ? '#DB2777' : '#E5E7EB',
+                background: tipo===t.tipo ? '#FDF2F8' : '#fff',
+                color: tipo===t.tipo ? '#DB2777' : '#6B7280',
+                fontSize:12.5, fontWeight:700, cursor:'pointer' }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <div style={{ background:'#FDF2F8', border:'1px solid #FBCFE8', borderRadius:10, padding:'6px 14px', textAlign:'center' }}>
+            <span style={{ fontSize:16, fontWeight:900, color:'#DB2777' }}>{activos}</span>
+            <span style={{ fontSize:11, color:'#9CA3AF', fontWeight:700, marginLeft:6 }}>activos</span>
+          </div>
+          <button className="btn-primary" onClick={() => abrir()}><Plus size={15}/> Nuevo valor</button>
+        </div>
+      </div>
+
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Etiqueta</th>
+              <th>Código</th>
+              <th style={{textAlign:'center'}}>Orden</th>
+              <th style={{textAlign:'center'}}>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && items.map(it => (
+              <tr key={it.id} style={{ opacity: it.activo ? 1 : 0.55 }}>
+                <td style={{ fontWeight:700 }}>{it.etiqueta}</td>
+                <td><span className="code-tag">{it.codigo}</span></td>
+                <td style={{ textAlign:'center' }}>{it.orden}</td>
+                <td style={{ textAlign:'center' }}>
+                  <button
+                    onClick={() => toggle(it)}
+                    style={{ background:'none', border:'none', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:700,
+                             color: it.activo ? '#10B981' : '#9CA3AF' }}>
+                    {it.activo
+                      ? <><ToggleRight size={20} color="#10B981"/> Activo</>
+                      : <><ToggleLeft  size={20} color="#9CA3AF"/> Inactivo</>}
+                  </button>
+                </td>
+                <td>
+                  <button className="btn-icon" onClick={() => abrir(it)}><Pencil size={13}/></button>
+                </td>
+              </tr>
+            ))}
+            {!loading && !items.length && (
+              <tr><td colSpan={5} style={{ textAlign:'center', color:'#9CA3AF', padding:'24px 0' }}>Sin valores registrados en esta lista.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+    </SecCard>
+
+    {show && (
+      <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setShow(false) }}>
+        <div className="modal-box">
+          <div className="modal-head">
+            <div className="modal-title">
+              {editId ? '✏️ Editar valor' : `+ Nuevo valor de ${LISTAS_TIPOS.find(t=>t.tipo===tipo)?.label}`}
+            </div>
+            <button className="modal-close" onClick={() => setShow(false)}><X size={18}/></button>
+          </div>
+          <div className="modal-body">
+            <div className="g3">
+              <div className="campo span3">
+                <label>Etiqueta *</label>
+                <input autoFocus value={f.etiqueta} onChange={e=>setF(p=>({...p,etiqueta:e.target.value}))}
+                  placeholder="Ej: Soltero/a…"/>
+              </div>
+              <div className="campo">
+                <label>Orden</label>
+                <input value={f.orden} onChange={e=>setF(p=>({...p,orden:Number(e.target.value)}))} type="number" min={0}/>
+              </div>
+            </div>
+            <BtnBar saving={saving} onGuardar={guardar} onCancelar={() => setShow(false)} />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  )
+}
+
+/* ════════════════════════════════════
+   TAB ROLES DE PERSONAL
+════════════════════════════════════ */
+function TabRolesPersonal() {
+  const [items,    setItems]    = useState([])
+  const [catalogo, setCatalogo] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [show,     setShow]     = useState(false)
+  const [editId,   setEditId]   = useState(null)
+  const [f,        setF]        = useState({ etiqueta:'', costo_interno:0, catalogo_id:'', orden:0 })
+
+  const cargar = useCallback(() => {
+    setLoading(true)
+    Promise.all([
+      api.get('/roles-personal'),
+      api.get('/servicios/catalogo'),
+    ]).then(([r, c]) => { setItems(r.data.data || []); setCatalogo(c.data.data || []) })
+      .finally(() => setLoading(false))
+  }, [])
+  useEffect(() => { cargar() }, [cargar])
+
+  const abrir = (it=null) => {
+    setF(it
+      ? { etiqueta: it.etiqueta, costo_interno: it.costo_interno, catalogo_id: it.catalogo_id || '', orden: it.orden }
+      : { etiqueta:'', costo_interno:0, catalogo_id:'', orden: items.length })
+    setEditId(it?.id || null)
+    setShow(true)
+  }
+
+  const guardar = async () => {
+    if (!f.etiqueta.trim()) return
+    setSaving(true)
+    try {
+      const payload = { ...f, catalogo_id: f.catalogo_id || null }
+      if (editId) { await api.put(`/roles-personal/${editId}`, payload); toast.success('Rol actualizado con éxito') }
+      else        { await api.post('/roles-personal', payload); toast.success('Rol creado con éxito') }
+      setShow(false); cargar()
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Error al guardar')
+    } finally { setSaving(false) }
+  }
+
+  const toggle = async (it) => {
+    try {
+      await api.patch(`/roles-personal/${it.id}/toggle`)
+      toast.success(it.activo ? 'Rol desactivado con éxito' : 'Rol activado con éxito')
+      cargar()
+    } catch { toast.error('Error al guardar') }
+  }
+
+  const fmtCOP = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(v || 0)
+  const activos = items.filter(i => i.activo).length
+
+  return (
+    <>
+    <SecCard titulo="Roles de Personal" sub="Funciones que puede cumplir un colaborador en un servicio — con su costo interno y, si aplica, el ítem del catálogo para cobrárselo al cliente" Icon={Users} color="#1D4ED8">
+
+      <div className="info-box" style={{ background:'#EFF6FF', borderColor:'#BFDBFE', color:'#1E40AF' }}>
+        <Shield size={15} style={{ flexShrink:0, marginTop:1 }}/>
+        <span>El <strong>costo interno</strong> es lo que le representa a la funeraria asignar ese rol (mano de obra). Si el rol corresponde a un servicio que también se le puede vender al cliente (ej. Tanatopraxia), vincúlalo a un ítem del catálogo de servicios.</span>
+      </div>
+
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', margin:'16px 0', gap:12, flexWrap:'wrap' }}>
+        <div style={{ background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:10, padding:'8px 16px', textAlign:'center' }}>
+          <div style={{ fontSize:20, fontWeight:900, color:'#1D4ED8' }}>{activos}</div>
+          <div style={{ fontSize:10, color:'#9CA3AF', fontWeight:700, textTransform:'uppercase', letterSpacing:.8 }}>Activos</div>
+        </div>
+        <button className="btn-primary" onClick={() => abrir()}><Plus size={15}/> Nuevo Rol</button>
+      </div>
+
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Rol</th>
+              <th style={{textAlign:'right'}}>Costo interno</th>
+              <th>Ítem vendible vinculado</th>
+              <th style={{textAlign:'center'}}>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && items.map(it => (
+              <tr key={it.id} style={{ opacity: it.activo ? 1 : 0.55 }}>
+                <td style={{ fontWeight:700 }}>{it.etiqueta}</td>
+                <td style={{ textAlign:'right', fontWeight:700, color:'#1D4ED8' }}>{fmtCOP(it.costo_interno)}</td>
+                <td>{it.catalogo_nombre
+                  ? <span className="code-tag">{it.catalogo_nombre} · {fmtCOP(it.catalogo_precio)}</span>
+                  : <span style={{ color:'#D1D5DB', fontSize:13 }}>—</span>}</td>
+                <td style={{ textAlign:'center' }}>
+                  <button
+                    onClick={() => toggle(it)}
+                    style={{ background:'none', border:'none', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5, fontSize:12, fontWeight:700,
+                             color: it.activo ? '#10B981' : '#9CA3AF' }}>
+                    {it.activo
+                      ? <><ToggleRight size={20} color="#10B981"/> Activo</>
+                      : <><ToggleLeft  size={20} color="#9CA3AF"/> Inactivo</>}
+                  </button>
+                </td>
+                <td>
+                  <button className="btn-icon" onClick={() => abrir(it)}><Pencil size={13}/></button>
+                </td>
+              </tr>
+            ))}
+            {!loading && !items.length && (
+              <tr><td colSpan={5} style={{ textAlign:'center', color:'#9CA3AF', padding:'24px 0' }}>Sin roles registrados.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+    </SecCard>
+
+    {show && (
+      <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setShow(false) }}>
+        <div className="modal-box">
+          <div className="modal-head">
+            <div className="modal-title">{editId ? '✏️ Editar Rol' : '+ Nuevo Rol de Personal'}</div>
+            <button className="modal-close" onClick={() => setShow(false)}><X size={18}/></button>
+          </div>
+          <div className="modal-body">
+            <div className="g3">
+              <div className="campo span3">
+                <label>Nombre del rol *</label>
+                <input autoFocus value={f.etiqueta} onChange={e=>setF(p=>({...p,etiqueta:e.target.value}))}
+                  placeholder="Ej: Maquillador/a…"/>
+              </div>
+              <div className="campo">
+                <label>Costo interno (COP)</label>
+                <input value={f.costo_interno} onChange={e=>setF(p=>({...p,costo_interno:Number(e.target.value)}))} type="number" min={0}/>
+              </div>
+              <div className="campo">
+                <label>Orden</label>
+                <input value={f.orden} onChange={e=>setF(p=>({...p,orden:Number(e.target.value)}))} type="number" min={0}/>
+              </div>
+              <div className="campo span3">
+                <label>Ítem vendible vinculado (opcional)</label>
+                <select value={f.catalogo_id} onChange={e=>setF(p=>({...p,catalogo_id:e.target.value}))}>
+                  <option value="">— Ninguno —</option>
+                  {catalogo.map(c => <option key={c.id} value={c.id}>{c.nombre} · {fmtCOP(c.precio_base)}</option>)}
+                </select>
+              </div>
+            </div>
+            <BtnBar saving={saving} onGuardar={guardar} onCancelar={() => setShow(false)} />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  )
+}
+
+/* ════════════════════════════════════
+   TAB TIPOS DE TRASLADO
+════════════════════════════════════ */
+const TRASLADO_TIPOS_LABEL = {
+  RECOGIDA:'Recogida del cuerpo', SALA_VELACION:'A sala de velación',
+  CEMENTERIO:'Al cementerio', CREMATORIO:'Al crematorio', OTRO:'Otro traslado',
+}
+
+function TabTiposTraslado() {
+  const [items,    setItems]    = useState([])
+  const [catalogo, setCatalogo] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [saving,   setSaving]   = useState(false)
+  const [show,     setShow]     = useState(false)
+  const [tipoEdit, setTipoEdit] = useState(null)
+  const [f,        setF]        = useState({ catalogo_id:'', costo_interno:0 })
+
+  const cargar = useCallback(() => {
+    setLoading(true)
+    Promise.all([
+      api.get('/tipos-traslado'),
+      api.get('/servicios/catalogo'),
+    ]).then(([r, c]) => { setItems(r.data.data || []); setCatalogo(c.data.data || []) })
+      .finally(() => setLoading(false))
+  }, [])
+  useEffect(() => { cargar() }, [cargar])
+
+  const abrir = (it) => {
+    setF({ catalogo_id: it.catalogo_id || '', costo_interno: it.costo_interno || 0 })
+    setTipoEdit(it.tipo)
+    setShow(true)
+  }
+
+  const guardar = async () => {
+    setSaving(true)
+    try {
+      await api.put(`/tipos-traslado/${tipoEdit}`, { ...f, catalogo_id: f.catalogo_id || null })
+      toast.success('Tipo de traslado actualizado con éxito')
+      setShow(false); cargar()
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Error al guardar')
+    } finally { setSaving(false) }
+  }
+
+  const fmtCOP = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(v || 0)
+
+  return (
+    <>
+    <SecCard titulo="Tipos de Traslado" sub="Costo interno y precio de venta sugerido por cada tipo de traslado, para poder costearlos y cobrarlos" Icon={Truck} color="#0891B2">
+
+      <div className="info-box" style={{ background:'#F0F9FF', borderColor:'#BAE6FD', color:'#075985' }}>
+        <Shield size={15} style={{ flexShrink:0, marginTop:1 }}/>
+        <span>El <strong>costo interno</strong> es lo que le representa a la funeraria realizar ese traslado (combustible, conductor, etc.). Vincúlalo a un ítem del catálogo de servicios para poder sugerir cobrárselo al cliente desde la ficha del servicio.</span>
+      </div>
+
+      <div className="tbl-wrap" style={{ marginTop:16 }}>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Tipo de traslado</th>
+              <th style={{textAlign:'right'}}>Costo interno</th>
+              <th>Ítem vendible vinculado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && items.map(it => (
+              <tr key={it.tipo}>
+                <td style={{ fontWeight:700 }}>{TRASLADO_TIPOS_LABEL[it.tipo] || it.tipo}</td>
+                <td style={{ textAlign:'right', fontWeight:700, color:'#0891B2' }}>{fmtCOP(it.costo_interno)}</td>
+                <td>{it.catalogo_nombre
+                  ? <span className="code-tag">{it.catalogo_nombre} · {fmtCOP(it.catalogo_precio)}</span>
+                  : <span style={{ color:'#D1D5DB', fontSize:13 }}>—</span>}</td>
+                <td>
+                  <button className="btn-icon" onClick={() => abrir(it)}><Pencil size={13}/></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+    </SecCard>
+
+    {show && (
+      <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setShow(false) }}>
+        <div className="modal-box">
+          <div className="modal-head">
+            <div className="modal-title">✏️ {TRASLADO_TIPOS_LABEL[tipoEdit] || tipoEdit}</div>
+            <button className="modal-close" onClick={() => setShow(false)}><X size={18}/></button>
+          </div>
+          <div className="modal-body">
+            <div className="g3">
+              <div className="campo">
+                <label>Costo interno (COP)</label>
+                <input value={f.costo_interno} onChange={e=>setF(p=>({...p,costo_interno:Number(e.target.value)}))} type="number" min={0}/>
+              </div>
+              <div className="campo span3">
+                <label>Ítem vendible vinculado (opcional)</label>
+                <select value={f.catalogo_id} onChange={e=>setF(p=>({...p,catalogo_id:e.target.value}))}>
+                  <option value="">— Ninguno —</option>
+                  {catalogo.map(c => <option key={c.id} value={c.id}>{c.nombre} · {fmtCOP(c.precio_base)}</option>)}
+                </select>
               </div>
             </div>
             <BtnBar saving={saving} onGuardar={guardar} onCancelar={() => setShow(false)} />

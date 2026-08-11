@@ -19,6 +19,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import mapboxgl from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
+mapboxgl.accessToken = MAPBOX_TOKEN
 import {
   Package, PackagePlus, Search, RefreshCw, X, Loader2,
   ChevronLeft, ChevronRight, User, Phone, Calendar,
@@ -85,11 +90,13 @@ const ORIGEN_META = {
   POLIZA:   { label:'Póliza',   icon:'🛡️', color:'#7C3AED', bg:'#F5F3FF', border:'#C4B5FD' },
   CONVENIO: { label:'Convenio', icon:'🤝', color:'#0891B2', bg:'#ECFEFF', border:'#A5F3FC' },
   CONTRATO: { label:'Contrato', icon:'📋', color:'#2563EB', bg:'#EFF6FF', border:'#BFDBFE' },
+  DIRECTO:  { label:'Directo',  icon:'⚡', color:'#6B7280', bg:'#F3F4F6', border:'#D1D5DB' },
 }
 function origenServicio(s) {
   if (s?.poliza_id)   return 'POLIZA'
   if (s?.convenio_id) return 'CONVENIO'
-  return 'CONTRATO'
+  if (s?.contrato_id) return 'CONTRATO'
+  return 'DIRECTO'
 }
 function OrigenChip({ servicio }) {
   const tipo = origenServicio(servicio)
@@ -113,6 +120,258 @@ const TRASLADO_TIPOS = ['RECOGIDA','SALA_VELACION','CEMENTERIO','CREMATORIO','OT
 const TRASLADO_LABEL = {
   RECOGIDA:'Recogida del cuerpo', SALA_VELACION:'A sala de velación',
   CEMENTERIO:'Al cementerio', CREMATORIO:'Al crematorio', OTRO:'Otro traslado',
+}
+
+// ── Autocompletar direcciones (Mapbox Geocoding) ────────────────────────────
+// Sesgado a la zona de operación de la funeraria (Ábrego / Ocaña, Norte de Santander)
+// para que las primeras sugerencias sean relevantes.
+const MAPBOX_PROXIMITY = '-73.2264,8.0725' // Ábrego, N. de Santander
+function MapboxAddressInput({ value, onSelect, placeholder }) {
+  const [texto,   setTexto]   = useState(value || '')
+  const [sugs,    setSugs]    = useState([])
+  const [abierto, setAbierto] = useState(false)
+  const [buscando, setBuscando] = useState(false)
+
+  useEffect(() => { setTexto(value || '') }, [value])
+
+  useEffect(() => {
+    if (!texto || texto.length < 3 || !MAPBOX_TOKEN) { setSugs([]); return }
+    let cancelado = false
+    setBuscando(true)
+    const t = setTimeout(() => {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(texto)}.json` +
+        `?access_token=${MAPBOX_TOKEN}&country=co&language=es&limit=5&proximity=${MAPBOX_PROXIMITY}`
+      fetch(url).then(r => r.json()).then(d => {
+        if (cancelado) return
+        setSugs(d.features || [])
+        setAbierto(true)
+      }).catch(() => {}).finally(() => { if (!cancelado) setBuscando(false) })
+    }, 350)
+    return () => { cancelado = true; clearTimeout(t) }
+  }, [texto])
+
+  const elegir = (f) => {
+    setTexto(f.place_name)
+    setAbierto(false); setSugs([])
+    onSelect({ texto: f.place_name, lat: f.center[1], lon: f.center[0] })
+  }
+
+  return (
+    <div style={{ position:'relative' }}>
+      <input value={texto}
+        onChange={e => { setTexto(e.target.value); onSelect({ texto: e.target.value, lat:null, lon:null }) }}
+        onFocus={() => sugs.length && setAbierto(true)}
+        onBlur={() => setTimeout(() => setAbierto(false), 150)}
+        placeholder={placeholder}/>
+      {buscando && (
+        <Loader2 size={13} className="sv-spin" style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', color:'#9CA3AF' }}/>
+      )}
+      {abierto && sugs.length > 0 && (
+        <div style={{ position:'absolute', zIndex:20, top:'100%', left:0, right:0, marginTop:4,
+          background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:10, overflow:'hidden',
+          boxShadow:'0 8px 20px rgba(0,0,0,.08)', maxHeight:220, overflowY:'auto' }}>
+          {sugs.map(f => (
+            <div key={f.id} onMouseDown={() => elegir(f)}
+              style={{ padding:'9px 12px', fontSize:12.5, cursor:'pointer', borderBottom:'1px solid #F4F5FA' }}
+              onMouseEnter={e => e.currentTarget.style.background='#F5F3FF'}
+              onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+              {f.place_name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Mapa 3D de ruta del traslado (Mapbox GL — tráfico en tiempo real) ──────────
+const REFRESCO_TRAFICO_MS = 60_000 // recalcula tiempo/tráfico cada minuto, como Google Maps
+
+function MapaRuta({ origen, destino, origenLat, origenLon, destinoLat, destinoLon, vehiculoPlaca, conductorNombre }) {
+  const [ruta,     setRuta]     = useState(null)
+  const [error,    setError]    = useState('')
+  const [cargando, setCargando] = useState(true)
+  const [actualizando, setActualizando] = useState(false)
+  const mapRef  = useRef(null)
+  const elRef   = useRef(null)
+  const puntosRef = useRef(null) // {origen,destino} en coords, para refrescos sin re-geocodificar
+
+  const calcularRuta = async (silencioso = false) => {
+    if (!silencioso) { setCargando(true); setError('') }
+    else setActualizando(true)
+    try {
+      let pOrigen = puntosRef.current?.origen
+      let pDestino = puntosRef.current?.destino
+      if (!pOrigen || !pDestino) {
+        const geocode = async (texto) => {
+          const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(texto)}.json` +
+            `?access_token=${MAPBOX_TOKEN}&country=co&language=es&limit=1&proximity=${MAPBOX_PROXIMITY}`
+          const r = await fetch(url)
+          const d = await r.json()
+          if (!d.features?.length) throw new Error(`No se pudo ubicar: "${texto}"`)
+          return { lat: d.features[0].center[1], lon: d.features[0].center[0] }
+        }
+        pOrigen  = (origenLat  && origenLon)  ? { lat:origenLat,  lon:origenLon }  : await geocode(origen)
+        pDestino = (destinoLat && destinoLon) ? { lat:destinoLat, lon:destinoLon } : await geocode(destino)
+        puntosRef.current = { origen:pOrigen, destino:pDestino }
+      }
+      const dirUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/` +
+        `${pOrigen.lon},${pOrigen.lat};${pDestino.lon},${pDestino.lat}` +
+        `?geometries=geojson&overview=full&annotations=duration&access_token=${MAPBOX_TOKEN}`
+      const rDir = await fetch(dirUrl)
+      const dDir = await rDir.json()
+      const route = dDir.routes?.[0]
+      if (!route) throw new Error('No se encontró una ruta entre esos puntos')
+      setRuta({
+        origen: pOrigen, destino: pDestino, geometry: route.geometry,
+        distancia_km: +(route.distance/1000).toFixed(1), duracion_min: Math.round(route.duration/60),
+        actualizada: new Date(),
+      })
+    } catch (e) {
+      setError(e.message || 'No se pudo calcular la ruta')
+    } finally {
+      setCargando(false); setActualizando(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!MAPBOX_TOKEN) { setError('Falta configurar VITE_MAPBOX_TOKEN'); setCargando(false); return }
+    puntosRef.current = null
+    calcularRuta(false)
+    const intervalo = setInterval(() => calcularRuta(true), REFRESCO_TRAFICO_MS)
+    return () => clearInterval(intervalo)
+  }, [origen, destino, origenLat, origenLon, destinoLat, destinoLon])
+
+  useEffect(() => {
+    if (!ruta || !elRef.current) return
+
+    // Primera carga: crear el mapa. Refrescos posteriores: solo actualizar datos (no recrear).
+    if (!mapRef.current) {
+      const map = new mapboxgl.Map({
+        container: elRef.current,
+        style: 'mapbox://styles/mapbox/navigation-day-v1', // incluye tráfico en tiempo real
+        center: [ruta.origen.lon, ruta.origen.lat],
+        zoom: 13, pitch: 55, bearing: -17, antialias: true,
+      })
+      mapRef.current = map
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch:true }), 'top-right')
+
+      map.on('load', () => {
+        map.addSource('ruta-linea', { type:'geojson', data:{ type:'Feature', geometry:ruta.geometry } })
+        map.addLayer({
+          id:'ruta-linea', type:'line', source:'ruta-linea',
+          layout:{ 'line-join':'round', 'line-cap':'round' },
+          paint:{ 'line-color':'#7C3AED', 'line-width':5, 'line-opacity':.9 },
+        })
+
+        // Edificios 3D
+        map.addLayer({
+          id:'edificios-3d', source:'composite', 'source-layer':'building',
+          filter:['==','extrude','true'], type:'fill-extrusion', minzoom:14,
+          paint:{
+            'fill-extrusion-color':'#D8D8E8',
+            'fill-extrusion-height':['get','height'],
+            'fill-extrusion-base':['get','min_height'],
+            'fill-extrusion-opacity':.75,
+          },
+        })
+
+        // Marcador de origen: la carroza fúnebre (con placa si está asignada) — ícono SVG propio, sin emojis
+        const svgVan = `<svg width="15" height="12" viewBox="0 0 64 35" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="8" width="52" height="18" rx="3" fill="#fff"/>
+          <rect x="46" y="11" width="14" height="15" rx="2" fill="#fff"/>
+          <rect x="48" y="13" width="10" height="8" rx="1.5" fill="#6D28D9" opacity=".45"/>
+          <circle cx="14" cy="28" r="6" fill="#fff"/><circle cx="14" cy="28" r="3" fill="#6D28D9" opacity=".4"/>
+          <circle cx="50" cy="28" r="6" fill="#fff"/><circle cx="50" cy="28" r="3" fill="#6D28D9" opacity=".4"/>
+        </svg>`
+        const elVehiculo = document.createElement('div')
+        elVehiculo.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;'
+        elVehiculo.innerHTML = `
+          <div style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);border-radius:10px;
+            padding:6px 9px;box-shadow:0 3px 10px rgba(0,0,0,.3);display:flex;align-items:center;gap:6px;">
+            ${svgVan}
+            ${vehiculoPlaca ? `<span style="font-size:11px;font-weight:800;color:#fff;white-space:nowrap;letter-spacing:.3px;">${vehiculoPlaca}</span>` : ''}
+          </div>
+          <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+            border-top:7px solid #6D28D9;margin-top:-1px;"></div>
+        `
+        const popupOrigen = (vehiculoPlaca || conductorNombre)
+          ? `Origen: ${origen}<br/><strong>${vehiculoPlaca||''} ${conductorNombre?'· '+conductorNombre:''}</strong>`
+          : 'Origen: ' + origen
+        new mapboxgl.Marker({ element: elVehiculo, anchor:'bottom' })
+          .setLngLat([ruta.origen.lon, ruta.origen.lat])
+          .setPopup(new mapboxgl.Popup().setHTML(popupOrigen))
+          .addTo(map)
+
+        new mapboxgl.Marker({ color:'#DC2626' }).setLngLat([ruta.destino.lon, ruta.destino.lat])
+          .setPopup(new mapboxgl.Popup().setText('Destino: ' + destino)).addTo(map)
+
+        const bounds = ruta.geometry.coordinates.reduce(
+          (b,c) => b.extend(c), new mapboxgl.LngLatBounds(ruta.geometry.coordinates[0], ruta.geometry.coordinates[0]))
+        map.fitBounds(bounds, { padding:60, duration:0 })
+      })
+    } else {
+      // Refresco: solo actualizar la geometría, sin recrear el mapa (evita parpadeo)
+      const src = mapRef.current.getSource('ruta-linea')
+      if (src) src.setData({ type:'Feature', geometry:ruta.geometry })
+    }
+  }, [ruta])
+
+  useEffect(() => () => { mapRef.current?.remove(); mapRef.current = null }, [])
+
+  if (cargando) return (
+    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'14px 0', color:'#9CA3AF', fontSize:12.5 }}>
+      <Loader2 size={14} className="sv-spin"/> Calculando ruta…
+    </div>
+  )
+  if (error) return (
+    <div style={{ padding:'10px 12px', background:'#FEF2F2', border:'1px solid #FECACA',
+      borderRadius:10, color:'#B91C1C', fontSize:12 }}>{error}</div>
+  )
+
+  // Nivel de tráfico estimado (minutos por km) — colorea el ETA como en Uber/Google Maps
+  const minPorKm = ruta ? ruta.duracion_min / Math.max(ruta.distancia_km, .1) : 0
+  const trafico = minPorKm > 3 ? { label:'Tráfico pesado', color:'#DC2626', bg:'#FEF2F2' }
+    : minPorKm > 1.8 ? { label:'Tráfico moderado', color:'#D97706', bg:'#FFFBEB' }
+    : { label:'Fluido', color:'#059669', bg:'#F0FDF4' }
+
+  return (
+    <div>
+      {ruta && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+          background:'#fff', border:'1.5px solid #E5E7EB', borderBottom:'none',
+          borderRadius:'14px 14px 0 0', padding:'14px 18px' }}>
+          <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
+            <span style={{ fontSize:28, fontWeight:900, color:trafico.color, lineHeight:1 }}>{ruta.duracion_min}</span>
+            <span style={{ fontSize:13, fontWeight:700, color:'#6B7280' }}>min</span>
+            <span style={{ fontSize:12.5, color:'#9CA3AF', marginLeft:6 }}>· {ruta.distancia_km} km</span>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, fontWeight:700,
+              color:trafico.color, background:trafico.bg, padding:'5px 10px', borderRadius:20 }}>
+              <span style={{ width:7, height:7, borderRadius:'50%', background:trafico.color, flexShrink:0 }}/>
+              {trafico.label}
+            </span>
+            {(vehiculoPlaca || conductorNombre) && (
+              <span style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, fontWeight:700,
+                color:'#374151', background:'#F3F4F6', padding:'5px 10px', borderRadius:20 }}>
+                <Truck size={12}/> {vehiculoPlaca}{conductorNombre && ` · ${conductorNombre}`}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      <div ref={elRef} style={{ height:340, overflow:'hidden', border:'1.5px solid #E5E7EB',
+        borderRadius: ruta ? '0 0 14px 14px' : 14 }}/>
+      {ruta && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:5,
+          marginTop:6, fontSize:11, color:'#9CA3AF' }}>
+          {actualizando ? <Loader2 size={11} className="sv-spin"/> : <span style={{ width:6, height:6, borderRadius:'50%', background:'#10B981' }}/>}
+          actualizado {ruta.actualizada.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const BLANK = {
@@ -210,7 +469,8 @@ const CSS = `
     z-index:1000; display:flex; justify-content:flex-end; }
   .sv-drawer { background:#fff; width:88%; max-width:1100px; height:100vh;
     display:flex; flex-direction:column; box-shadow:-8px 0 40px rgba(0,0,0,.18);
-    animation:sv-slide-in .22s ease; }
+    animation:sv-slide-in .22s ease; border-top-left-radius:18px; border-bottom-left-radius:18px;
+    overflow:hidden; }
   @keyframes sv-slide-in { from{transform:translateX(100%)} to{transform:translateX(0)} }
   .sv-drawer-body { flex:1; overflow-y:auto; padding:24px 28px; }
   .sv-mhead { padding:22px 24px 18px; border-bottom:1.5px solid #ECEDF8;
@@ -249,7 +509,7 @@ const CSS = `
   .sv-ficha-key { font-size:11px; color:#9CA3AF; min-width:110px; flex-shrink:0; }
   .sv-ficha-val { font-size:12.5px; font-weight:700; color:#0F1035; }
   /* Sistema unificado para el interior del drawer */
-  .tab-card { background:#fff; border:1.5px solid #E5E7EB; border-radius:14px; overflow:hidden; margin-bottom:14px; }
+  .tab-card { background:#fff; border:1.5px solid #E5E7EB; border-radius:10px; overflow:hidden; margin-bottom:14px; }
   .tab-card-head { display:flex; align-items:center; gap:8px; padding:11px 16px;
     border-bottom:1px solid #F0F0F5; background:#FAFBFF; }
   .tab-card-head-accent { background:linear-gradient(135deg,#6D28D908,#8B5CF608); }
@@ -259,6 +519,7 @@ const CSS = `
   .tab-grid { display:grid; gap:12px 20px; }
   .tab-grid-2 { grid-template-columns:1fr 1fr; }
   .tab-grid-3 { grid-template-columns:1fr 1fr 1fr; }
+  .tab-grid-4 { grid-template-columns:1fr 1fr 1fr 1fr; }
   .tab-field { display:flex; flex-direction:column; gap:4px; }
   .tab-field-label { font-size:10.5px; font-weight:600; color:#9CA3AF; text-transform:uppercase; letter-spacing:.5px; }
   .tab-field-value { font-size:13.5px; font-weight:700; color:#111827; line-height:1.3; }
@@ -289,6 +550,19 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
     tramites_completos:servicio.tramites_completos || false,
     observaciones:     servicio.observaciones      || '',
   } : { ...BLANK })
+
+  // ── Disponibilidad de salas de velación ────────────────────────────────────
+  const [salasOcupadas, setSalasOcupadas] = useState(new Set())
+  useEffect(() => {
+    const { fecha_velacion_ini, fecha_velacion_fin } = form
+    if (!fecha_velacion_ini || !fecha_velacion_fin) { setSalasOcupadas(new Set()); return }
+    let cancelado = false
+    api.get('/servicios/salas', { params: { ini: fecha_velacion_ini, fin: fecha_velacion_fin, excluir_id: servicio?.id } })
+      .then(r => { if (!cancelado) setSalasOcupadas(new Set((r.data.data || []).filter(s => s.ocupada).map(s => s.id))) })
+      .catch(() => {})
+    return () => { cancelado = true }
+  }, [form.fecha_velacion_ini, form.fecha_velacion_fin, servicio?.id])
+  const salasDisponibles = salas.filter(s => !salasOcupadas.has(s.id) || s.id === form.sala_id)
 
   // ── Soportes adjuntos (acta de defunción / permiso de inhumación) ─────────
   const [soporteActaUrl,    setSoporteActaUrl]    = useState(servicio?.acta_defuncion_soporte_url || '')
@@ -323,6 +597,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
   const [candCont,   setCandCont]   = useState([])
   const [contratos,  setContratos]  = useState([])
   const [contratoId, setContratoId] = useState('')
+  const [contratanteId, setContratanteId] = useState('')
 
   // PATH B — Póliza
   const [busqPoliza,        setBusqPoliza]        = useState('')
@@ -427,6 +702,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
   const seleccionarContratante = async (tercero) => {
     setBusqCont(`${tercero.nombres||''} ${tercero.apellidos||''}`.trim())
     setCandCont([])
+    setContratanteId(tercero.id)
+    setContratoId('')
     const r = await api.get(`/contratos?q=${tercero.numero_documento}&limit=50`)
     setContratos(r.data.data || [])
   }
@@ -609,6 +886,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
           ...form,
           difunto_id:      difuntoId,
           contrato_id:     vinculoTipo === 'CONTRATO' ? (contratoId || null) : null,
+          contratante_id:  vinculoTipo === 'CONTRATO' && !contratoId ? (contratanteId || null) : null,
           paquete_id:      vinculoTipo === 'CONTRATO' ? (paqueteId  || null) : null,
           poliza_id:       vinculoTipo === 'POLIZA'   ? polizaId             : null,
           beneficiario_id: vinculoTipo === 'POLIZA'   ? beneficiarioId       : null,
@@ -1335,7 +1613,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                           <label>Sala de velación</label>
                           <select value={form.sala_id} onChange={e => setForm(p => ({...p, sala_id:e.target.value}))}>
                             <option value="">— Sin sala —</option>
-                            {salas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                            {salasDisponibles.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                           </select>
                         </div>
                       </div>
@@ -1503,8 +1781,11 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                   <label>Sala de velación</label>
                   <select value={form.sala_id} onChange={e => setForm(p => ({...p, sala_id:e.target.value}))}>
                     <option value="">— Sin sala asignada —</option>
-                    {salas.map(s => <option key={s.id} value={s.id}>{s.nombre} (cap. {s.capacidad})</option>)}
+                    {salasDisponibles.map(s => <option key={s.id} value={s.id}>{s.nombre} (cap. {s.capacidad})</option>)}
                   </select>
+                  {form.fecha_velacion_ini && form.fecha_velacion_fin && salasOcupadas.size > 0 && (
+                    <span style={{ fontSize:11, color:'#B45309' }}>Se ocultan las salas ya reservadas en ese horario.</span>
+                  )}
                 </div>
               </div>
 
@@ -1823,6 +2104,69 @@ function FField({ label, campo, type, opts, form, onChange }) {
   )
 }
 
+// ── Listas de valores paramétricas (Sexo, Estado civil, Ocupación, Parentesco) ──
+// Se administran en Configuración → Listas de valores. Cualquier usuario puede
+// crear un valor nuevo al vuelo desde el mismo campo, igual que al buscar un tercero.
+function useListaValores(tipo) {
+  const [opts, setOpts] = useState([])
+  const cargar = () => api.get('/listas-valores/select', { params: { tipo } })
+    .then(r => setOpts(r.data.data || [])).catch(() => {})
+  useEffect(() => { cargar() }, [tipo])
+  return [opts, cargar]
+}
+
+function FFieldLista({ label, tipo, value, onChange, required }) {
+  const [opts, recargar] = useListaValores(tipo)
+  const [creando, setCreando] = useState(false)
+  const [nuevo, setNuevo] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  const crear = async () => {
+    if (!nuevo.trim()) return
+    setGuardando(true)
+    try {
+      const r = await api.post('/listas-valores', { tipo, etiqueta: nuevo.trim() })
+      recargar()
+      onChange(r.data.data.codigo)
+      setNuevo(''); setCreando(false)
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al crear el valor') }
+    finally { setGuardando(false) }
+  }
+
+  return (
+    <div className="sv-field" style={{ marginBottom:10 }}>
+      <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>{label}{required && <span className="sv-req"> *</span>}</label>
+      {creando ? (
+        <div style={{ display:'flex', gap:6 }}>
+          <input autoFocus value={nuevo} onChange={e => setNuevo(e.target.value)}
+            placeholder={`Nuevo valor de ${label.toLowerCase()}…`}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); crear() } }}
+            style={{ flex:1 }}/>
+          <button type="button" onClick={crear} disabled={guardando || !nuevo.trim()}
+            style={{ padding:'0 12px', background:'#7C3AED', border:'none', borderRadius:8,
+              color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+            {guardando ? '…' : '✓'}
+          </button>
+          <button type="button" onClick={() => { setCreando(false); setNuevo('') }}
+            style={{ padding:'0 10px', background:'#F3F4F6', border:'none', borderRadius:8,
+              color:'#6B7280', fontSize:12, cursor:'pointer' }}>
+            ✕
+          </button>
+        </div>
+      ) : (
+        <select value={value || ''} onChange={e => {
+          if (e.target.value === '__nuevo__') { setCreando(true); return }
+          onChange(e.target.value)
+        }}>
+          <option value="">— Seleccionar —</option>
+          {opts.map(o => <option key={o.id} value={o.codigo}>{o.etiqueta}</option>)}
+          <option value="__nuevo__">➕ Agregar nuevo…</option>
+        </select>
+      )}
+    </div>
+  )
+}
+
 function TabFallecido({ data, servicioId, onSaved }) {
   const def = data?.defuncion || {}
   const [editMode, setEditMode] = useState(false)
@@ -1831,10 +2175,18 @@ function TabFallecido({ data, servicioId, onSaved }) {
   const [ok,       setOk]       = useState(false)
 
   const [form, setForm] = useState(null)
+  const [tiposDocs, setTiposDocs] = useState([])
+  useEffect(() => {
+    api.get('/tipos-documento/select').then(r => setTiposDocs(r.data.data || [])).catch(() => {})
+  }, [])
 
   useEffect(() => {
     setForm({
       // Tercero
+      tipo_documento_id:   data?.difunto_tipo_documento_id || '',
+      numero_documento:    data?.difunto_documento         || '',
+      fecha_nacimiento:    data?.difunto_nacimiento?.slice(0,10) || '',
+      sexo:                data?.difunto_sexo || '',
       lugar_exp_documento: data?.difunto_lugar_exp_doc || '',
       estado_civil:        data?.difunto_estado_civil  || '',
       tipo_matrimonio:     data?.difunto_tipo_matrimonio || '',
@@ -1901,6 +2253,20 @@ function TabFallecido({ data, servicioId, onSaved }) {
             </button>
           )}
         </div>
+        {editMode ? (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
+            <div className="sv-field" style={{ marginBottom:10 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Tipo de documento</label>
+              <select value={form.tipo_documento_id} onChange={e => set('tipo_documento_id', e.target.value)}>
+                <option value="">— Seleccionar —</option>
+                {tiposDocs.map(t => <option key={t.id} value={t.id}>{t.sigla} — {t.nombre}</option>)}
+              </select>
+            </div>
+            <FField label="Número de documento" campo="numero_documento" form={form} onChange={set} />
+            <FField label="Fecha de nacimiento" campo="fecha_nacimiento" type="date" form={form} onChange={set} />
+            <FFieldLista label="Sexo" tipo="SEXO" value={form.sexo} onChange={v => set('sexo', v)} />
+          </div>
+        ) : (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
           <FRow label="Documento">{data?.difunto_tipo_doc} {data?.difunto_documento}</FRow>
           <FRow label="Fecha nacimiento">{data?.difunto_nacimiento ? new Date(data.difunto_nacimiento).toLocaleDateString('es-CO',{timeZone:'UTC'}) : '—'}</FRow>
@@ -1909,6 +2275,7 @@ function TabFallecido({ data, servicioId, onSaved }) {
             <span style={{ fontWeight:900, color:'#7C3AED' }}>{edad} años</span>
           </FRow>}
         </div>
+        )}
       </div>
 
       {ok && <div className="sv-alert ok" style={{ marginBottom:12 }}><CheckCircle2 size={13}/> Datos guardados correctamente</div>}
@@ -1919,13 +2286,13 @@ function TabFallecido({ data, servicioId, onSaved }) {
           <FSec title="Datos personales" />
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
             <FField label="Lugar expedición documento" campo="lugar_exp_documento" form={form} onChange={set} />
-            <FField label="Estado civil" campo="estado_civil" opts={ESTADO_CIVIL_OPTS} form={form} onChange={set} />
+            <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={form.estado_civil} onChange={v => set('estado_civil', v)} />
             <FField label="Tipo de matrimonio" campo="tipo_matrimonio" opts={MATRIMONIO_OPTS} form={form} onChange={set} />
             <FField label="Número de hijos" campo="num_hijos" type="number" form={form} onChange={set} />
             <FField label="Nacionalidad" campo="nacionalidad" form={form} onChange={set} />
             <FField label="Religión / Credo" campo="religion" form={form} onChange={set} />
             <FField label="Nivel de estudios" campo="nivel_estudios" opts={NIVEL_EST_OPTS} form={form} onChange={set} />
-            <FField label="Ocupación" campo="ocupacion" form={form} onChange={set} />
+            <FFieldLista label="Ocupación" tipo="OCUPACION" value={form.ocupacion} onChange={v => set('ocupacion', v)} />
             <FField label="Seguridad social (EPS)" campo="seguridad_social" form={form} onChange={set} />
           </div>
 
@@ -1975,42 +2342,6 @@ function TabFallecido({ data, servicioId, onSaved }) {
         </>
       ) : (
         <>
-          {/* Identificación */}
-          <div className="tab-card">
-            <div className="tab-card-head tab-card-head-accent">
-              <span className="tab-card-icon">👤</span>
-              <span className="tab-card-title">Identificación</span>
-              <div style={{ marginLeft:'auto' }}>
-                <button onClick={() => setEditMode(true)}
-                  style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 12px',
-                    background:'linear-gradient(135deg,#7C3AED,#6D28D9)', border:'none',
-                    borderRadius:8, color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                  <Edit2 size={11}/> Editar
-                </button>
-              </div>
-            </div>
-            <div className="tab-card-body tab-grid tab-grid-3">
-              <div className="tab-field">
-                <span className="tab-field-label">Documento</span>
-                <span className="tab-field-value">{data?.difunto_tipo_doc} {data?.difunto_documento}</span>
-              </div>
-              <div className="tab-field">
-                <span className="tab-field-label">Fecha de nacimiento</span>
-                <span className="tab-field-value">{data?.difunto_nacimiento ? new Date(data.difunto_nacimiento).toLocaleDateString('es-CO',{timeZone:'UTC'}) : '—'}</span>
-              </div>
-              <div className="tab-field">
-                <span className="tab-field-label">Sexo</span>
-                <span className="tab-field-value">{data?.difunto_sexo==='M'?'Masculino':data?.difunto_sexo==='F'?'Femenino':'—'}</span>
-              </div>
-              {edad !== null && (
-                <div className="tab-field">
-                  <span className="tab-field-label">Edad</span>
-                  <span className="tab-field-value" style={{ color:'#7C3AED' }}>{edad} años</span>
-                </div>
-              )}
-            </div>
-          </div>
-
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             {/* Datos personales */}
             <div className="tab-card" style={{ marginBottom:0 }}>
@@ -2133,6 +2464,20 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
   }
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  // ── Disponibilidad de salas de velación ────────────────────────────────────
+  const [salasOcupadas, setSalasOcupadas] = useState(new Set())
+  useEffect(() => {
+    const { fecha_velacion_ini, fecha_velacion_fin } = form
+    if (!editMode || !fecha_velacion_ini || !fecha_velacion_fin) { setSalasOcupadas(new Set()); return }
+    let cancelado = false
+    api.get('/servicios/salas', { params: { ini: fecha_velacion_ini, fin: fecha_velacion_fin, excluir_id: servicioId } })
+      .then(r => { if (!cancelado) setSalasOcupadas(new Set((r.data.data || []).filter(s => s.ocupada).map(s => s.id))) })
+      .catch(() => {})
+    return () => { cancelado = true }
+  }, [editMode, form.fecha_velacion_ini, form.fecha_velacion_fin, servicioId])
+  const salasDisponibles = salas.filter(s => !salasOcupadas.has(s.id) || s.id === form.sala_id)
+
   const disp = DISPOSICION_META[data?.tipo_disposicion] || DISPOSICION_META.INHUMACION
   const dispForm = DISPOSICION_META[form.tipo_disposicion] || DISPOSICION_META.INHUMACION
   const bloqueado = ['COMPLETADO','CANCELADO'].includes(data?.estado)
@@ -2327,8 +2672,11 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
           <label style={lbl}>Sala de velación</label>
           <select value={form.sala_id} onChange={e => set('sala_id', e.target.value)} style={inp}>
             <option value=''>— Sin sala asignada —</option>
-            {salas.map(s => <option key={s.id} value={s.id}>{s.nombre} (cap. {s.capacidad})</option>)}
+            {salasDisponibles.map(s => <option key={s.id} value={s.id}>{s.nombre} (cap. {s.capacidad})</option>)}
           </select>
+          {form.fecha_velacion_ini && form.fecha_velacion_fin && salasOcupadas.size > 0 && (
+            <span style={{ fontSize:11, color:'#B45309' }}>Se ocultan las salas ya reservadas en ese horario.</span>
+          )}
         </div>
 
         {/* Fechas velación */}
@@ -2534,17 +2882,21 @@ function TabHistorial({ servicioId }) {
 }
 
 // ── TabPersonal ───────────────────────────────────────────────────────────────
-const ROLES_SERVICIO = [
-  { label:'Director de Servicios',    Icon:UserSquare2,   color:'#5B21B6', bg:'#EDE9FE' },
-  { label:'Conductor / Traslado',     Icon:Truck,         color:'#1D4ED8', bg:'#DBEAFE' },
-  { label:'Tanatopraxia',             Icon:Stethoscope,   color:'#065F46', bg:'#D1FAE5' },
-  { label:'Recepción de Restos',      Icon:Handshake,     color:'#92400E', bg:'#FEF3C7' },
-  { label:'Asesor Comercial',         Icon:Briefcase,     color:'#0E7490', bg:'#CFFAFE' },
-  { label:'Operador de Sala',         Icon:Landmark,      color:'#6B21A8', bg:'#F3E8FF' },
-  { label:'Auxiliar Funerario',       Icon:Wrench,        color:'#374151', bg:'#F3F4F6' },
-  { label:'Apoyo Logístico',          Icon:PackageSearch, color:'#B45309', bg:'#FEF9C3' },
-  { label:'Coordinador de Trámites',  Icon:ClipboardList, color:'#166534', bg:'#DCFCE7' },
-]
+// Los roles se administran en Configuración → Roles de Personal (con costo interno
+// y vínculo opcional a un ítem vendible del catálogo). Este mapa solo da ícono/color
+// a los roles predefinidos; uno nuevo creado desde Parámetros usa el ícono genérico.
+const ROLES_SERVICIO_ICONOS = {
+  'Director de Servicios':    { Icon:UserSquare2,   color:'#5B21B6', bg:'#EDE9FE' },
+  'Conductor / Traslado':     { Icon:Truck,         color:'#1D4ED8', bg:'#DBEAFE' },
+  'Tanatopraxia':             { Icon:Stethoscope,   color:'#065F46', bg:'#D1FAE5' },
+  'Recepción de Restos':      { Icon:Handshake,     color:'#92400E', bg:'#FEF3C7' },
+  'Asesor Comercial':         { Icon:Briefcase,     color:'#0E7490', bg:'#CFFAFE' },
+  'Operador de Sala':         { Icon:Landmark,      color:'#6B21A8', bg:'#F3E8FF' },
+  'Auxiliar Funerario':       { Icon:Wrench,        color:'#374151', bg:'#F3F4F6' },
+  'Apoyo Logístico':          { Icon:PackageSearch, color:'#B45309', bg:'#FEF9C3' },
+  'Coordinador de Trámites':  { Icon:ClipboardList, color:'#166534', bg:'#DCFCE7' },
+}
+const ROL_ICONO_DEFECTO = { Icon:Users, color:'#6B7280', bg:'#F3F4F6' }
 
 const ROL_SISTEMA = {
   superadmin:       { label:'Superadmin',   bg:'#EDE9FE', color:'#5B21B6' },
@@ -2553,13 +2905,16 @@ const ROL_SISTEMA = {
   asesor_comercial: { label:'Asesor',        bg:'#FEF3C7', color:'#92400E' },
 }
 
-function TabPersonal({ servicioId, esEditor }) {
+function TabPersonal({ servicioId, esEditor, onItemAgregado }) {
   const [lista,     setLista]     = useState([])
   const [usuarios,  setUsuarios]  = useState([])
+  const [roles,     setRoles]     = useState([])
   const [cargando,  setCargando]  = useState(true)
   const [paso,      setPaso]      = useState(0) // 0=lista 1=elegir_persona 2=elegir_rol
   const [selUser,   setSelUser]   = useState(null)
   const [selRol,    setSelRol]    = useState('')
+  const [selRolObj, setSelRolObj] = useState(null)
+  const [cobrarItem, setCobrarItem] = useState(false)
   const [notas,     setNotas]     = useState('')
   const [buscar,    setBuscar]    = useState('') // eslint-disable-line
   const [guardando, setGuardando] = useState(false)
@@ -2568,12 +2923,14 @@ function TabPersonal({ servicioId, esEditor }) {
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      const [pRes, uRes] = await Promise.all([
+      const [pRes, uRes, rRes] = await Promise.all([
         api.get(`/servicios/${servicioId}/personal`),
         api.get('/servicios/operadores'),
+        api.get('/roles-personal/select'),
       ])
       setLista(pRes.data.data || [])
       setUsuarios(uRes.data.data || [])
+      setRoles(rRes.data.data || [])
     } catch { /* silencioso */ }
     finally { setCargando(false) }
   }, [servicioId])
@@ -2583,7 +2940,7 @@ function TabPersonal({ servicioId, esEditor }) {
   const asignados  = new Set(lista.map(p => p.usuario_id))
   const disponibles = usuarios.filter(u => !asignados.has(u.id))
 
-  const cancelar = () => { setPaso(0); setSelUser(null); setSelRol(''); setNotas('') }
+  const cancelar = () => { setPaso(0); setSelUser(null); setSelRol(''); setSelRolObj(null); setCobrarItem(false); setNotas('') }
 
   const guardar = async () => {
     if (!selUser || !selRol) return
@@ -2592,7 +2949,13 @@ function TabPersonal({ servicioId, esEditor }) {
       await api.post(`/servicios/${servicioId}/personal`, {
         usuario_id: selUser.id, rol_servicio: selRol, notas: notas || null,
       })
-      toast.success('Personal asignado')
+      if (cobrarItem && selRolObj?.catalogo_id) {
+        await api.post(`/servicios/${servicioId}/items`, { catalogo_id: selRolObj.catalogo_id })
+        toast.success('Personal asignado y servicio agregado al cobro')
+        onItemAgregado?.()
+      } else {
+        toast.success('Personal asignado')
+      }
       cancelar()
       cargar()
     } catch (e) {
@@ -2643,7 +3006,7 @@ function TabPersonal({ servicioId, esEditor }) {
                 <div style={{ width:40, height:40, borderRadius:11, flexShrink:0, fontWeight:800,
                   background:'linear-gradient(135deg,#6D28D9,#8B5CF6)', color:'#fff',
                   display:'flex', alignItems:'center', justifyContent:'center', fontSize:17 }}>
-                  {u.nombre.charAt(0).toUpperCase()}
+                  {(u.nombre || '?').charAt(0).toUpperCase()}
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:700, fontSize:13, color:'#111827' }}>{u.nombre}</div>
@@ -2671,7 +3034,7 @@ function TabPersonal({ servicioId, esEditor }) {
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <div style={{ width:32, height:32, borderRadius:9, background:'linear-gradient(135deg,#6D28D9,#8B5CF6)',
             display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, color:'#fff', fontSize:14 }}>
-            {selUser?.nombre.charAt(0).toUpperCase()}
+            {(selUser?.nombre || '?').charAt(0).toUpperCase()}
           </div>
           <div>
             <div style={{ fontWeight:700, fontSize:13, color:'#111827' }}>{selUser?.nombre}</div>
@@ -2681,29 +3044,42 @@ function TabPersonal({ servicioId, esEditor }) {
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
-        {ROLES_SERVICIO.map(r => {
-          const activo = selRol === r.label
+        {roles.map(r => {
+          const meta = ROLES_SERVICIO_ICONOS[r.etiqueta] || ROL_ICONO_DEFECTO
+          const activo = selRol === r.etiqueta
           return (
-            <button key={r.label} onClick={() => setSelRol(r.label)}
+            <button key={r.id} onClick={() => { setSelRol(r.etiqueta); setSelRolObj(r); setCobrarItem(false) }}
               style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8,
                 padding:'16px 10px', borderRadius:14, cursor:'pointer', transition:'all .15s', background:'#fff',
-                border: activo ? `1.5px solid ${r.color}` : '1.5px solid #E5E7EB',
-                boxShadow: activo ? `0 0 0 3px ${r.bg}, 0 4px 12px rgba(0,0,0,.06)` : 'none' }}
+                border: activo ? `1.5px solid ${meta.color}` : '1.5px solid #E5E7EB',
+                boxShadow: activo ? `0 0 0 3px ${meta.bg}, 0 4px 12px rgba(0,0,0,.06)` : 'none' }}
               onMouseEnter={e => { if (!activo) e.currentTarget.style.borderColor = '#C4B5FD' }}
               onMouseLeave={e => { if (!activo) e.currentTarget.style.borderColor = '#E5E7EB' }}>
-              <div style={{ width:38, height:38, borderRadius:11, background:r.bg,
+              <div style={{ width:38, height:38, borderRadius:11, background:meta.bg,
                 display:'flex', alignItems:'center', justifyContent:'center',
                 boxShadow: activo ? `0 3px 8px rgba(0,0,0,.12)` : 'none', transition:'all .15s' }}>
-                <r.Icon size={18} color={r.color} strokeWidth={2.2}/>
+                <meta.Icon size={18} color={meta.color} strokeWidth={2.2}/>
               </div>
               <span style={{ fontSize:11, fontWeight: activo ? 700 : 600,
-                color: activo ? r.color : '#374151', textAlign:'center', lineHeight:1.3 }}>
-                {r.label}
+                color: activo ? meta.color : '#374151', textAlign:'center', lineHeight:1.3 }}>
+                {r.etiqueta}
               </span>
             </button>
           )
         })}
       </div>
+
+      {selRolObj?.catalogo_id && (
+        <label style={{ display:'flex', alignItems:'flex-start', gap:10, background:'#F0FDF4',
+          border:'1.5px solid #BBF7D0', borderRadius:12, padding:'12px 14px', marginBottom:16, cursor:'pointer' }}>
+          <input type="checkbox" checked={cobrarItem} onChange={e => setCobrarItem(e.target.checked)}
+            style={{ width:16, height:16, marginTop:1, accentColor:'#059669' }}/>
+          <span style={{ fontSize:12.5, color:'#065F46' }}>
+            <strong>Agregar también como ítem cobrable del servicio</strong><br/>
+            {selRolObj.etiqueta} se sumará al total como "{selRolObj.catalogo_nombre}" ({new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(selRolObj.catalogo_precio||0)})
+          </span>
+        </label>
+      )}
 
       <div className="sv-field" style={{ marginBottom:16 }}>
         <label>Notas / instrucciones (opcional)</label>
@@ -2767,7 +3143,7 @@ function TabPersonal({ servicioId, esEditor }) {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:10 }}>
           {lista.map(p => {
             const rs  = ROL_SISTEMA[p.rol] || { label:p.rol, bg:'#F3F4F6', color:'#374151' }
-            const rsMeta = ROLES_SERVICIO.find(r => r.label === p.rol_servicio)
+            const rsMeta = ROLES_SERVICIO_ICONOS[p.rol_servicio] || null
             return (
               <div key={p.id} style={{ background:'#fff', border:'1px solid #E5E7EB',
                 borderRadius:12, overflow:'hidden', position:'relative' }}>
@@ -3315,11 +3691,6 @@ function TabPoliza({ data }) {
 
 // ── TabContratante ────────────────────────────────────────────────────────────
 
-const PARENTESCO_OPTS = [
-  'Hijo/a','Esposo/a','Padre/Madre','Hermano/a','Nieto/a','Sobrino/a',
-  'Tío/a','Primo/a','Yerno/Nuera','Cuñado/a','Amigo/a','Otro',
-]
-
 function ConvenioCoberturaBox({ data, servicioId, onSaved }) {
   const [recalculando, setRecalculando] = useState(false)
 
@@ -3415,6 +3786,53 @@ function TabContratante({ data, servicioId, onSaved }) {
       setEditMode(false)
     } catch { setMsg('Error al guardar'); toast.error('Error al guardar') }
     finally { setSaving(false) }
+  }
+
+  // ── Edición de datos personales del contratante (tercero) ─────────────────
+  const [editDatos, setEditDatos] = useState(false)
+  const [savingDatos, setSavingDatos] = useState(false)
+  const [formDatos, setFormDatos] = useState({
+    telefono: '', telefono_alt: '', email: '', direccion: '',
+    departamento_id: '', municipio_id: '',
+    fecha_nacimiento: '', sexo: '', estado_civil: '', ocupacion: '',
+  })
+  const [deptos, setDeptos] = useState([])
+  const [munis,  setMunis]  = useState([])
+  useEffect(() => {
+    if (!editDatos) return
+    api.get('/territorio/select/departamentos').then(r => setDeptos(r.data.data || [])).catch(() => {})
+  }, [editDatos])
+  useEffect(() => {
+    if (!formDatos.departamento_id) { setMunis([]); return }
+    api.get('/territorio/select/municipios', { params: { departamento_id: formDatos.departamento_id } })
+      .then(r => setMunis(r.data.data || [])).catch(() => {})
+  }, [formDatos.departamento_id])
+  useEffect(() => {
+    setFormDatos({
+      telefono:         data?.contratante_tel || '',
+      telefono_alt:     data?.contratante_tel_alt || '',
+      email:            data?.contratante_email || '',
+      direccion:        data?.contratante_direccion || '',
+      departamento_id:  data?.contratante_departamento_id || '',
+      municipio_id:     data?.contratante_municipio_id || '',
+      fecha_nacimiento: data?.contratante_nacimiento ? data.contratante_nacimiento.slice(0,10) : '',
+      sexo:             data?.contratante_sexo || '',
+      estado_civil:     data?.contratante_estado_civil || '',
+      ocupacion:        data?.contratante_ocupacion || '',
+    })
+  }, [data])
+  const setDato = (k, v) => setFormDatos(p => ({
+    ...p, [k]: v, ...(k === 'departamento_id' ? { municipio_id: '' } : {}),
+  }))
+  const guardarDatos = async () => {
+    setSavingDatos(true)
+    try {
+      await api.put(`/terceros/${data.contratante_id}`, formDatos)
+      toast.success('Datos del contratante actualizados')
+      onSaved()
+      setEditDatos(false)
+    } catch (e) { toast.error(e.response?.data?.error || 'Error al guardar') }
+    finally { setSavingDatos(false) }
   }
 
   // Sin familiar responsable, pero el servicio es por convenio: el convenio ES la contraparte
@@ -3517,30 +3935,83 @@ function TabContratante({ data, servicioId, onSaved }) {
         </div>
       </div>
 
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', margin:'2px 2px 10px' }}>
+        <div style={{ fontSize:12.5, fontWeight:800, color:'#6D28D9', textTransform:'uppercase', letterSpacing:'.06em' }}>
+          Datos del contratante
+        </div>
+        {!editDatos && (
+          <button onClick={() => setEditDatos(true)}
+            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 14px',
+              background:'linear-gradient(135deg,#7C3AED,#6D28D9)', border:'none',
+              borderRadius:8, color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer',
+              boxShadow:'0 2px 6px rgba(124,58,237,.25)' }}>
+            <Edit2 size={11}/> Editar datos
+          </button>
+        )}
+      </div>
+
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
         {/* Contacto */}
         <div className="tab-card" style={{ marginBottom:0 }}>
-          <div className="tab-card-head"><span className="tab-card-icon">📱</span><span className="tab-card-title">Contacto</span></div>
+          <div className="tab-card-head tab-card-head-accent">
+            <span className="tab-card-icon">📱</span><span className="tab-card-title">Contacto</span>
+          </div>
           <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {[['Tel. principal',data.contratante_tel],['Tel. alterno',data.contratante_tel_alt],['Email',data.contratante_email]].map(([l,v])=>(
+            {editDatos ? (
+              <>
+                <FField label="Tel. principal" campo="telefono" form={formDatos} onChange={setDato} />
+                <FField label="Tel. alterno" campo="telefono_alt" form={formDatos} onChange={setDato} />
+                <FField label="Email" campo="email" form={formDatos} onChange={setDato} />
+              </>
+            ) : [['Tel. principal',data.contratante_tel],['Tel. alterno',data.contratante_tel_alt],['Email',data.contratante_email]].map(([l,v])=>(
               <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
             ))}
           </div>
         </div>
         {/* Residencia */}
         <div className="tab-card" style={{ marginBottom:0 }}>
-          <div className="tab-card-head"><span className="tab-card-icon">🏠</span><span className="tab-card-title">Residencia</span></div>
+          <div className="tab-card-head tab-card-head-accent">
+            <span className="tab-card-icon">🏠</span><span className="tab-card-title">Residencia</span>
+          </div>
           <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {[['Dirección',data.contratante_direccion],['Municipio',data.contratante_municipio],['Departamento',data.contratante_departamento]].map(([l,v])=>(
+            {editDatos ? (
+              <>
+                <FField label="Dirección" campo="direccion" form={formDatos} onChange={setDato} />
+                <div className="sv-field" style={{ marginBottom:10 }}>
+                  <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Departamento</label>
+                  <select value={formDatos.departamento_id} onChange={e => setDato('departamento_id', e.target.value)}>
+                    <option value="">— Seleccionar —</option>
+                    {deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="sv-field" style={{ marginBottom:10 }}>
+                  <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Municipio</label>
+                  <select value={formDatos.municipio_id} onChange={e => setDato('municipio_id', e.target.value)}
+                    disabled={!formDatos.departamento_id}>
+                    <option value="">{formDatos.departamento_id ? '— Seleccionar —' : 'Elige un departamento primero'}</option>
+                    {munis.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                  </select>
+                </div>
+              </>
+            ) : [['Dirección',data.contratante_direccion],['Municipio',data.contratante_municipio],['Departamento',data.contratante_departamento]].map(([l,v])=>(
               <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
             ))}
           </div>
         </div>
         {/* Datos personales */}
-        <div className="tab-card" style={{ marginBottom:0 }}>
-          <div className="tab-card-head"><span className="tab-card-icon">🪪</span><span className="tab-card-title">Datos personales</span></div>
-          <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {[
+        <div className="tab-card" style={{ marginBottom:0, gridColumn:'1/-1' }}>
+          <div className="tab-card-head tab-card-head-accent">
+            <span className="tab-card-icon">🪪</span><span className="tab-card-title">Datos personales</span>
+          </div>
+          <div className="tab-card-body tab-grid tab-grid-4">
+            {editDatos ? (
+              <>
+                <FField label="Fecha de nacimiento" campo="fecha_nacimiento" type="date" form={formDatos} onChange={setDato} />
+                <FFieldLista label="Sexo" tipo="SEXO" value={formDatos.sexo} onChange={v => setDato('sexo', v)} />
+                <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={formDatos.estado_civil} onChange={v => setDato('estado_civil', v)} />
+                <FFieldLista label="Ocupación" tipo="OCUPACION" value={formDatos.ocupacion} onChange={v => setDato('ocupacion', v)} />
+              </>
+            ) : [
               ['F. nacimiento', data.contratante_nacimiento ? `${fmtFecha(data.contratante_nacimiento)} · ${calcEdadC(data.contratante_nacimiento)} años` : null],
               ['Sexo', data.contratante_sexo==='M'?'Masculino':data.contratante_sexo==='F'?'Femenino':null],
               ['Estado civil', data.contratante_estado_civil],
@@ -3550,6 +4021,17 @@ function TabContratante({ data, servicioId, onSaved }) {
             ))}
           </div>
         </div>
+        {editDatos && (
+          <div style={{ display:'flex', gap:10, gridColumn:'1/-1' }}>
+            <button onClick={guardarDatos} disabled={savingDatos}
+              className="sv-btn sv-btn-primary" style={{ flex:1 }}>
+              {savingDatos ? 'Guardando…' : '✓ Guardar datos del contratante'}
+            </button>
+            <button onClick={() => setEditDatos(false)} className="sv-btn sv-btn-ghost">
+              Cancelar
+            </button>
+          </div>
+        )}
         {/* Parentesco */}
         <div className="tab-card" style={{ marginBottom:0, border:'1.5px solid #DDD6FE', background:'linear-gradient(135deg,#FAFAFF 0%,#F5F3FF 100%)' }}>
           <div className="tab-card-head" style={{ background:'linear-gradient(90deg,#7C3AED 0%,#6D28D9 100%)' }}>
@@ -3582,32 +4064,7 @@ function TabContratante({ data, servicioId, onSaved }) {
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                  <label style={{ fontSize:11, fontWeight:700, color:'#6D28D9', textTransform:'uppercase', letterSpacing:'.06em' }}>
-                    Parentesco predefinido
-                  </label>
-                  <select value={PARENTESCO_OPTS.includes(parentesco) ? parentesco : ''}
-                    onChange={e => { if (e.target.value) setParentesco(e.target.value) }}
-                    className="sv-select" style={{ width:'100%' }}>
-                    <option value=''>— Seleccionar —</option>
-                    {PARENTESCO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                  <label style={{ fontSize:11, fontWeight:700, color:'#6D28D9', textTransform:'uppercase', letterSpacing:'.06em' }}>
-                    O escribir otro parentesco
-                  </label>
-                  <div style={{ position:'relative' }}>
-                    <input value={parentesco} onChange={e => setParentesco(e.target.value)}
-                      placeholder="Ej: Cuñado, Padrino, Amigo cercano…"
-                      style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0', borderRadius:12,
-                        fontSize:13, outline:'none', background:'#FAFBFF', color:'#374151',
-                        boxSizing:'border-box', transition:'border-color .15s' }}
-                      onFocus={e => { e.target.style.borderColor='#8B5CF6'; e.target.style.boxShadow='0 0 0 3px rgba(139,92,246,.1)' }}
-                      onBlur={e => { e.target.style.borderColor='#E2E5F0'; e.target.style.boxShadow='none' }}
-                    />
-                  </div>
-                </div>
+                <FFieldLista label="Parentesco" tipo="PARENTESCO" value={parentesco} onChange={setParentesco} />
                 <div style={{ display:'flex', gap:8, paddingTop:2 }}>
                   <button onClick={guardar} disabled={saving} className="sv-btn sv-btn-primary" style={{ flex:1, justifyContent:'center' }}>
                     {saving ? 'Guardando…' : '✓  Guardar'}
@@ -3633,10 +4090,14 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const [loading, setLoading] = useState(true)
   const [tab, setTab]         = useState('info')
   const [showTraslado, setShowTraslado] = useState(false)
-  const [fTraslado, setFTraslado]       = useState({ tipo:'RECOGIDA', origen:'', destino:'', fecha_hora:'', vehiculo_id:'', conductor_id:'' })
+  const [editandoTrasladoId, setEditandoTrasladoId] = useState(null)
+  const [rutaAbierta, setRutaAbierta]   = useState(null) // id del traslado con el mapa expandido
+  const [fTraslado, setFTraslado]       = useState({ tipo:'RECOGIDA', origen:'', destino:'', fecha_hora:'', vehiculo_id:'', conductor_id:'', origen_lat:null, origen_lon:null, destino_lat:null, destino_lon:null })
   const [savingTr, setSavingTr]         = useState(false)
   const [flotaVehiculos, setFlotaVehiculos]   = useState([])
   const [flotaConductores, setFlotaConductores] = useState([])
+  const [tiposTrasladoConfig, setTiposTrasladoConfig] = useState([])
+  const [cobrarTraslado, setCobrarTraslado] = useState(false)
   // Tanatopraxia
   const [tana, setTana] = useState({ tipo_servicio:'BASICA', estado:'PENDIENTE', responsable_id:'', hora_inicio:'', hora_fin:'', observaciones:'' })
   const [savingTana, setSavingTana] = useState(false)
@@ -3692,10 +4153,18 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
 
   useEffect(() => {
     if (!showTraslado) return
-    Promise.all([api.get('/flota/vehiculos'), api.get('/flota/conductores')])
-      .then(([v, c]) => { setFlotaVehiculos(v.data.data || []); setFlotaConductores(c.data.data || []) })
+    Promise.all([api.get('/flota/vehiculos'), api.get('/flota/conductores'), api.get('/tipos-traslado/select')])
+      .then(([v, c, tt]) => {
+        setFlotaVehiculos(v.data.data || []); setFlotaConductores(c.data.data || [])
+        setTiposTrasladoConfig(tt.data.data || [])
+      })
       .catch(() => toast.error('Error al cargar vehículos y conductores'))
   }, [showTraslado])
+
+  // Config de precio sugerido para el tipo de traslado actual, y si ya está cobrado/incluido
+  const trasladoConfigActual = tiposTrasladoConfig.find(t => t.tipo === fTraslado.tipo)
+  const yaIncluidoEnServicio = trasladoConfigActual?.catalogo_id &&
+    (data?.items || []).some(i => i.catalogo_id === trasladoConfigActual.catalogo_id)
 
   const elegirConductor = (conductorId) => {
     const cond = flotaConductores.find(c => c.id === conductorId)
@@ -3712,13 +4181,36 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const agregarTraslado = async () => {
     setSavingTr(true)
     try {
-      await api.post(`/servicios/${id}/traslados`, fTraslado)
-      toast.success('Traslado agregado')
+      if (editandoTrasladoId) {
+        await api.put(`/servicios/${id}/traslados/${editandoTrasladoId}`, fTraslado)
+        toast.success('Traslado actualizado')
+      } else {
+        await api.post(`/servicios/${id}/traslados`, fTraslado)
+        toast.success('Traslado agregado')
+      }
+      if (cobrarTraslado && trasladoConfigActual?.catalogo_id && !yaIncluidoEnServicio) {
+        await api.post(`/servicios/${id}/items`, { catalogo_id: trasladoConfigActual.catalogo_id })
+        toast.success('Traslado agregado al cobro del servicio')
+      }
       setShowTraslado(false)
-      setFTraslado({ tipo:'RECOGIDA', origen:'', destino:'', fecha_hora:'', vehiculo_id:'', conductor_id:'' })
+      setEditandoTrasladoId(null)
+      setCobrarTraslado(false)
+      setFTraslado({ tipo:'RECOGIDA', origen:'', destino:'', fecha_hora:'', vehiculo_id:'', conductor_id:'', origen_lat:null, origen_lon:null, destino_lat:null, destino_lon:null })
       cargar()
     } catch (e) { toast.error(e.response?.data?.error || 'Error al guardar traslado') }
     finally { setSavingTr(false) }
+  }
+
+  const editarTraslado = (t) => {
+    setEditandoTrasladoId(t.id)
+    setFTraslado({
+      tipo: t.tipo || 'RECOGIDA', origen: t.origen || '', destino: t.destino || '',
+      fecha_hora: t.fecha_hora ? t.fecha_hora.slice(0,16) : '',
+      vehiculo_id: t.vehiculo_id || '', conductor_id: t.conductor_id || '',
+      origen_lat: t.origen_lat ?? null, origen_lon: t.origen_lon ?? null,
+      destino_lat: t.destino_lat ?? null, destino_lon: t.destino_lon ?? null,
+    })
+    setShowTraslado(true)
   }
 
   const completarTraslado = async (trasId) => {
@@ -3954,7 +4446,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
           ) : tab === 'items' ? (
             <TabServicios data={data} servicioId={id} onSaved={cargar} esEditor={esEditor}/>
           ) : tab === 'personal' ? (
-            <TabPersonal servicioId={id} esEditor={esEditor}/>
+            <TabPersonal servicioId={id} esEditor={esEditor} onItemAgregado={cargar}/>
           ) : tab === 'historial' ? (
             <TabHistorial servicioId={id}/>
           ) : tab === 'traslados' ? (
@@ -3965,7 +4457,14 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                 </span>
                 {esEditor && !['COMPLETADO','CANCELADO'].includes(data.estado) && (
                   <button className="sv-btn sv-btn-ghost" style={{ padding:'7px 14px', fontSize:12 }}
-                    onClick={() => setShowTraslado(v => !v)}>
+                    onClick={() => {
+                      setCobrarTraslado(false)
+                      if (showTraslado) { setShowTraslado(false); setEditandoTrasladoId(null) }
+                      else {
+                        setFTraslado({ tipo:'RECOGIDA', origen:'', destino:'', fecha_hora:'', vehiculo_id:'', conductor_id:'', origen_lat:null, origen_lon:null, destino_lat:null, destino_lon:null })
+                        setEditandoTrasladoId(null); setShowTraslado(true)
+                      }
+                    }}>
                     <Truck size={13}/> Agregar traslado
                   </button>
                 )}
@@ -3975,7 +4474,9 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                 <div style={{ background:'#F8F9FF', border:'1.5px solid #ECEDF8', borderRadius:14,
                   padding:16, marginBottom:14 }}>
                   <div style={{ fontSize:10, fontWeight:800, color:'#7C3AED', letterSpacing:.5,
-                    textTransform:'uppercase', marginBottom:12 }}>Nuevo traslado</div>
+                    textTransform:'uppercase', marginBottom:12 }}>
+                    {editandoTrasladoId ? 'Editar traslado' : 'Nuevo traslado'}
+                  </div>
                   <div className="sv-grid2">
                     <div className="sv-field" style={{ marginBottom:0 }}>
                       <label>Tipo</label>
@@ -3990,13 +4491,13 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                     </div>
                     <div className="sv-field" style={{ marginBottom:0 }}>
                       <label>Origen</label>
-                      <input value={fTraslado.origen} placeholder="Dirección origen…"
-                        onChange={e => setFTraslado(p=>({...p,origen:e.target.value}))}/>
+                      <MapboxAddressInput value={fTraslado.origen} placeholder="Dirección origen…"
+                        onSelect={({ texto, lat, lon }) => setFTraslado(p=>({...p, origen:texto, origen_lat:lat, origen_lon:lon}))}/>
                     </div>
                     <div className="sv-field" style={{ marginBottom:0 }}>
                       <label>Destino</label>
-                      <input value={fTraslado.destino} placeholder="Dirección destino…"
-                        onChange={e => setFTraslado(p=>({...p,destino:e.target.value}))}/>
+                      <MapboxAddressInput value={fTraslado.destino} placeholder="Dirección destino…"
+                        onSelect={({ texto, lat, lon }) => setFTraslado(p=>({...p, destino:texto, destino_lat:lat, destino_lon:lon}))}/>
                     </div>
                     <div className="sv-field" style={{ marginBottom:0 }}>
                       <label>Vehículo</label>
@@ -4023,11 +4524,61 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                       </select>
                     </div>
                   </div>
-                  <div style={{ display:'flex', justifyContent:'flex-end', marginTop:12 }}>
+
+                  {trasladoConfigActual && (trasladoConfigActual.costo_interno > 0 || trasladoConfigActual.catalogo_id) && (
+                    <div style={{ marginTop:12, background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:12, padding:'12px 14px' }}>
+                      <div style={{ fontSize:10.5, fontWeight:800, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:.5, marginBottom:8 }}>
+                        Costeo de este traslado
+                      </div>
+                      <div style={{ display:'flex', gap:20, marginBottom: trasladoConfigActual.catalogo_id ? 10 : 0 }}>
+                        {trasladoConfigActual.costo_interno > 0 && (
+                          <div>
+                            <div style={{ fontSize:10.5, color:'#9CA3AF' }}>Le cuesta a la funeraria</div>
+                            <div style={{ fontSize:15, fontWeight:800, color:'#374151' }}>
+                              {new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(trasladoConfigActual.costo_interno)}
+                            </div>
+                          </div>
+                        )}
+                        {trasladoConfigActual.catalogo_id && (
+                          <div>
+                            <div style={{ fontSize:10.5, color:'#9CA3AF' }}>Precio sugerido de venta</div>
+                            <div style={{ fontSize:15, fontWeight:800, color:'#7C3AED' }}>
+                              {new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(trasladoConfigActual.catalogo_precio||0)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {trasladoConfigActual.catalogo_id && (
+                        yaIncluidoEnServicio ? (
+                          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#059669', fontWeight:700 }}>
+                            <CheckCircle2 size={13}/> Ya está incluido/cobrado en este servicio — no se agrega de nuevo
+                          </div>
+                        ) : (
+                          <label style={{ display:'flex', alignItems:'flex-start', gap:9, background:'#F0FDF4',
+                            border:'1.5px solid #BBF7D0', borderRadius:10, padding:'10px 12px', cursor:'pointer' }}>
+                            <input type="checkbox" checked={cobrarTraslado} onChange={e => setCobrarTraslado(e.target.checked)}
+                              style={{ width:15, height:15, marginTop:1, accentColor:'#059669' }}/>
+                            <span style={{ fontSize:12, color:'#065F46' }}>
+                              <strong>Agregar como ítem cobrable del servicio</strong><br/>
+                              Se sumará "{trasladoConfigActual.catalogo_nombre}" al total a cobrar.
+                            </span>
+                          </label>
+                        )
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:12 }}>
+                    {editandoTrasladoId && (
+                      <button className="sv-btn sv-btn-ghost" style={{ padding:'8px 16px', fontSize:12 }}
+                        onClick={() => { setShowTraslado(false); setEditandoTrasladoId(null); setCobrarTraslado(false) }}>
+                        Cancelar
+                      </button>
+                    )}
                     <button className="sv-btn sv-btn-primary" style={{ padding:'8px 16px', fontSize:12 }}
                       onClick={agregarTraslado} disabled={savingTr}>
                       {savingTr ? <Loader2 size={13} className="sv-spin"/> : <Truck size={13}/>}
-                      Registrar traslado
+                      {editandoTrasladoId ? 'Guardar cambios' : 'Registrar traslado'}
                     </button>
                   </div>
                 </div>
@@ -4040,38 +4591,64 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                 </div>
               ) : (
                 (data.traslados||[]).map(t => (
-                  <div key={t.id} className="sv-traslado-item">
-                    <div style={{ width:38, height:38, borderRadius:10, flexShrink:0,
-                      background: t.completado
-                        ? 'linear-gradient(135deg,#059669,#10B981)'
-                        : 'linear-gradient(135deg,#8B5CF6,#6D28D9)',
-                      display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      <Truck size={16} color="#fff"/>
-                    </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:13, fontWeight:800, color:'#0F1035' }}>
-                        {TRASLADO_LABEL[t.tipo]}
+                  <div key={t.id}>
+                    <div className="sv-traslado-item">
+                      <div style={{ width:38, height:38, borderRadius:10, flexShrink:0,
+                        background: t.completado
+                          ? 'linear-gradient(135deg,#059669,#10B981)'
+                          : 'linear-gradient(135deg,#8B5CF6,#6D28D9)',
+                        display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <Truck size={16} color="#fff"/>
                       </div>
-                      <div style={{ fontSize:11.5, color:'#6B7280', marginTop:2 }}>
-                        {t.origen && `${t.origen}`}{t.destino && ` → ${t.destino}`}
-                        {t.fecha_hora && ` · ${fmtDT(t.fecha_hora)}`}
-                      </div>
-                      {(t.vehiculo_placa || t.conductor_nombre) && (
-                        <div style={{ fontSize:11, color:'#9CA3AF' }}>
-                          {t.vehiculo_placa}{t.conductor_nombre && ` · ${t.conductor_nombre}`}
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:800, color:'#0F1035' }}>
+                          {TRASLADO_LABEL[t.tipo]}
                         </div>
+                        <div style={{ fontSize:11.5, color:'#6B7280', marginTop:2 }}>
+                          {t.origen && `${t.origen}`}{t.destino && ` → ${t.destino}`}
+                          {t.fecha_hora && ` · ${fmtDT(t.fecha_hora)}`}
+                        </div>
+                        {(t.vehiculo_placa || t.conductor_nombre) && (
+                          <div style={{ fontSize:11, color:'#9CA3AF' }}>
+                            {t.vehiculo_placa}{t.conductor_nombre && ` · ${t.conductor_nombre}`}
+                          </div>
+                        )}
+                      </div>
+                      {t.origen && t.destino && (
+                        <button onClick={() => setRutaAbierta(v => v === t.id ? null : t.id)}
+                          style={{ fontSize:11, fontWeight:700, color:'#2563EB',
+                            background:'#EFF6FF', border:'1.5px solid #BFDBFE',
+                            padding:'5px 10px', borderRadius:8, cursor:'pointer' }}>
+                          {rutaAbierta === t.id ? 'Ocultar ruta' : '🗺️ Ver ruta'}
+                        </button>
+                      )}
+                      {esEditor && !t.completado && (
+                        <button onClick={() => editarTraslado(t)}
+                          style={{ fontSize:11, fontWeight:700, color:'#374151',
+                            background:'#F3F4F6', border:'1.5px solid #E5E7EB',
+                            padding:'5px 10px', borderRadius:8, cursor:'pointer' }}>
+                          ✏️ Editar
+                        </button>
+                      )}
+                      {t.completado ? (
+                        <span style={{ fontSize:10.5, fontWeight:700, color:'#059669',
+                          background:'#D1FAE5', padding:'3px 9px', borderRadius:20 }}>✓ Completado</span>
+                      ) : esEditor && (
+                        <button onClick={() => completarTraslado(t.id)}
+                          style={{ fontSize:11, fontWeight:700, color:'#7C3AED',
+                            background:'#F5F3FF', border:'1.5px solid #DDD6FE',
+                            padding:'5px 10px', borderRadius:8, cursor:'pointer' }}>
+                          Marcar listo
+                        </button>
                       )}
                     </div>
-                    {t.completado ? (
-                      <span style={{ fontSize:10.5, fontWeight:700, color:'#059669',
-                        background:'#D1FAE5', padding:'3px 9px', borderRadius:20 }}>✓ Completado</span>
-                    ) : esEditor && (
-                      <button onClick={() => completarTraslado(t.id)}
-                        style={{ fontSize:11, fontWeight:700, color:'#7C3AED',
-                          background:'#F5F3FF', border:'1.5px solid #DDD6FE',
-                          padding:'5px 10px', borderRadius:8, cursor:'pointer' }}>
-                        Marcar listo
-                      </button>
+                    {rutaAbierta === t.id && (
+                      <div style={{ padding:'0 0 14px' }}>
+                        <MapaRuta origen={t.origen} destino={t.destino}
+                          origenLat={t.origen_lat} origenLon={t.origen_lon}
+                          destinoLat={t.destino_lat} destinoLon={t.destino_lon}
+                          vehiculoPlaca={t.vehiculo_placa} conductorNombre={t.conductor_nombre}/>
+                      </div>
                     )}
                   </div>
                 ))

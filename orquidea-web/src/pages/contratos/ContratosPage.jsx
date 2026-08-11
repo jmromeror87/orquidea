@@ -151,7 +151,8 @@ const CSS = `
   .ct-drawer-overlay { position:fixed; inset:0; background:rgba(10,10,30,.45); backdrop-filter:blur(3px);
     z-index:1000; display:flex; justify-content:flex-end; }
   .ct-drawer { background:#fff; width:88%; max-width:1100px; height:100vh; display:flex;
-    flex-direction:column; box-shadow:-8px 0 40px rgba(0,0,0,.18); animation:ct-slide-in .22s ease; }
+    flex-direction:column; box-shadow:-8px 0 40px rgba(0,0,0,.18); animation:ct-slide-in .22s ease;
+    border-top-left-radius:18px; border-bottom-left-radius:18px; overflow:hidden; }
   @keyframes ct-slide-in { from{transform:translateX(60px);opacity:0} to{transform:translateX(0);opacity:1} }
   .ct-drawer-sidebar { width:190px; flex-shrink:0; border-right:1.5px solid #FEF3C7;
     background:#FFFDF5; display:flex; flex-direction:column; padding:16px 10px; gap:4px; overflow-y:auto; }

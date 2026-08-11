@@ -225,6 +225,7 @@ export async function actualizar(req, reply) {
     nombres, apellidos, razon_social, fecha_nacimiento, sexo, rh,
     telefono, telefono_alt, email, direccion, barrio, vereda,
     departamento_id, municipio_id, zona_id, observaciones, activo,
+    estado_civil, ocupacion,
   } = req.body
 
   const { sedeIds } = resolverSede(req)
@@ -255,6 +256,8 @@ export async function actualizar(req, reply) {
        zona_id           = COALESCE($18, zona_id),
        observaciones     = COALESCE($19, observaciones),
        activo            = COALESCE($20, activo),
+       estado_civil      = COALESCE($23, estado_civil),
+       ocupacion         = COALESCE($24, ocupacion),
        actualizado       = NOW()
      WHERE id = $1 RETURNING *`,
     [id,
@@ -263,7 +266,7 @@ export async function actualizar(req, reply) {
      sexo || null, rh || null, telefono || null, telefono_alt || null,
      email || null, direccion || null, departamento_id || null,
      municipio_id || null, zona_id || null, observaciones || null, activo ?? null,
-     barrio || null, vereda || null]
+     barrio || null, vereda || null, estado_civil || null, ocupacion || null]
   )
   if (!rows.length) return reply.code(404).send({ data: null, error: 'Tercero no encontrado' })
   return reply.send({ data: rows[0], error: null })

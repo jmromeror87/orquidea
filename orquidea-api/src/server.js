@@ -46,6 +46,10 @@ import asesoresRoutes      from './routes/asesores.routes.js'
 import flotaRoutes         from './routes/flota.routes.js'
 import permisosRoutes      from './routes/permisos.routes.js'
 import tiposDocumentoRoutes from './routes/tiposDocumento.routes.js'
+import listasValoresRoutes  from './routes/listasValores.routes.js'
+import rolesPersonalRoutes  from './routes/rolesPersonal.routes.js'
+import geoRoutes            from './routes/geo.routes.js'
+import tiposTrasladoRoutes  from './routes/tiposTraslado.routes.js'
 import formasPagoRoutes     from './routes/formasPago.routes.js'
 import inventarioRoutes     from './routes/inventario.routes.js'
 import comprasRoutes        from './routes/compras.routes.js'
@@ -117,6 +121,10 @@ app.register(territorioRoutes,     { prefix: '/api/territorio' })
 app.register(polizasRoutes,        { prefix: '/api/polizas' })
 app.register(permisosRoutes,       { prefix: '/api/permisos' })
 app.register(tiposDocumentoRoutes, { prefix: '/api/tipos-documento' })
+app.register(listasValoresRoutes,  { prefix: '/api/listas-valores' })
+app.register(rolesPersonalRoutes,  { prefix: '/api/roles-personal' })
+app.register(geoRoutes,            { prefix: '/api/geo' })
+app.register(tiposTrasladoRoutes,  { prefix: '/api/tipos-traslado' })
 app.register(formasPagoRoutes,    { prefix: '/api/formas-pago' })
 app.register(inventarioRoutes,    { prefix: '/api/inventario' })
 app.register(comprasRoutes,       { prefix: '/api/compras' })

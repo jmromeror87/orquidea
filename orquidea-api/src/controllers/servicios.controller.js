@@ -240,6 +240,7 @@ export async function obtener(req, reply) {
         dif.fecha_nacimiento AS difunto_nacimiento,
         dif.sexo           AS difunto_sexo,
         dif.numero_documento AS difunto_documento,
+        dif.tipo_documento_id AS difunto_tipo_documento_id,
         td.sigla           AS difunto_tipo_doc,
         dif.lugar_exp_documento AS difunto_lugar_exp_doc,
         dif.estado_civil   AS difunto_estado_civil,
@@ -273,6 +274,7 @@ export async function obtener(req, reply) {
         COALESCE(cont.email, contConv.email)                 AS contratante_email,
         COALESCE(cont.direccion, contConv.direccion)         AS contratante_direccion,
         COALESCE(cont.municipio_id, contConv.municipio_id)   AS contratante_municipio_id,
+        COALESCE(cont.departamento_id, contConv.departamento_id) AS contratante_departamento_id,
         COALESCE(gmc.nombre, gmcc.nombre)                     AS contratante_municipio,
         COALESCE(gdc.nombre, gdcc.nombre)                     AS contratante_departamento,
         COALESCE(cont.estado_civil, contConv.estado_civil)   AS contratante_estado_civil,
@@ -437,6 +439,7 @@ export async function crear(req, reply) {
     contrato_id, poliza_id, beneficiario_id,
     convenio_id, convenio_autorizacion_id, convenio_numero_autorizacion,
     convenio_valor_servicio, convenio_observaciones, contratante_convenio_id,
+    contratante_id, parentesco,
     difunto_id, tipo_disposicion = 'INHUMACION',
     sala_id, fecha_velacion_ini, fecha_velacion_fin,
     lugar_recogida, fecha_recogida,
@@ -451,6 +454,12 @@ export async function crear(req, reply) {
   if (contrato_id) {
     const cRes = await pool.query(`SELECT id FROM contratos WHERE id = $1`, [contrato_id])
     if (!cRes.rows.length) return reply.code(400).send({ error: 'El contrato no existe' })
+  }
+
+  // ── Validar contratante (si se proporcionó sin contrato — servicio directo) ─
+  if (contratante_id && !contrato_id) {
+    const tRes = await pool.query(`SELECT id FROM terceros WHERE id = $1`, [contratante_id])
+    if (!tRes.rows.length) return reply.code(400).send({ error: 'El contratante no existe' })
   }
 
   // ── Validar convenio (si se proporcionó) — la cobertura SIEMPRE se recalcula
@@ -522,8 +531,33 @@ export async function crear(req, reply) {
       }
     }
 
-    // ── Insertar servicio ─────────────────────────────────────────────────
+    // ── Servicio directo con contratante nuevo/sin contrato: crear contrato mínimo ──
+    let contratoIdFinal = contrato_id || null
     const paquete_id = req.body.paquete_id || null
+    if (!contratoIdFinal && contratante_id) {
+      let valorPaquete = 0
+      if (paquete_id) {
+        const pkRes = await db.query(`SELECT precio_base FROM paquetes_servicio WHERE id = $1`, [paquete_id])
+        valorPaquete = pkRes.rows[0]?.precio_base || 0
+      }
+      const contRes = await db.query(`
+        INSERT INTO contratos (
+          contratante_id, difunto_id, paquete_id, usuario_id,
+          valor_total, valor_cuota, estado, tipo_contrato, modalidad, num_cuotas,
+          fecha_servicio, sede_id
+        ) VALUES ($1,$2,$3,$4,$5,$5,'activo','INMEDIATO','CONTADO',1,CURRENT_DATE,$6)
+        RETURNING id`,
+        [contratante_id, difunto_id, paquete_id, req.user.id, valorPaquete, sedeParaCrear(req)]
+      )
+      contratoIdFinal = contRes.rows[0].id
+      await db.query(
+        `INSERT INTO tercero_roles (tercero_id, rol) VALUES ($1, 'CONTRATANTE')
+         ON CONFLICT (tercero_id, rol) DO UPDATE SET activo = TRUE`,
+        [contratante_id]
+      )
+    }
+
+    // ── Insertar servicio ─────────────────────────────────────────────────
     const ins = await db.query(`
       INSERT INTO servicios_funerarios (
         contrato_id, poliza_id, paquete_id, difunto_id, tipo_disposicion,
@@ -534,11 +568,11 @@ export async function crear(req, reply) {
         observaciones, usuario_id, estado,
         convenio_id, convenio_autorizacion_id, convenio_numero_autorizacion,
         convenio_valor_servicio, convenio_valor_cubierto, convenio_observaciones,
-        contratante_convenio_id, convenio_absorbe_resto, sede_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'RECIBIDO',$17,$18,$19,$20,$21,$22,$23,$24,$25)
+        contratante_convenio_id, convenio_absorbe_resto, sede_id, parentesco
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'RECIBIDO',$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
       RETURNING id, numero`,
       [
-        contrato_id || null, poliza_id || null, paquete_id, difunto_id, tipo_disposicion,
+        contratoIdFinal, poliza_id || null, paquete_id, difunto_id, tipo_disposicion,
         sala_id || null, fecha_velacion_ini || null, fecha_velacion_fin || null,
         lugar_recogida || null, fecha_recogida || null,
         lugar_disposicion || null, fecha_disposicion || null,
@@ -551,6 +585,7 @@ export async function crear(req, reply) {
         contratante_convenio_id || null,
         convenioCobertura ? convenioCobertura.absorbe_resto : null,
         sedeParaCrear(req),
+        parentesco || null,
       ]
     )
 
@@ -583,14 +618,14 @@ export async function crear(req, reply) {
     // ── Auto-cargar ítems del paquete (si viene de CONTRATO con paquete) ───
     if (paquete_id && !poliza_id) {
       const pkItems = await db.query(
-        `SELECT nombre, categoria FROM paquete_items WHERE paquete_id=$1 AND incluido ORDER BY orden`,
+        `SELECT nombre, categoria, catalogo_id, precio_unitario FROM paquete_items WHERE paquete_id=$1 AND incluido ORDER BY orden`,
         [paquete_id]
       )
       for (const it of pkItems.rows) {
         await db.query(
-          `INSERT INTO items_servicio (servicio_id, descripcion, cantidad, precio_unit, es_cobertura)
-           VALUES ($1,$2,1,0,TRUE)`,
-          [servicioId, it.nombre]
+          `INSERT INTO items_servicio (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura)
+           VALUES ($1,$2,$3,1,$4,TRUE)`,
+          [servicioId, it.catalogo_id || null, it.nombre, it.precio_unitario || 0]
         )
       }
     }
@@ -802,7 +837,10 @@ export async function cambiarEstado(req, reply) {
 
 export async function agregarTraslado(req, reply) {
   const { id } = req.params
-  const { tipo, origen, destino, fecha_hora, vehiculo_id, conductor_id } = req.body
+  const {
+    tipo, origen, destino, fecha_hora, vehiculo_id, conductor_id,
+    origen_lat, origen_lon, destino_lat, destino_lon,
+  } = req.body
   if (!tipo) return reply.code(400).send({ error: 'tipo de traslado es obligatorio' })
 
   if (fecha_hora && (vehiculo_id || conductor_id)) {
@@ -815,12 +853,55 @@ export async function agregarTraslado(req, reply) {
   }
 
   const res = await pool.query(`
-    INSERT INTO traslados (servicio_id, tipo, origen, destino, fecha_hora, vehiculo_id, conductor_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-    [id, tipo, origen||null, destino||null, fecha_hora||null, vehiculo_id||null, conductor_id||null]
+    INSERT INTO traslados (
+      servicio_id, tipo, origen, destino, fecha_hora, vehiculo_id, conductor_id,
+      origen_lat, origen_lon, destino_lat, destino_lon
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [id, tipo, origen||null, destino||null, fecha_hora||null, vehiculo_id||null, conductor_id||null,
+     origen_lat ?? null, origen_lon ?? null, destino_lat ?? null, destino_lon ?? null]
   )
   await audit(id, req.user?.id, 'traslados', `Registró traslado de tipo "${tipo}"`, { origen, destino })
   return reply.code(201).send({ data: res.rows[0] })
+}
+
+export async function actualizarTraslado(req, reply) {
+  const { id, trasladoId } = req.params
+  const {
+    tipo, origen, destino, fecha_hora, vehiculo_id, conductor_id,
+    origen_lat, origen_lon, destino_lat, destino_lon,
+  } = req.body
+
+  if (fecha_hora && (vehiculo_id || conductor_id)) {
+    const choque = await verificarChoqueTraslado(pool, {
+      vehiculoId: vehiculo_id, conductorId: conductor_id, fechaHora: fecha_hora, excluirId: trasladoId,
+    })
+    if (choque) {
+      return reply.code(409).send({
+        error: `El vehículo/conductor ya tiene un traslado asignado cerca de ese horario (servicio #${choque.servicio_numero}, ${BUFFER_TRASLADO_MIN} min de margen mínimo).`
+      })
+    }
+  }
+
+  const res = await pool.query(`
+    UPDATE traslados SET
+      tipo         = COALESCE($1, tipo),
+      origen       = $2,
+      destino      = $3,
+      fecha_hora   = $4,
+      vehiculo_id  = $5,
+      conductor_id = $6,
+      origen_lat   = $9,
+      origen_lon   = $10,
+      destino_lat  = $11,
+      destino_lon  = $12
+    WHERE id = $7 AND servicio_id = $8 RETURNING *`,
+    [tipo || null, origen || null, destino || null, fecha_hora || null,
+     vehiculo_id || null, conductor_id || null, trasladoId, id,
+     origen_lat ?? null, origen_lon ?? null, destino_lat ?? null, destino_lon ?? null]
+  )
+  if (!res.rows.length) return reply.code(404).send({ error: 'Traslado no encontrado' })
+  await audit(id, req.user?.id, 'traslados', 'Actualizó datos del traslado', { origen, destino })
+  return reply.send({ data: res.rows[0] })
 }
 
 export async function completarTraslado(req, reply) {
@@ -856,12 +937,26 @@ export async function stats(req, reply) {
 
 export async function salas(req, reply) {
   const { sedeIds } = resolverSede(req)
+  const { ini, fin, excluir_id } = req.query
+  const params = sedeIds ? [sedeIds] : []
   const where = sedeIds ? 'WHERE sv.sede_id = ANY($1::uuid[])' : ''
+  const iniIdx = params.push(ini || null)
+  const finIdx = params.push(fin || null)
+  const excluirIdx = params.push(excluir_id || null)
   const res = await pool.query(
-    `SELECT sv.id, sv.nombre, sv.capacidad, sv.activa, sv.sede_id, se.nombre AS sede_nombre
+    `SELECT sv.id, sv.nombre, sv.capacidad, sv.activa, sv.sede_id, se.nombre AS sede_nombre,
+       EXISTS (
+         SELECT 1 FROM servicios_funerarios sf
+         WHERE sf.sala_id = sv.id
+           AND sf.estado NOT IN ('CANCELADO')
+           AND sf.id != COALESCE($${excluirIdx}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+           AND sf.fecha_velacion_ini IS NOT NULL AND sf.fecha_velacion_fin IS NOT NULL
+           AND $${iniIdx}::timestamptz IS NOT NULL AND $${finIdx}::timestamptz IS NOT NULL
+           AND sf.fecha_velacion_ini < $${finIdx}::timestamptz AND sf.fecha_velacion_fin > $${iniIdx}::timestamptz
+       ) AS ocupada
      FROM salas_velacion sv LEFT JOIN sedes se ON se.id = sv.sede_id
      ${where} ORDER BY sv.nombre`,
-    sedeIds ? [sedeIds] : []
+    params
   )
   return reply.send({ data: res.rows })
 }
@@ -1305,22 +1400,30 @@ export async function actualizarFallecido(req, reply) {
     // Actualizar tercero (datos personales del fallecido)
     await db.query(`
       UPDATE terceros SET
-        lugar_exp_documento = COALESCE($1, lugar_exp_documento),
-        municipio_nac_id    = COALESCE($2::CHAR(5), municipio_nac_id),
-        estado_civil        = COALESCE($3, estado_civil),
-        tipo_matrimonio     = COALESCE($4, tipo_matrimonio),
-        num_hijos           = COALESCE($5::SMALLINT, num_hijos),
-        nacionalidad        = COALESCE($6, nacionalidad),
-        religion            = COALESCE($7, religion),
-        nivel_estudios      = COALESCE($8, nivel_estudios),
-        ocupacion           = COALESCE($9, ocupacion),
-        seguridad_social    = COALESCE($10, seguridad_social),
-        nombre_conyuge      = COALESCE($11, nombre_conyuge),
-        nombre_padre        = COALESCE($12, nombre_padre),
-        nombre_madre        = COALESCE($13, nombre_madre),
+        tipo_documento_id   = COALESCE($1::uuid, tipo_documento_id),
+        numero_documento    = COALESCE($2, numero_documento),
+        fecha_nacimiento    = COALESCE($3::date, fecha_nacimiento),
+        sexo                = COALESCE($4, sexo),
+        lugar_exp_documento = COALESCE($5, lugar_exp_documento),
+        municipio_nac_id    = COALESCE($6::CHAR(5), municipio_nac_id),
+        estado_civil        = COALESCE($7, estado_civil),
+        tipo_matrimonio     = COALESCE($8, tipo_matrimonio),
+        num_hijos           = COALESCE($9::SMALLINT, num_hijos),
+        nacionalidad        = COALESCE($10, nacionalidad),
+        religion            = COALESCE($11, religion),
+        nivel_estudios      = COALESCE($12, nivel_estudios),
+        ocupacion           = COALESCE($13, ocupacion),
+        seguridad_social    = COALESCE($14, seguridad_social),
+        nombre_conyuge      = COALESCE($15, nombre_conyuge),
+        nombre_padre        = COALESCE($16, nombre_padre),
+        nombre_madre        = COALESCE($17, nombre_madre),
         actualizado         = NOW()
-      WHERE id = $14`,
+      WHERE id = $18`,
       [
+        b.tipo_documento_id   || null,
+        b.numero_documento    || null,
+        b.fecha_nacimiento    || null,
+        b.sexo                || null,
         b.lugar_exp_documento || null,
         b.municipio_nac_id    || null,
         b.estado_civil        || null,
@@ -1397,6 +1500,9 @@ export async function actualizarFallecido(req, reply) {
   } catch (e) {
     await db.query('ROLLBACK')
     req.log.error(e)
+    if (e.code === '23505') {
+      return reply.code(409).send({ error: 'Ya existe otro tercero registrado con ese tipo y número de documento' })
+    }
     return reply.code(500).send({ error: 'Error al actualizar datos del fallecido' })
   } finally {
     db.release()

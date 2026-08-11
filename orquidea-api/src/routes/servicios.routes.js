@@ -20,7 +20,7 @@ import { verifyToken } from '../middlewares/auth.middleware.js'
 import { requireRole } from '../middlewares/role.middleware.js'
 import {
   listar, obtener, crear, actualizar, cambiarEstado,
-  agregarTraslado, completarTraslado, stats, previewPlan, buscarCatalogo,
+  agregarTraslado, actualizarTraslado, completarTraslado, stats, previewPlan, buscarCatalogo,
   salas, crearSala, actualizarSala, toggleSala,
   guardarTanatopraxia, agregarMaterialTanatopraxia, eliminarMaterialTanatopraxia,
   duracionEstimadaTanatopraxia, sugerenciaTanatopraxiaIA,
@@ -53,6 +53,7 @@ export default async function serviciosRoutes(fastify) {
   fastify.put('/:id',                            { preHandler: editores }, actualizar)
   fastify.patch('/:id/estado',                   { preHandler: editores }, cambiarEstado)
   fastify.post('/:id/traslados',                 { preHandler: editores }, agregarTraslado)
+  fastify.put('/:id/traslados/:trasladoId',      { preHandler: editores }, actualizarTraslado)
   fastify.patch('/:id/traslados/:trasladoId',    { preHandler: editores }, completarTraslado)
   fastify.put('/:id/tanatopraxia',               { preHandler: editores }, guardarTanatopraxia)
   fastify.post('/:id/tanatopraxia/materiales',   { preHandler: editores }, agregarMaterialTanatopraxia)
