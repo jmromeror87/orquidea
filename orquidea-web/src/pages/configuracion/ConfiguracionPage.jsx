@@ -338,6 +338,7 @@ function TabPaquetes() {
   const [selected,   setSelected]   = useState(null)
   const [saving,     setSaving]     = useState(false)
   const [msg,        setMsg]        = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('TODOS')
 
   const PBLANK = { nombre:'', descripcion:'', precio_base:'', activo:true, tipos:['CONTRATO','CONVENIO'] }
   const [pForm, setPForm] = useState({ ...PBLANK })
@@ -460,6 +461,19 @@ function TabPaquetes() {
         </button>
       </div>
 
+      {/* Filtro por uso */}
+      <div style={{ display:'flex', gap:8, marginBottom:18 }}>
+        {[['TODOS','Todos'],['CONTRATO','Contrato / Servicio inmediato'],['CONVENIO','Convenio']].map(([val,label]) => (
+          <button key={val} onClick={() => setFiltroTipo(val)}
+            style={{ padding:'7px 14px', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer',
+              border: filtroTipo===val ? '1.5px solid #7C3AED' : '1.5px solid #E4E6F0',
+              background: filtroTipo===val ? '#EEF0FF' : '#fff',
+              color: filtroTipo===val ? '#7C3AED' : '#6B7280' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Grid de paquetes */}
       {loading ? (
         <div style={{ display:'flex', justifyContent:'center', padding:60 }}>
@@ -467,7 +481,10 @@ function TabPaquetes() {
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))', gap:18 }}>
-          {paquetes.map((p, idx) => {
+          {paquetes
+            .filter(p => filtroTipo==='TODOS' || (p.tipos||[]).includes(filtroTipo))
+            .map((p) => {
+            const idx = paquetes.indexOf(p)
             const col = COLOR[idx % COLOR.length]
             return (
               <div key={p.id} style={{
@@ -489,8 +506,20 @@ function TabPaquetes() {
                 <div style={{ padding:'18px 20px' }}>
                   {/* Header: nombre + toggle */}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:4 }}>
-                    <div style={{ fontSize:16, fontWeight:900, color: p.activo ? '#0F1035' : '#94A3B8', letterSpacing:-.3 }}>
-                      {p.nombre}
+                    <div>
+                      <div style={{ fontSize:16, fontWeight:900, color: p.activo ? '#0F1035' : '#94A3B8', letterSpacing:-.3 }}>
+                        {p.nombre}
+                      </div>
+                      <div style={{ display:'flex', gap:5, marginTop:5 }}>
+                        {(p.tipos||[]).map(t => (
+                          <span key={t} style={{
+                            fontSize:9.5, fontWeight:800, letterSpacing:.3, padding:'2px 7px', borderRadius:6,
+                            color: p.activo ? col : '#9CA3AF',
+                            background: p.activo ? `${col}18` : '#F1F3F8' }}>
+                            {t === 'CONTRATO' ? 'CONTRATO' : 'CONVENIO'}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                     <button onClick={() => toggleActivo(p)}
                       title={p.activo ? 'Desactivar' : 'Activar'}
