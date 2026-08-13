@@ -386,7 +386,7 @@ function TabPaquetes() {
   }
 
   const guardarPaquete = async () => {
-    if (!pForm.nombre || !pForm.precio_base) return setMsg('Nombre y precio son obligatorios')
+    if (!pForm.nombre) return setMsg('El nombre es obligatorio')
     setSaving(true); setMsg('')
     try {
       if (selected) {
@@ -416,7 +416,7 @@ function TabPaquetes() {
     try {
       await api.post(`/contratos/paquetes/${selected.id}/items`, { catalogo_id: catSel.id })
       toast.success('Ítem agregado con éxito')
-      await cargarItems(selected.id)
+      await Promise.all([cargarItems(selected.id), cargar()])
       setCatSel(null); setBusqueda('')
     } catch (e) {
       setItemMsg(e.response?.data?.error || 'Error al agregar')
@@ -428,7 +428,7 @@ function TabPaquetes() {
   const eliminarItem = async (itemId) => {
     await api.delete(`/contratos/paquetes/${selected.id}/items/${itemId}`)
     toast.success('Ítem eliminado con éxito')
-    cargarItems(selected.id)
+    await Promise.all([cargarItems(selected.id), cargar()])
   }
 
   // Catálogo filtrado (excluye los ya agregados)
@@ -583,16 +583,20 @@ function TabPaquetes() {
                     style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0',
                       borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box' }}/>
                 </div>
-                <div>
-                  <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
-                    Precio base <span style={{ color:'#EF4444' }}>*</span>
-                  </label>
-                  <input type="number" value={pForm.precio_base}
-                    onChange={e => setPForm(p=>({...p,precio_base:e.target.value}))}
-                    placeholder="0"
-                    style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0',
-                      borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box' }}/>
-                </div>
+                {selected && (
+                  <div>
+                    <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
+                      Precio base
+                    </label>
+                    <div style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0',
+                      borderRadius:10, fontSize:13, boxSizing:'border-box', background:'#F8F9FC', color:'#374151', fontWeight:700 }}>
+                      {fmtCOP(pForm.precio_base)}
+                    </div>
+                    <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:4 }}>
+                      Se calcula automáticamente sumando los servicios incluidos (botón "Ítems").
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
                     Descripción

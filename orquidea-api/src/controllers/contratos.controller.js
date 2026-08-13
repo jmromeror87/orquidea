@@ -304,26 +304,26 @@ export async function paquetes(req, reply) {
 const TIPOS_PAQUETE_VALIDOS = ['CONVENIO', 'CONTRATO']
 
 export async function crearPaquete(req, reply) {
-  const { nombre, descripcion = '', precio_base, activo = true, tipos } = req.body
-  if (!nombre || !precio_base) return reply.status(400).send({ error: 'Nombre y precio son obligatorios' })
+  const { nombre, descripcion = '', activo = true, tipos } = req.body
+  if (!nombre) return reply.status(400).send({ error: 'El nombre es obligatorio' })
   const tiposLimpios = (Array.isArray(tipos) ? tipos : TIPOS_PAQUETE_VALIDOS).filter(t => TIPOS_PAQUETE_VALIDOS.includes(t))
   const r = await pool.query(
     `INSERT INTO paquetes_servicio (nombre, descripcion, precio_base, activo, tipos)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [nombre, descripcion, precio_base, activo, tiposLimpios.length ? tiposLimpios : TIPOS_PAQUETE_VALIDOS]
+     VALUES ($1,$2,0,$3,$4) RETURNING *`,
+    [nombre, descripcion, activo, tiposLimpios.length ? tiposLimpios : TIPOS_PAQUETE_VALIDOS]
   )
   return reply.status(201).send({ data: r.rows[0] })
 }
 
 export async function actualizarPaquete(req, reply) {
   const { id } = req.params
-  const { nombre, descripcion, precio_base, activo, tipos } = req.body
+  const { nombre, descripcion, activo, tipos } = req.body
   const tiposLimpios = Array.isArray(tipos) ? tipos.filter(t => TIPOS_PAQUETE_VALIDOS.includes(t)) : null
   const r = await pool.query(
     `UPDATE paquetes_servicio
-     SET nombre=$1, descripcion=$2, precio_base=$3, activo=$4, tipos=COALESCE($6, tipos)
-     WHERE id=$5 RETURNING *`,
-    [nombre, descripcion ?? '', precio_base, activo, id, tiposLimpios]
+     SET nombre=$1, descripcion=$2, activo=$3, tipos=COALESCE($5, tipos)
+     WHERE id=$4 RETURNING *`,
+    [nombre, descripcion ?? '', activo, id, tiposLimpios]
   )
   if (!r.rows.length) return reply.status(404).send({ error: 'Paquete no encontrado' })
   return reply.send({ data: r.rows[0] })
@@ -348,6 +348,15 @@ export async function listarItems(req, reply) {
   return reply.send({ data: r.rows })
 }
 
+async function recalcularPrecioBase(paqId) {
+  await pool.query(
+    `UPDATE paquetes_servicio SET precio_base = COALESCE(
+       (SELECT SUM(precio_unitario) FROM paquete_items WHERE paquete_id=$1), 0)
+     WHERE id=$1`,
+    [paqId]
+  )
+}
+
 export async function crearItem(req, reply) {
   const { paqId } = req.params
   const { catalogo_id, orden = 0 } = req.body
@@ -367,11 +376,13 @@ export async function crearItem(req, reply) {
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [paqId, catalogo_id, nombre, categoria, precio_base, orden]
   )
+  await recalcularPrecioBase(paqId)
   return reply.status(201).send({ data: r.rows[0] })
 }
 
 export async function eliminarItem(req, reply) {
   const { paqId, itemId } = req.params
   await pool.query('DELETE FROM paquete_items WHERE id=$1 AND paquete_id=$2', [itemId, paqId])
+  await recalcularPrecioBase(paqId)
   return reply.send({ ok: true })
 }
