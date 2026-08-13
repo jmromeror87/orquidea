@@ -270,9 +270,13 @@ export async function stats(req, reply) {
 
 export async function paquetes(req, reply) {
   const soloActivos = req.query.todos !== '1'
+  const { tipo } = req.query
+  const conds = []; const vals = []
+  if (soloActivos) conds.push('ps.activo')
+  if (tipo) { vals.push(tipo); conds.push(`$${vals.length} = ANY(ps.tipos)`) }
   const res = await pool.query(`
     SELECT
-      ps.id, ps.nombre, ps.descripcion, ps.precio_base, ps.activo,
+      ps.id, ps.nombre, ps.descripcion, ps.precio_base, ps.activo, ps.tipos,
       COALESCE(
         json_agg(
           json_build_object(
@@ -290,32 +294,36 @@ export async function paquetes(req, reply) {
     FROM paquetes_servicio ps
     LEFT JOIN paquete_items pi ON pi.paquete_id = ps.id
     LEFT JOIN servicios_catalogo sc ON sc.id = pi.catalogo_id
-    ${soloActivos ? 'WHERE ps.activo' : ''}
+    ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
     GROUP BY ps.id
     ORDER BY ps.precio_base
-  `)
+  `, vals)
   return reply.send({ data: res.rows })
 }
 
+const TIPOS_PAQUETE_VALIDOS = ['CONVENIO', 'CONTRATO']
+
 export async function crearPaquete(req, reply) {
-  const { nombre, descripcion = '', precio_base, activo = true } = req.body
+  const { nombre, descripcion = '', precio_base, activo = true, tipos } = req.body
   if (!nombre || !precio_base) return reply.status(400).send({ error: 'Nombre y precio son obligatorios' })
+  const tiposLimpios = (Array.isArray(tipos) ? tipos : TIPOS_PAQUETE_VALIDOS).filter(t => TIPOS_PAQUETE_VALIDOS.includes(t))
   const r = await pool.query(
-    `INSERT INTO paquetes_servicio (nombre, descripcion, precio_base, activo)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [nombre, descripcion, precio_base, activo]
+    `INSERT INTO paquetes_servicio (nombre, descripcion, precio_base, activo, tipos)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [nombre, descripcion, precio_base, activo, tiposLimpios.length ? tiposLimpios : TIPOS_PAQUETE_VALIDOS]
   )
   return reply.status(201).send({ data: r.rows[0] })
 }
 
 export async function actualizarPaquete(req, reply) {
   const { id } = req.params
-  const { nombre, descripcion, precio_base, activo } = req.body
+  const { nombre, descripcion, precio_base, activo, tipos } = req.body
+  const tiposLimpios = Array.isArray(tipos) ? tipos.filter(t => TIPOS_PAQUETE_VALIDOS.includes(t)) : null
   const r = await pool.query(
     `UPDATE paquetes_servicio
-     SET nombre=$1, descripcion=$2, precio_base=$3, activo=$4
+     SET nombre=$1, descripcion=$2, precio_base=$3, activo=$4, tipos=COALESCE($6, tipos)
      WHERE id=$5 RETURNING *`,
-    [nombre, descripcion ?? '', precio_base, activo, id]
+    [nombre, descripcion ?? '', precio_base, activo, id, tiposLimpios]
   )
   if (!r.rows.length) return reply.status(404).send({ error: 'Paquete no encontrado' })
   return reply.send({ data: r.rows[0] })

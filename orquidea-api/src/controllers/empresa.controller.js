@@ -108,6 +108,7 @@ export async function actualizarParametros(req, reply) {
     'fe_consecutivo_desde', 'fe_consecutivo_hasta', 'fe_correo_habilitado',
     'prefijo_contrato', 'prefijo_servicio', 'prefijo_prevision',
     'dias_gracia_mora', 'porcentaje_mora', 'enviar_alerta_mora_dias',
+    'porcentaje_iva_defecto',
     'wa_phone_id', 'wa_business_id',
     'smtp_host', 'smtp_puerto', 'smtp_usuario', 'smtp_de_nombre',
     'color_primario', 'color_acento',
@@ -291,13 +292,13 @@ function calcularPrecioVenta(costo, margenTipo, margenValor) {
 }
 
 export async function crearServicio(req, reply) {
-  const empresaRow = await query(`SELECT id FROM empresa WHERE activo = TRUE LIMIT 1`)
+  const empresaRow = await query(`SELECT id, porcentaje_iva_defecto FROM empresa WHERE activo = TRUE LIMIT 1`)
   if (!empresaRow.rows.length) return reply.status(404).send({ error: 'Empresa no encontrada' })
   const empresa_id = empresaRow.rows[0].id
 
   const {
     nombre, descripcion, categoria,
-    costo, margen_tipo, margen_valor, aplica_iva, porcentaje_iva,
+    costo, margen_tipo, margen_valor, aplica_iva,
     codigo_producto_dian, unidad_medida, orden_display,
   } = req.body
 
@@ -306,6 +307,8 @@ export async function crearServicio(req, reply) {
   const codigo = await generarCodigoServicio(categoria)
   const margenTipo = margen_tipo === 'FIJO' ? 'FIJO' : 'PORCENTAJE'
   const precio_base = calcularPrecioVenta(costo, margenTipo, margen_valor)
+  // El % de IVA nunca lo digita el usuario: siempre es el que está en Parámetros generales
+  const porcentaje_iva = aplica_iva ? Number(empresaRow.rows[0].porcentaje_iva_defecto) : 0
   const iva = aplica_iva ? (precio_base * (porcentaje_iva / 100)) : 0
 
   const { rows } = await query(`
@@ -338,6 +341,16 @@ export async function actualizarServicio(req, reply) {
     const margenValor = body.margen_valor ?? actual.rows[0].margen_valor
     precio_base = calcularPrecioVenta(costo, margenTipo, margenValor)
     body.costo = costo; body.margen_tipo = margenTipo; body.margen_valor = margenValor
+  }
+
+  // El % de IVA nunca lo digita el usuario: siempre es el que está en Parámetros generales
+  if (body.aplica_iva !== undefined) {
+    if (body.aplica_iva) {
+      const empresaRow = await query(`SELECT porcentaje_iva_defecto FROM empresa WHERE activo = TRUE LIMIT 1`)
+      body.porcentaje_iva = Number(empresaRow.rows[0]?.porcentaje_iva_defecto || 0)
+    } else {
+      body.porcentaje_iva = 0
+    }
   }
   iva = body.aplica_iva && (precio_base ?? body.precio_base) && body.porcentaje_iva
     ? (precio_base ?? body.precio_base) * (body.porcentaje_iva / 100) : undefined

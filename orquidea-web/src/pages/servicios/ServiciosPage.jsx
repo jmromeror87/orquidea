@@ -674,7 +674,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
   const [paqueteId,     setPaqueteId]     = useState('')
 
   useEffect(() => {
-    api.get('/contratos/paquetes').then(r => setListaPaquetes(r.data.data || [])).catch(() => {})
+    api.get('/contratos/paquetes', { params: { tipo: 'CONTRATO' } }).then(r => setListaPaquetes(r.data.data || [])).catch(() => {})
   }, [])
 
   // Datos de fallecimiento — captura durante apertura

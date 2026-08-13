@@ -339,7 +339,7 @@ function TabPaquetes() {
   const [saving,     setSaving]     = useState(false)
   const [msg,        setMsg]        = useState('')
 
-  const PBLANK = { nombre:'', descripcion:'', precio_base:'', activo:true }
+  const PBLANK = { nombre:'', descripcion:'', precio_base:'', activo:true, tipos:['CONTRATO','CONVENIO'] }
   const [pForm, setPForm] = useState({ ...PBLANK })
 
   // Items
@@ -373,7 +373,7 @@ function TabPaquetes() {
 
   const abrirPaquete = (p = null) => {
     setSelected(p)
-    setPForm(p ? { nombre:p.nombre, descripcion:p.descripcion||'', precio_base:p.precio_base, activo:p.activo } : { ...PBLANK })
+    setPForm(p ? { nombre:p.nombre, descripcion:p.descripcion||'', precio_base:p.precio_base, activo:p.activo, tipos:p.tipos||['CONTRATO','CONVENIO'] } : { ...PBLANK })
     setMsg('')
     setModal('paquete')
   }
@@ -604,6 +604,22 @@ function TabPaquetes() {
                       borderRadius:10, fontSize:13, outline:'none', resize:'vertical',
                       boxSizing:'border-box', fontFamily:'inherit' }}/>
                 </div>
+                <div>
+                  <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>
+                    ¿Dónde puede usarse este paquete? <span style={{ color:'#EF4444' }}>*</span>
+                  </label>
+                  <div style={{ display:'flex', gap:16 }}>
+                    {[['CONTRATO','Contrato / Servicio inmediato'],['CONVENIO','Convenio']].map(([val,label]) => (
+                      <label key={val} style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer' }}>
+                        <input type="checkbox" checked={pForm.tipos.includes(val)}
+                          onChange={e => setPForm(p => ({...p, tipos: e.target.checked
+                            ? [...p.tipos, val] : p.tipos.filter(t => t !== val)}))}
+                          style={{ width:16, height:16, accentColor:'#7C3AED' }}/>
+                        <span style={{ fontSize:13, fontWeight:600, color:'#374151' }}>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <button onClick={() => setPForm(p=>({...p,activo:!p.activo}))} style={{ background:'none', border:'none', cursor:'pointer', padding:0 }}>
                     {pForm.activo ? <ToggleRight size={28} color="#7C3AED"/> : <ToggleLeft size={28} color="#CBD5E1"/>}
@@ -792,6 +808,19 @@ function TabPaquetes() {
                 })}
               </div>
 
+              {items.length > 0 && (
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+                  marginTop:14, padding:'12px 16px', background:'#F5F3FF',
+                  border:'1.5px solid #DDD6FE', borderRadius:12 }}>
+                  <span style={{ fontSize:12.5, fontWeight:800, color:'#6D28D9', textTransform:'uppercase', letterSpacing:.4 }}>
+                    Suma de los {items.length} servicios
+                  </span>
+                  <span style={{ fontSize:18, fontWeight:900, color:'#6D28D9' }}>
+                    {fmtCOP(items.reduce((s, it) => s + Number(it.precio_unitario || 0), 0))}
+                  </span>
+                </div>
+              )}
+
             </div>
           </div>
         </div>
@@ -906,7 +935,7 @@ export default function ConfiguracionPage() {
             {tab === 'flota'          && <TabFlota />}
             {tab === 'dian'           && <TabDian            data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Parámetros DIAN actualizados')}}  onErr={()=>err('Error al guardar')} />}
             {tab === 'parametros'     && <TabParametros      data={empresa}  saving={saving} setSaving={setSaving} onOk={d=>{setEmpresa(e=>({...e,...d}));ok('Parámetros actualizados')}}        onErr={()=>err('Error al guardar')} />}
-            {tab === 'servicios'      && <TabServicios       servs={servs}   saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Servicio guardado')}}                  onErr={()=>err('Error al guardar')} />}
+            {tab === 'servicios'      && <TabServicios       servs={servs}   ivaDefecto={empresa?.porcentaje_iva_defecto} saving={saving} setSaving={setSaving} onOk={()=>{cargar();ok('Servicio guardado')}}                  onErr={()=>err('Error al guardar')} />}
             {tab === 'paquetes'       && <TabPaquetes />}
             {tab === 'tipos_doc'      && <TabTiposDocumento  tiposDoc={tiposDoc} saving={saving} setSaving={setSaving} onOk={()=>{api.get('/tipos-documento').then(r=>setTiposDoc(r.data.data));ok('Guardado')}} onErr={()=>err('Error al guardar')} />}
             {tab === 'listas_valores' && <TabListasValores />}
@@ -1816,6 +1845,19 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
         <BtnBar saving={saving} onGuardar={guardar} />
       </SecCard>
 
+      <SecCard titulo="IVA" sub="Porcentaje que se aplica automáticamente cuando un servicio del catálogo marca 'Aplica IVA'" Icon={Sliders} color="#0EA5E9">
+        <div className="g3">
+          <div className="campo">
+            <label>% IVA</label>
+            <input value={f.porcentaje_iva_defecto ?? 19} onChange={e=>set('porcentaje_iva_defecto')(e.target.value)} type="number" min={0} max={100} step="0.01" />
+          </div>
+        </div>
+        <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:4 }}>
+          Colombia: 19% general. Se usa en todo el catálogo — no se digita ítem por ítem.
+        </div>
+        <BtnBar saving={saving} onGuardar={guardar} />
+      </SecCard>
+
       <SecCard titulo="Intereses de Mora — Pólizas Prepago" sub="Parámetros dinámicos aplicados automáticamente cada noche" Icon={Sliders} color="#EF4444">
         {loadingMora ? (
           <div style={{display:'flex',gap:8,alignItems:'center',color:'#6B7280',padding:'20px 0'}}>
@@ -1937,7 +1979,7 @@ function calcularPrecioVentaPreview(costo, margenTipo, margenValor) {
   return margenTipo === 'FIJO' ? m : c * (1 + m / 100)
 }
 
-function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
+function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   const EMPTY = { nombre:'', codigo:'', categoria:'ATAUD', descripcion:'', costo:0, margen_tipo:'PORCENTAJE', margen_valor:0, aplica_iva:false, porcentaje_iva:0, activo:true }
   const [f, setF]       = useState(EMPTY)
   const [editId, setId] = useState(null)
@@ -2042,7 +2084,12 @@ function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
               <input type="checkbox" id="iva" checked={f.aplica_iva} onChange={e=>set('aplica_iva')(e.target.checked)} style={{width:16,height:16,accentColor:'#6366F1'}}/>
               <label htmlFor="iva" style={{textTransform:'none',letterSpacing:0,fontSize:13,fontWeight:600,color:'#374151',cursor:'pointer'}}>Aplica IVA</label>
             </div>
-            {f.aplica_iva && <div className="campo"><label>% IVA</label><input value={f.porcentaje_iva} onChange={e=>set('porcentaje_iva')(e.target.value)} type="number" /></div>}
+            {f.aplica_iva && (
+              <div className="campo">
+                <label>% IVA (Parámetros)</label>
+                <input value={`${ivaDefecto ?? 19}%`} disabled style={{background:'#F4F5FA',color:'#9CA3AF'}}/>
+              </div>
+            )}
             <div className="campo span3"><label>Descripción</label><textarea value={f.descripcion} onChange={e=>set('descripcion')(e.target.value)} rows={2} /></div>
           </div>
           <BtnBar saving={saving} onGuardar={guardar} onCancelar={() => setShow(false)} />

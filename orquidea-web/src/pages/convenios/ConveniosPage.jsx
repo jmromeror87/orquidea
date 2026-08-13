@@ -397,7 +397,7 @@ function TarjetaConvenio({ convenio, onEditar, onRecargar }) {
 
   useEffect(() => {
     if (!abierto) return
-    api.get('/contratos/paquetes').then(r => setPaquetesDisponibles(r.data.data || [])).catch(() => {})
+    api.get('/contratos/paquetes', { params: { tipo: 'CONVENIO' } }).then(r => setPaquetesDisponibles(r.data.data || [])).catch(() => {})
   }, [abierto])
 
   const candPaquetes = busqPaquete.length < 2 ? [] : paquetesDisponibles.filter(p =>
