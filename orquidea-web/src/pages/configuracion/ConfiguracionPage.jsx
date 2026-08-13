@@ -1931,8 +1931,14 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
 /* ════════════════════════════════════
    TAB SERVICIOS
 ════════════════════════════════════ */
+function calcularPrecioVentaPreview(costo, margenTipo, margenValor) {
+  const c = Number(costo) || 0
+  const m = Number(margenValor) || 0
+  return margenTipo === 'FIJO' ? c + m : c * (1 + m / 100)
+}
+
 function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
-  const EMPTY = { nombre:'', codigo:'', categoria:'ATAUD', descripcion:'', precio_base:0, aplica_iva:false, porcentaje_iva:0, activo:true }
+  const EMPTY = { nombre:'', codigo:'', categoria:'ATAUD', descripcion:'', costo:0, margen_tipo:'PORCENTAJE', margen_valor:0, aplica_iva:false, porcentaje_iva:0, activo:true }
   const [f, setF]       = useState(EMPTY)
   const [editId, setId] = useState(null)
   const [show, setShow] = useState(false)
@@ -1951,6 +1957,8 @@ function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
   }
 
   const lista = filt ? servs.filter(s => s.categoria === filt) : servs
+  const precioVentaPreview = calcularPrecioVentaPreview(f.costo, f.margen_tipo, f.margen_valor)
+  const utilidadPreview = precioVentaPreview - (Number(f.costo) || 0)
 
   return (
     <SecCard titulo="Catálogo de Servicios" sub="Ítems disponibles para armar paquetes funerarios" Icon={Package} color="#0EA5E9">
@@ -1963,13 +1971,15 @@ function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
       </div>
       <div className="tbl-wrap">
         <table className="tbl">
-          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio Base</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
           <tbody>{lista.map(s => (
             <tr key={s.id}>
               <td><span className="code-tag">{s.codigo}</span></td>
               <td style={{fontWeight:600}}>{s.nombre}</td>
               <td><span className="badge badge-blue">{s.categoria}</span></td>
-              <td style={{fontWeight:700}}>${fmt(s.precio_base)}</td>
+              <td style={{textAlign:'right', color:'#9CA3AF'}}>${fmt(s.costo)}</td>
+              <td style={{fontWeight:700, textAlign:'right'}}>${fmt(s.precio_base)}</td>
+              <td style={{textAlign:'right', color:'#059669', fontWeight:600}}>${fmt(s.precio_base - (s.costo||0))}</td>
               <td style={{textAlign:'center'}}>{s.aplica_iva?`${s.porcentaje_iva}%`:'—'}</td>
               <td><span className={`badge ${s.activo?'badge-green':'badge-red'}`}>{s.activo?'Activo':'Inactivo'}</span></td>
               <td><button className="btn-icon" onClick={() => abrir(s)}><Pencil size={13}/></button></td>
@@ -1992,8 +2002,43 @@ function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
               <div className="campo"><label>Código</label><input value="Se asigna automáticamente" disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
             )}
             <div className="campo"><label>Categoría</label><select value={f.categoria} onChange={e=>set('categoria')(e.target.value)}>{CATEGORIAS.map(c=><option key={c}>{c}</option>)}</select></div>
-            <div className="campo"><label>Precio Base</label><input value={f.precio_base} onChange={e=>set('precio_base')(e.target.value)} type="number" /></div>
-            <div className="campo" style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
+          </div>
+
+          <div style={{ background:'#F8FAFC', border:'1.5px solid #E2E8F0', borderRadius:12, padding:'14px 16px', margin:'4px 0 16px' }}>
+            <div style={{ fontSize:10.5, fontWeight:800, color:'#64748B', textTransform:'uppercase', letterSpacing:.5, marginBottom:10 }}>
+              Costeo y precio de venta
+            </div>
+            <div className="g3">
+              <div className="campo">
+                <label>Costo (lo que le cuesta a la funeraria) *</label>
+                <input value={f.costo} onChange={e=>set('costo')(e.target.value)} type="number" min={0}/>
+              </div>
+              <div className="campo">
+                <label>Tipo de margen</label>
+                <select value={f.margen_tipo} onChange={e=>set('margen_tipo')(e.target.value)}>
+                  <option value="PORCENTAJE">% sobre el costo</option>
+                  <option value="FIJO">Valor fijo ($)</option>
+                </select>
+              </div>
+              <div className="campo">
+                <label>{f.margen_tipo === 'FIJO' ? 'Margen ($)' : 'Margen (%)'}</label>
+                <input value={f.margen_valor} onChange={e=>set('margen_valor')(e.target.value)} type="number" min={0}/>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:24, marginTop:12, paddingTop:12, borderTop:'1px dashed #CBD5E1' }}>
+              <div>
+                <div style={{ fontSize:10.5, color:'#94A3B8', fontWeight:700 }}>PRECIO DE VENTA</div>
+                <div style={{ fontSize:20, fontWeight:900, color:'#0EA5E9' }}>${fmt(precioVentaPreview)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:10.5, color:'#94A3B8', fontWeight:700 }}>UTILIDAD</div>
+                <div style={{ fontSize:20, fontWeight:900, color:'#059669' }}>${fmt(utilidadPreview)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="g3">
+            <div className="campo" style={{display:'flex',alignItems:'center',gap:8}}>
               <input type="checkbox" id="iva" checked={f.aplica_iva} onChange={e=>set('aplica_iva')(e.target.checked)} style={{width:16,height:16,accentColor:'#6366F1'}}/>
               <label htmlFor="iva" style={{textTransform:'none',letterSpacing:0,fontSize:13,fontWeight:600,color:'#374151',cursor:'pointer'}}>Aplica IVA</label>
             </div>

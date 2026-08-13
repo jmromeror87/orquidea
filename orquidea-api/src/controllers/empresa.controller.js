@@ -279,6 +279,15 @@ async function generarCodigoServicio(categoria) {
   return candidato
 }
 
+// Precio de venta = costo + margen. El margen puede ser % sobre el costo o un valor fijo en $.
+// Es la única fuente de verdad del precio_base: siempre se recalcula desde costo+margen,
+// nunca se confía en un precio_base que mande el cliente directamente.
+function calcularPrecioVenta(costo, margenTipo, margenValor) {
+  const c = Number(costo) || 0
+  const m = Number(margenValor) || 0
+  return margenTipo === 'FIJO' ? c + m : c * (1 + m / 100)
+}
+
 export async function crearServicio(req, reply) {
   const empresaRow = await query(`SELECT id FROM empresa WHERE activo = TRUE LIMIT 1`)
   if (!empresaRow.rows.length) return reply.status(404).send({ error: 'Empresa no encontrada' })
@@ -286,25 +295,29 @@ export async function crearServicio(req, reply) {
 
   const {
     nombre, descripcion, categoria,
-    precio_base, aplica_iva, porcentaje_iva,
+    costo, margen_tipo, margen_valor, aplica_iva, porcentaje_iva,
     codigo_producto_dian, unidad_medida, orden_display,
   } = req.body
 
   if (!nombre || !categoria) return reply.status(400).send({ error: 'Nombre y categoría son requeridos' })
 
   const codigo = await generarCodigoServicio(categoria)
+  const margenTipo = margen_tipo === 'FIJO' ? 'FIJO' : 'PORCENTAJE'
+  const precio_base = calcularPrecioVenta(costo, margenTipo, margen_valor)
   const iva = aplica_iva ? (precio_base * (porcentaje_iva / 100)) : 0
 
   const { rows } = await query(`
     INSERT INTO servicios_catalogo (
       empresa_id, nombre, codigo, descripcion, categoria,
+      costo, margen_tipo, margen_valor,
       precio_base, precio_iva, aplica_iva, porcentaje_iva,
       codigo_producto_dian, unidad_medida, orden_display
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
     RETURNING *
   `, [
     empresa_id, nombre, codigo, descripcion, categoria,
-    precio_base || 0, iva, aplica_iva || false, porcentaje_iva || 0,
+    costo || 0, margenTipo, margen_valor || 0,
+    precio_base, iva, aplica_iva || false, porcentaje_iva || 0,
     codigo_producto_dian || '99', unidad_medida || 'UNIDAD', orden_display || 0,
   ])
   return reply.status(201).send({ data: rows[0], mensaje: 'Servicio creado correctamente' })
@@ -313,8 +326,19 @@ export async function crearServicio(req, reply) {
 export async function actualizarServicio(req, reply) {
   const { id } = req.params
   const body = req.body
-  const iva = body.aplica_iva && body.precio_base && body.porcentaje_iva
-    ? body.precio_base * (body.porcentaje_iva / 100) : undefined
+
+  let precio_base, iva
+  if (body.costo !== undefined || body.margen_tipo !== undefined || body.margen_valor !== undefined) {
+    const actual = await query(`SELECT costo, margen_tipo, margen_valor FROM servicios_catalogo WHERE id=$1`, [id])
+    if (!actual.rows.length) return reply.status(404).send({ error: 'Servicio no encontrado' })
+    const costo = body.costo ?? actual.rows[0].costo
+    const margenTipo = body.margen_tipo ?? actual.rows[0].margen_tipo
+    const margenValor = body.margen_valor ?? actual.rows[0].margen_valor
+    precio_base = calcularPrecioVenta(costo, margenTipo, margenValor)
+    body.costo = costo; body.margen_tipo = margenTipo; body.margen_valor = margenValor
+  }
+  iva = body.aplica_iva && (precio_base ?? body.precio_base) && body.porcentaje_iva
+    ? (precio_base ?? body.precio_base) * (body.porcentaje_iva / 100) : undefined
 
   const { rows } = await query(`
     UPDATE servicios_catalogo SET
@@ -322,19 +346,23 @@ export async function actualizarServicio(req, reply) {
       codigo = COALESCE($3, codigo),
       descripcion = COALESCE($4, descripcion),
       categoria = COALESCE($5, categoria),
-      precio_base = COALESCE($6, precio_base),
-      precio_iva = COALESCE($7, precio_iva),
-      aplica_iva = COALESCE($8, aplica_iva),
-      porcentaje_iva = COALESCE($9, porcentaje_iva),
-      codigo_producto_dian = COALESCE($10, codigo_producto_dian),
-      unidad_medida = COALESCE($11, unidad_medida),
-      activo = COALESCE($12, activo),
-      orden_display = COALESCE($13, orden_display)
+      costo = COALESCE($6, costo),
+      margen_tipo = COALESCE($7, margen_tipo),
+      margen_valor = COALESCE($8, margen_valor),
+      precio_base = COALESCE($9, precio_base),
+      precio_iva = COALESCE($10, precio_iva),
+      aplica_iva = COALESCE($11, aplica_iva),
+      porcentaje_iva = COALESCE($12, porcentaje_iva),
+      codigo_producto_dian = COALESCE($13, codigo_producto_dian),
+      unidad_medida = COALESCE($14, unidad_medida),
+      activo = COALESCE($15, activo),
+      orden_display = COALESCE($16, orden_display)
     WHERE id = $1
     RETURNING *
   `, [
     id, body.nombre, body.codigo, body.descripcion, body.categoria,
-    body.precio_base, iva, body.aplica_iva, body.porcentaje_iva,
+    body.costo, body.margen_tipo, body.margen_valor,
+    precio_base, iva, body.aplica_iva, body.porcentaje_iva,
     body.codigo_producto_dian, body.unidad_medida, body.activo, body.orden_display,
   ])
   if (!rows.length) return reply.status(404).send({ error: 'Servicio no encontrado' })
