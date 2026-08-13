@@ -1934,7 +1934,7 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
 function calcularPrecioVentaPreview(costo, margenTipo, margenValor) {
   const c = Number(costo) || 0
   const m = Number(margenValor) || 0
-  return margenTipo === 'FIJO' ? c + m : c * (1 + m / 100)
+  return margenTipo === 'FIJO' ? m : c * (1 + m / 100)
 }
 
 function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
@@ -2021,7 +2021,7 @@ function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
                 </select>
               </div>
               <div className="campo">
-                <label>{f.margen_tipo === 'FIJO' ? 'Margen ($)' : 'Margen (%)'}</label>
+                <label>{f.margen_tipo === 'FIJO' ? 'Precio de venta ($)' : 'Margen (%)'}</label>
                 <input value={f.margen_valor} onChange={e=>set('margen_valor')(e.target.value)} type="number" min={0}/>
               </div>
             </div>

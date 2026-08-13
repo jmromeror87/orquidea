@@ -279,13 +279,15 @@ async function generarCodigoServicio(categoria) {
   return candidato
 }
 
-// Precio de venta = costo + margen. El margen puede ser % sobre el costo o un valor fijo en $.
-// Es la única fuente de verdad del precio_base: siempre se recalcula desde costo+margen,
-// nunca se confía en un precio_base que mande el cliente directamente.
+// PORCENTAJE: precio_base = costo + (costo * margen%). FIJO: el usuario escribe
+// el precio de venta directamente (margen_valor ES el precio, no un recargo).
+// Es la única fuente de verdad del precio_base: siempre se recalcula desde
+// costo+margen o se toma el precio fijo, nunca se confía en un precio_base
+// que mande el cliente directamente por otra vía.
 function calcularPrecioVenta(costo, margenTipo, margenValor) {
   const c = Number(costo) || 0
   const m = Number(margenValor) || 0
-  return margenTipo === 'FIJO' ? c + m : c * (1 + m / 100)
+  return margenTipo === 'FIJO' ? m : c * (1 + m / 100)
 }
 
 export async function crearServicio(req, reply) {
