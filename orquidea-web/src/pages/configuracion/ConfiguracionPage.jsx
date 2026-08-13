@@ -13,7 +13,7 @@ import {
   Building2, MapPin, FileText, Sliders,
   Package, Bell, Palette,
   Save, Plus, Pencil, CheckCircle2,
-  AlertCircle, Loader2, ChevronRight, X,
+  AlertCircle, Loader2, ChevronRight, ChevronLeft, X,
   CreditCard, ToggleLeft, ToggleRight, Shield, DoorOpen, Users,
   PackagePlus, Trash2, GripVertical,
   Truck, UserSquare2,
@@ -2012,6 +2012,76 @@ function calcularPrecioVentaPreview(costo, margenTipo, margenValor) {
   return margenTipo === 'FIJO' ? m : c * (1 + m / 100)
 }
 
+const SERV_PAGE_SIZE = 8
+
+function AcordeonCategoria({ categoria, items, abrir, fmt, defaultOpen }) {
+  const [open, setOpen]   = useState(defaultOpen)
+  const [pagina, setPagina] = useState(1)
+  const totalPaginas = Math.max(1, Math.ceil(items.length / SERV_PAGE_SIZE))
+  const pageItems = items.slice((pagina-1)*SERV_PAGE_SIZE, pagina*SERV_PAGE_SIZE)
+  const valorTotal = items.reduce((s,i) => s + Number(i.precio_base||0), 0)
+  const activos = items.filter(i => i.activo).length
+
+  return (
+    <div style={{ border:'1.5px solid #E8EAF0', borderRadius:14, marginBottom:10, overflow:'hidden' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between',
+          padding:'13px 16px', background: open ? '#F8FAFC' : '#fff', border:'none', cursor:'pointer', textAlign:'left' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <ChevronRight size={16} color="#64748B" style={{ transform: open?'rotate(90deg)':'none', transition:'transform .15s', flexShrink:0 }}/>
+          <span style={{ fontSize:13.5, fontWeight:800, color:'#0F1035' }}>{categoria}</span>
+          <span className="badge badge-blue">{items.length} ítem{items.length!==1?'s':''}</span>
+          {activos < items.length && (
+            <span style={{ fontSize:10.5, color:'#9CA3AF', fontWeight:600 }}>{activos} activos</span>
+          )}
+        </div>
+        <div style={{ fontSize:12.5, fontWeight:700, color:'#0EA5E9' }}>${fmt(valorTotal)} en total</div>
+      </button>
+
+      {open && (
+        <>
+          <div className="tbl-wrap" style={{ borderTop:'1px solid #F0F1F7' }}>
+            <table className="tbl">
+              <thead><tr><th>Código</th><th>Nombre</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
+              <tbody>{pageItems.map(s => (
+                <tr key={s.id}>
+                  <td><span className="code-tag">{s.codigo}</span></td>
+                  <td style={{fontWeight:600}}>{s.nombre}</td>
+                  <td style={{textAlign:'right', color:'#9CA3AF'}}>${fmt(s.costo)}</td>
+                  <td style={{fontWeight:700, textAlign:'right'}}>${fmt(s.precio_base)}</td>
+                  <td style={{textAlign:'right', color:'#059669', fontWeight:600}}>${fmt(s.precio_base - (s.costo||0))}</td>
+                  <td style={{textAlign:'center'}}>{s.aplica_iva?`${s.porcentaje_iva}%`:'—'}</td>
+                  <td><span className={`badge ${s.activo?'badge-green':'badge-red'}`}>{s.activo?'Activo':'Inactivo'}</span></td>
+                  <td><button className="btn-icon" onClick={() => abrir(s)}><Pencil size={13}/></button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+
+          {totalPaginas > 1 && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+              padding:'10px 16px', borderTop:'1px solid #F0F1F7', background:'#FAFBFF' }}>
+              <span style={{ fontSize:11.5, color:'#9CA3AF' }}>
+                Página {pagina} de {totalPaginas} · {items.length} ítems
+              </span>
+              <div style={{ display:'flex', gap:6 }}>
+                <button onClick={() => setPagina(p => Math.max(1,p-1))} disabled={pagina===1}
+                  className="btn-icon" style={{ opacity: pagina===1?.4:1, cursor: pagina===1?'default':'pointer' }}>
+                  <ChevronLeft size={13}/>
+                </button>
+                <button onClick={() => setPagina(p => Math.min(totalPaginas,p+1))} disabled={pagina===totalPaginas}
+                  className="btn-icon" style={{ opacity: pagina===totalPaginas?.4:1, cursor: pagina===totalPaginas?'default':'pointer' }}>
+                  <ChevronRight size={13}/>
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   const EMPTY = { nombre:'', codigo:'', categoria:'ATAUD', descripcion:'', costo:0, margen_tipo:'PORCENTAJE', margen_valor:0, aplica_iva:false, porcentaje_iva:0, activo:true }
   const [f, setF]       = useState(EMPTY)
@@ -2032,6 +2102,9 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   }
 
   const lista = filt ? servs.filter(s => s.categoria === filt) : servs
+  const grupos = CATEGORIAS
+    .map(cat => ({ cat, items: lista.filter(s => s.categoria === cat) }))
+    .filter(g => g.items.length > 0)
   const precioVentaPreview = calcularPrecioVentaPreview(f.costo, f.margen_tipo, f.margen_valor)
   const utilidadPreview = precioVentaPreview - (Number(f.costo) || 0)
 
@@ -2044,24 +2117,17 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
         </select>
         <button className="btn-primary" onClick={() => abrir()}><Plus size={15}/> Nuevo Servicio</button>
       </div>
-      <div className="tbl-wrap">
-        <table className="tbl">
-          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
-          <tbody>{lista.map(s => (
-            <tr key={s.id}>
-              <td><span className="code-tag">{s.codigo}</span></td>
-              <td style={{fontWeight:600}}>{s.nombre}</td>
-              <td><span className="badge badge-blue">{s.categoria}</span></td>
-              <td style={{textAlign:'right', color:'#9CA3AF'}}>${fmt(s.costo)}</td>
-              <td style={{fontWeight:700, textAlign:'right'}}>${fmt(s.precio_base)}</td>
-              <td style={{textAlign:'right', color:'#059669', fontWeight:600}}>${fmt(s.precio_base - (s.costo||0))}</td>
-              <td style={{textAlign:'center'}}>{s.aplica_iva?`${s.porcentaje_iva}%`:'—'}</td>
-              <td><span className={`badge ${s.activo?'badge-green':'badge-red'}`}>{s.activo?'Activo':'Inactivo'}</span></td>
-              <td><button className="btn-icon" onClick={() => abrir(s)}><Pencil size={13}/></button></td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
+
+      {grupos.length === 0 ? (
+        <div style={{ textAlign:'center', padding:'40px 0', color:'#9CA3AF', fontSize:13 }}>
+          No hay servicios en esta categoría.
+        </div>
+      ) : (
+        grupos.map((g, i) => (
+          <AcordeonCategoria key={g.cat} categoria={g.cat} items={g.items} abrir={abrir} fmt={fmt}
+            defaultOpen={filt ? true : i === 0}/>
+        ))
+      )}
 
       {show && (
         <div className="form-panel">
