@@ -20,7 +20,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Handshake, Plus, X, Loader2, Edit2, ChevronDown, ChevronUp,
   Trash2, RefreshCw, ShieldCheck, Building2, Landmark, Briefcase, HelpCircle,
-  Power,
+  Power, Search,
 } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
@@ -696,6 +696,7 @@ export default function ConveniosPage() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [seleccionado, setSeleccionado] = useState(null)
+  const [busq, setBusq] = useState('')
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -704,6 +705,14 @@ export default function ConveniosPage() {
   }, [])
 
   useEffect(() => { cargar() }, [cargar])
+
+  const q = busq.trim().toLowerCase()
+  const conveniosFiltrados = q
+    ? convenios.filter(c =>
+        c.nombre?.toLowerCase().includes(q) ||
+        c.nit?.toLowerCase().includes(q) ||
+        c.contacto_nombre?.toLowerCase().includes(q))
+    : convenios
 
   return (
     <>
@@ -729,6 +738,16 @@ export default function ConveniosPage() {
           </div>
         </div>
 
+        {convenios.length > 0 && (
+          <div style={{ position:'relative', maxWidth:340, margin:'0 0 16px' }}>
+            <Search size={14} color="#9CA3AF" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
+            <input value={busq} onChange={e => setBusq(e.target.value)}
+              placeholder="Buscar por nombre, NIT o contacto…"
+              style={{ width:'100%', padding:'9px 12px 9px 32px', border:'1.5px solid #E2E5F0',
+                borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box' }}/>
+          </div>
+        )}
+
         <div className="cv-list">
           {loading && convenios.length === 0 ? (
             <div className="cv-empty"><Loader2 size={32} className="cv-spin" color="#0891B2"/><p>Cargando convenios…</p></div>
@@ -741,8 +760,12 @@ export default function ConveniosPage() {
               <p>Sin convenios registrados</p>
               <span>Registra una EPS, alcaldía o empresa con la que tengan acuerdo</span>
             </div>
+          ) : conveniosFiltrados.length === 0 ? (
+            <div className="cv-empty">
+              <p>No se encontraron convenios{q ? ` para "${busq}"` : ''}</p>
+            </div>
           ) : (
-            convenios.map(c => (
+            conveniosFiltrados.map(c => (
               <TarjetaConvenio key={c.id} convenio={c}
                 onEditar={(cv) => { setSeleccionado(cv); setModal(true) }}
                 onRecargar={cargar}/>
