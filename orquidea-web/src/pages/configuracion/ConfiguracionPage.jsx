@@ -1986,7 +1986,11 @@ function TabServicios({ servs, saving, setSaving, onOk, onErr }) {
           </div>
           <div className="g3">
             <div className="campo span2"><label>Nombre *</label><input value={f.nombre} onChange={e=>set('nombre')(e.target.value)} /></div>
-            <div className="campo"><label>Código</label><input value={f.codigo} onChange={e=>set('codigo')(e.target.value)} /></div>
+            {editId ? (
+              <div className="campo"><label>Código</label><input value={f.codigo} disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
+            ) : (
+              <div className="campo"><label>Código</label><input value="Se asigna automáticamente" disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
+            )}
             <div className="campo"><label>Categoría</label><select value={f.categoria} onChange={e=>set('categoria')(e.target.value)}>{CATEGORIAS.map(c=><option key={c}>{c}</option>)}</select></div>
             <div className="campo"><label>Precio Base</label><input value={f.precio_base} onChange={e=>set('precio_base')(e.target.value)} type="number" /></div>
             <div className="campo" style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>

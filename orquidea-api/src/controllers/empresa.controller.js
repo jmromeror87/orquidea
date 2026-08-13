@@ -261,19 +261,38 @@ export async function listarServicios(req, reply) {
   return reply.send({ data: rows, meta: { total: rows.length } })
 }
 
+// Genera un código único a partir de la categoría, ej: ATAUD-001, URNA-002…
+async function generarCodigoServicio(categoria) {
+  const prefijo = categoria.slice(0, 6).toUpperCase()
+  const { rows } = await query(
+    `SELECT codigo FROM servicios_catalogo WHERE codigo LIKE $1 ORDER BY codigo DESC LIMIT 1`,
+    [`${prefijo}-%`]
+  )
+  const ultimoNum = rows.length ? parseInt(rows[0].codigo.split('-').pop(), 10) || 0 : 0
+  let candidato, intento = ultimoNum
+  do {
+    intento += 1
+    candidato = `${prefijo}-${String(intento).padStart(3, '0')}`
+    const existe = await query(`SELECT 1 FROM servicios_catalogo WHERE codigo = $1`, [candidato])
+    if (!existe.rows.length) break
+  } while (true)
+  return candidato
+}
+
 export async function crearServicio(req, reply) {
   const empresaRow = await query(`SELECT id FROM empresa WHERE activo = TRUE LIMIT 1`)
   if (!empresaRow.rows.length) return reply.status(404).send({ error: 'Empresa no encontrada' })
   const empresa_id = empresaRow.rows[0].id
 
   const {
-    nombre, codigo, descripcion, categoria,
+    nombre, descripcion, categoria,
     precio_base, aplica_iva, porcentaje_iva,
     codigo_producto_dian, unidad_medida, orden_display,
   } = req.body
 
   if (!nombre || !categoria) return reply.status(400).send({ error: 'Nombre y categoría son requeridos' })
 
+  const codigo = await generarCodigoServicio(categoria)
   const iva = aplica_iva ? (precio_base * (porcentaje_iva / 100)) : 0
 
   const { rows } = await query(`
