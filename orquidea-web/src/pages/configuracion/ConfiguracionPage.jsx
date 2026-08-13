@@ -8,7 +8,7 @@
  * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import {
   Building2, MapPin, FileText, Sliders,
   Package, Bell, Palette,
@@ -2014,70 +2014,70 @@ function calcularPrecioVentaPreview(costo, margenTipo, margenValor) {
 
 const SERV_PAGE_SIZE = 8
 
-function AcordeonCategoria({ categoria, items, abrir, fmt, defaultOpen }) {
-  const [open, setOpen]   = useState(defaultOpen)
-  const [pagina, setPagina] = useState(1)
-  const totalPaginas = Math.max(1, Math.ceil(items.length / SERV_PAGE_SIZE))
-  const pageItems = items.slice((pagina-1)*SERV_PAGE_SIZE, pagina*SERV_PAGE_SIZE)
-  const valorTotal = items.reduce((s,i) => s + Number(i.precio_base||0), 0)
-  const activos = items.filter(i => i.activo).length
-
+function ServicioForm({ f, set, editId, fmt, ivaDefecto, precioVentaPreview, utilidadPreview, saving, guardar, cerrar }) {
   return (
-    <div style={{ border:'1.5px solid #E8EAF0', borderRadius:14, marginBottom:10, overflow:'hidden' }}>
-      <button onClick={() => setOpen(o => !o)}
-        style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'13px 16px', background: open ? '#F8FAFC' : '#fff', border:'none', cursor:'pointer', textAlign:'left' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <ChevronRight size={16} color="#64748B" style={{ transform: open?'rotate(90deg)':'none', transition:'transform .15s', flexShrink:0 }}/>
-          <span style={{ fontSize:13.5, fontWeight:800, color:'#0F1035' }}>{categoria}</span>
-          <span className="badge badge-blue">{items.length} ítem{items.length!==1?'s':''}</span>
-          {activos < items.length && (
-            <span style={{ fontSize:10.5, color:'#9CA3AF', fontWeight:600 }}>{activos} activos</span>
-          )}
+    <div className="form-panel">
+      <div className="form-panel-head">
+        <div className="form-panel-title">{editId?'Editar Servicio':'Nuevo Servicio'}</div>
+        <button className="form-panel-close" onClick={cerrar}><X size={16}/></button>
+      </div>
+      <div className="g3">
+        <div className="campo span2"><label>Nombre *</label><input value={f.nombre} onChange={e=>set('nombre')(e.target.value)} /></div>
+        {editId ? (
+          <div className="campo"><label>Código</label><input value={f.codigo} disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
+        ) : (
+          <div className="campo"><label>Código</label><input value="Se asigna automáticamente" disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
+        )}
+        <div className="campo"><label>Categoría</label><select value={f.categoria} onChange={e=>set('categoria')(e.target.value)}>{CATEGORIAS.map(c=><option key={c}>{c}</option>)}</select></div>
+      </div>
+
+      <div style={{ background:'#F8FAFC', border:'1.5px solid #E2E8F0', borderRadius:12, padding:'14px 16px', margin:'4px 0 16px' }}>
+        <div style={{ fontSize:10.5, fontWeight:800, color:'#64748B', textTransform:'uppercase', letterSpacing:.5, marginBottom:10 }}>
+          Costeo y precio de venta
         </div>
-        <div style={{ fontSize:12.5, fontWeight:700, color:'#0EA5E9' }}>${fmt(valorTotal)} en total</div>
-      </button>
-
-      {open && (
-        <>
-          <div className="tbl-wrap" style={{ borderTop:'1px solid #F0F1F7' }}>
-            <table className="tbl">
-              <thead><tr><th>Código</th><th>Nombre</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
-              <tbody>{pageItems.map(s => (
-                <tr key={s.id}>
-                  <td><span className="code-tag">{s.codigo}</span></td>
-                  <td style={{fontWeight:600}}>{s.nombre}</td>
-                  <td style={{textAlign:'right', color:'#9CA3AF'}}>${fmt(s.costo)}</td>
-                  <td style={{fontWeight:700, textAlign:'right'}}>${fmt(s.precio_base)}</td>
-                  <td style={{textAlign:'right', color:'#059669', fontWeight:600}}>${fmt(s.precio_base - (s.costo||0))}</td>
-                  <td style={{textAlign:'center'}}>{s.aplica_iva?`${s.porcentaje_iva}%`:'—'}</td>
-                  <td><span className={`badge ${s.activo?'badge-green':'badge-red'}`}>{s.activo?'Activo':'Inactivo'}</span></td>
-                  <td><button className="btn-icon" onClick={() => abrir(s)}><Pencil size={13}/></button></td>
-                </tr>
-              ))}</tbody>
-            </table>
+        <div className="g3">
+          <div className="campo">
+            <label>Costo (lo que le cuesta a la funeraria) *</label>
+            <input value={f.costo} onChange={e=>set('costo')(e.target.value)} type="number" min={0}/>
           </div>
+          <div className="campo">
+            <label>Tipo de margen</label>
+            <select value={f.margen_tipo} onChange={e=>set('margen_tipo')(e.target.value)}>
+              <option value="PORCENTAJE">% sobre el costo</option>
+              <option value="FIJO">Valor fijo ($)</option>
+            </select>
+          </div>
+          <div className="campo">
+            <label>{f.margen_tipo === 'FIJO' ? 'Precio de venta ($)' : 'Margen (%)'}</label>
+            <input value={f.margen_valor} onChange={e=>set('margen_valor')(e.target.value)} type="number" min={0}/>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:24, marginTop:12, paddingTop:12, borderTop:'1px dashed #CBD5E1' }}>
+          <div>
+            <div style={{ fontSize:10.5, color:'#94A3B8', fontWeight:700 }}>PRECIO DE VENTA</div>
+            <div style={{ fontSize:20, fontWeight:900, color:'#0EA5E9' }}>${fmt(precioVentaPreview)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:10.5, color:'#94A3B8', fontWeight:700 }}>UTILIDAD</div>
+            <div style={{ fontSize:20, fontWeight:900, color:'#059669' }}>${fmt(utilidadPreview)}</div>
+          </div>
+        </div>
+      </div>
 
-          {totalPaginas > 1 && (
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-              padding:'10px 16px', borderTop:'1px solid #F0F1F7', background:'#FAFBFF' }}>
-              <span style={{ fontSize:11.5, color:'#9CA3AF' }}>
-                Página {pagina} de {totalPaginas} · {items.length} ítems
-              </span>
-              <div style={{ display:'flex', gap:6 }}>
-                <button onClick={() => setPagina(p => Math.max(1,p-1))} disabled={pagina===1}
-                  className="btn-icon" style={{ opacity: pagina===1?.4:1, cursor: pagina===1?'default':'pointer' }}>
-                  <ChevronLeft size={13}/>
-                </button>
-                <button onClick={() => setPagina(p => Math.min(totalPaginas,p+1))} disabled={pagina===totalPaginas}
-                  className="btn-icon" style={{ opacity: pagina===totalPaginas?.4:1, cursor: pagina===totalPaginas?'default':'pointer' }}>
-                  <ChevronRight size={13}/>
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      <div className="g3">
+        <div className="campo" style={{display:'flex',alignItems:'center',gap:8}}>
+          <input type="checkbox" id="iva" checked={f.aplica_iva} onChange={e=>set('aplica_iva')(e.target.checked)} style={{width:16,height:16,accentColor:'#6366F1'}}/>
+          <label htmlFor="iva" style={{textTransform:'none',letterSpacing:0,fontSize:13,fontWeight:600,color:'#374151',cursor:'pointer'}}>Aplica IVA</label>
+        </div>
+        {f.aplica_iva && (
+          <div className="campo">
+            <label>% IVA (Parámetros)</label>
+            <input value={`${ivaDefecto ?? 19}%`} disabled style={{background:'#F4F5FA',color:'#9CA3AF'}}/>
+          </div>
+        )}
+        <div className="campo span3"><label>Descripción</label><textarea value={f.descripcion} onChange={e=>set('descripcion')(e.target.value)} rows={2} /></div>
+      </div>
+      <BtnBar saving={saving} onGuardar={guardar} onCancelar={cerrar} />
     </div>
   )
 }
@@ -2088,10 +2088,12 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   const [editId, setId] = useState(null)
   const [show, setShow] = useState(false)
   const [filt,  setFilt]= useState('')
+  const [pagina, setPagina] = useState(1)
   const set = k => v => setF(x => ({...x,[k]:v}))
   const fmt = n => Number(n||0).toLocaleString('es-CO')
 
   const abrir = (s=null) => { setF(s?{...EMPTY,...s}:EMPTY); setId(s?.id||null); setShow(true) }
+  const cerrar = () => setShow(false)
   const guardar = async () => {
     if (!f.nombre) return
     setSaving(true)
@@ -2102,96 +2104,75 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   }
 
   const lista = filt ? servs.filter(s => s.categoria === filt) : servs
-  const grupos = CATEGORIAS
-    .map(cat => ({ cat, items: lista.filter(s => s.categoria === cat) }))
-    .filter(g => g.items.length > 0)
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / SERV_PAGE_SIZE))
+  const paginaSeg = Math.min(pagina, totalPaginas)
+  const pageItems = lista.slice((paginaSeg-1)*SERV_PAGE_SIZE, paginaSeg*SERV_PAGE_SIZE)
   const precioVentaPreview = calcularPrecioVentaPreview(f.costo, f.margen_tipo, f.margen_valor)
   const utilidadPreview = precioVentaPreview - (Number(f.costo) || 0)
+
+  const cambiarFiltro = e => { setFilt(e.target.value); setPagina(1) }
 
   return (
     <SecCard titulo="Catálogo de Servicios" sub="Ítems disponibles para armar paquetes funerarios" Icon={Package} color="#0EA5E9">
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, gap:12 }}>
-        <select className="select-filter" value={filt} onChange={e => setFilt(e.target.value)}>
+        <select className="select-filter" value={filt} onChange={cambiarFiltro}>
           <option value="">Todas las categorías</option>
           {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <button className="btn-primary" onClick={() => abrir()}><Plus size={15}/> Nuevo Servicio</button>
       </div>
 
-      {grupos.length === 0 ? (
-        <div style={{ textAlign:'center', padding:'40px 0', color:'#9CA3AF', fontSize:13 }}>
-          No hay servicios en esta categoría.
-        </div>
-      ) : (
-        grupos.map((g, i) => (
-          <AcordeonCategoria key={g.cat} categoria={g.cat} items={g.items} abrir={abrir} fmt={fmt}
-            defaultOpen={filt ? true : i === 0}/>
-        ))
+      {show && !editId && (
+        <ServicioForm f={f} set={set} editId={editId} fmt={fmt} ivaDefecto={ivaDefecto}
+          precioVentaPreview={precioVentaPreview} utilidadPreview={utilidadPreview}
+          saving={saving} guardar={guardar} cerrar={cerrar}/>
       )}
 
-      {show && (
-        <div className="form-panel">
-          <div className="form-panel-head">
-            <div className="form-panel-title">{editId?'Editar Servicio':'Nuevo Servicio'}</div>
-            <button className="form-panel-close" onClick={() => setShow(false)}><X size={16}/></button>
-          </div>
-          <div className="g3">
-            <div className="campo span2"><label>Nombre *</label><input value={f.nombre} onChange={e=>set('nombre')(e.target.value)} /></div>
-            {editId ? (
-              <div className="campo"><label>Código</label><input value={f.codigo} disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
-            ) : (
-              <div className="campo"><label>Código</label><input value="Se asigna automáticamente" disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
-            )}
-            <div className="campo"><label>Categoría</label><select value={f.categoria} onChange={e=>set('categoria')(e.target.value)}>{CATEGORIAS.map(c=><option key={c}>{c}</option>)}</select></div>
-          </div>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
+          <tbody>{pageItems.map(s => (
+            <Fragment key={s.id}>
+              <tr>
+                <td><span className="code-tag">{s.codigo}</span></td>
+                <td style={{fontWeight:600}}>{s.nombre}</td>
+                <td><span className="badge badge-blue">{s.categoria}</span></td>
+                <td style={{textAlign:'right', color:'#9CA3AF'}}>${fmt(s.costo)}</td>
+                <td style={{fontWeight:700, textAlign:'right'}}>${fmt(s.precio_base)}</td>
+                <td style={{textAlign:'right', color:'#059669', fontWeight:600}}>${fmt(s.precio_base - (s.costo||0))}</td>
+                <td style={{textAlign:'center'}}>{s.aplica_iva?`${s.porcentaje_iva}%`:'—'}</td>
+                <td><span className={`badge ${s.activo?'badge-green':'badge-red'}`}>{s.activo?'Activo':'Inactivo'}</span></td>
+                <td><button className="btn-icon" onClick={() => (show && editId===s.id) ? cerrar() : abrir(s)}><Pencil size={13}/></button></td>
+              </tr>
+              {show && editId === s.id && (
+                <tr>
+                  <td colSpan={9} style={{ padding:0, border:'none' }}>
+                    <ServicioForm f={f} set={set} editId={editId} fmt={fmt} ivaDefecto={ivaDefecto}
+                      precioVentaPreview={precioVentaPreview} utilidadPreview={utilidadPreview}
+                      saving={saving} guardar={guardar} cerrar={cerrar}/>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}</tbody>
+        </table>
+      </div>
 
-          <div style={{ background:'#F8FAFC', border:'1.5px solid #E2E8F0', borderRadius:12, padding:'14px 16px', margin:'4px 0 16px' }}>
-            <div style={{ fontSize:10.5, fontWeight:800, color:'#64748B', textTransform:'uppercase', letterSpacing:.5, marginBottom:10 }}>
-              Costeo y precio de venta
-            </div>
-            <div className="g3">
-              <div className="campo">
-                <label>Costo (lo que le cuesta a la funeraria) *</label>
-                <input value={f.costo} onChange={e=>set('costo')(e.target.value)} type="number" min={0}/>
-              </div>
-              <div className="campo">
-                <label>Tipo de margen</label>
-                <select value={f.margen_tipo} onChange={e=>set('margen_tipo')(e.target.value)}>
-                  <option value="PORCENTAJE">% sobre el costo</option>
-                  <option value="FIJO">Valor fijo ($)</option>
-                </select>
-              </div>
-              <div className="campo">
-                <label>{f.margen_tipo === 'FIJO' ? 'Precio de venta ($)' : 'Margen (%)'}</label>
-                <input value={f.margen_valor} onChange={e=>set('margen_valor')(e.target.value)} type="number" min={0}/>
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:24, marginTop:12, paddingTop:12, borderTop:'1px dashed #CBD5E1' }}>
-              <div>
-                <div style={{ fontSize:10.5, color:'#94A3B8', fontWeight:700 }}>PRECIO DE VENTA</div>
-                <div style={{ fontSize:20, fontWeight:900, color:'#0EA5E9' }}>${fmt(precioVentaPreview)}</div>
-              </div>
-              <div>
-                <div style={{ fontSize:10.5, color:'#94A3B8', fontWeight:700 }}>UTILIDAD</div>
-                <div style={{ fontSize:20, fontWeight:900, color:'#059669' }}>${fmt(utilidadPreview)}</div>
-              </div>
-            </div>
+      {totalPaginas > 1 && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:12 }}>
+          <span style={{ fontSize:11.5, color:'#9CA3AF' }}>
+            Página {paginaSeg} de {totalPaginas} · {lista.length} servicios
+          </span>
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={() => setPagina(p => Math.max(1,p-1))} disabled={paginaSeg===1}
+              className="btn-icon" style={{ opacity: paginaSeg===1?.4:1, cursor: paginaSeg===1?'default':'pointer' }}>
+              <ChevronLeft size={13}/>
+            </button>
+            <button onClick={() => setPagina(p => Math.min(totalPaginas,p+1))} disabled={paginaSeg===totalPaginas}
+              className="btn-icon" style={{ opacity: paginaSeg===totalPaginas?.4:1, cursor: paginaSeg===totalPaginas?'default':'pointer' }}>
+              <ChevronRight size={13}/>
+            </button>
           </div>
-
-          <div className="g3">
-            <div className="campo" style={{display:'flex',alignItems:'center',gap:8}}>
-              <input type="checkbox" id="iva" checked={f.aplica_iva} onChange={e=>set('aplica_iva')(e.target.checked)} style={{width:16,height:16,accentColor:'#6366F1'}}/>
-              <label htmlFor="iva" style={{textTransform:'none',letterSpacing:0,fontSize:13,fontWeight:600,color:'#374151',cursor:'pointer'}}>Aplica IVA</label>
-            </div>
-            {f.aplica_iva && (
-              <div className="campo">
-                <label>% IVA (Parámetros)</label>
-                <input value={`${ivaDefecto ?? 19}%`} disabled style={{background:'#F4F5FA',color:'#9CA3AF'}}/>
-              </div>
-            )}
-            <div className="campo span3"><label>Descripción</label><textarea value={f.descripcion} onChange={e=>set('descripcion')(e.target.value)} rows={2} /></div>
-          </div>
-          <BtnBar saving={saving} onGuardar={guardar} onCancelar={() => setShow(false)} />
         </div>
       )}
     </SecCard>
