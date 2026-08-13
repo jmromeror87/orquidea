@@ -20,6 +20,7 @@ import {
   listar, obtener, crear, actualizar, toggleActivo,
   agregarAutorizacion, actualizarAutorizacion, eliminarAutorizacion,
   calcularCobertura, listarItemsPermitidos, agregarItemPermitido, eliminarItemPermitido,
+  listarPaquetesVinculados, agregarPaqueteVinculado, eliminarPaqueteVinculado,
 } from '../controllers/convenios.controller.js'
 
 const auth   = [verifyToken]
@@ -38,4 +39,7 @@ export default async function conveniosRoutes(fastify) {
   fastify.get   ('/:id/items',                     { preHandler: auth },   listarItemsPermitidos)
   fastify.post  ('/:id/items',                      { preHandler: admins }, agregarItemPermitido)
   fastify.delete('/items/:itemId',                  { preHandler: admins }, eliminarItemPermitido)
+  fastify.get   ('/:id/paquetes',                  { preHandler: auth },   listarPaquetesVinculados)
+  fastify.post  ('/:id/paquetes',                  { preHandler: admins }, agregarPaqueteVinculado)
+  fastify.delete('/paquetes/:vinculoId',            { preHandler: admins }, eliminarPaqueteVinculado)
 }

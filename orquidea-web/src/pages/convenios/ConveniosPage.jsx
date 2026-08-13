@@ -377,18 +377,48 @@ function TarjetaConvenio({ convenio, onEditar, onRecargar }) {
   const [itemsPermitidos, setItemsPermitidos] = useState([])
   const [busqCatalogo, setBusqCatalogo] = useState('')
   const [candCatalogo, setCandCatalogo] = useState([])
+  const [paquetesVinculados, setPaquetesVinculados] = useState([])
+  const [paquetesDisponibles, setPaquetesDisponibles] = useState([])
+  const [busqPaquete, setBusqPaquete] = useState('')
 
   const cargar = useCallback(async () => {
     setLoading(true)
     try {
-      const [r, ri] = await Promise.all([
+      const [r, ri, rp] = await Promise.all([
         api.get(`/convenios/${convenio.id}`),
         api.get(`/convenios/${convenio.id}/items`),
+        api.get(`/convenios/${convenio.id}/paquetes`),
       ])
       setDetalle(r.data.data)
       setItemsPermitidos(ri.data.data || [])
+      setPaquetesVinculados(rp.data.data || [])
     } finally { setLoading(false) }
   }, [convenio.id])
+
+  useEffect(() => {
+    if (!abierto) return
+    api.get('/contratos/paquetes').then(r => setPaquetesDisponibles(r.data.data || [])).catch(() => {})
+  }, [abierto])
+
+  const candPaquetes = busqPaquete.length < 2 ? [] : paquetesDisponibles.filter(p =>
+    p.nombre.toLowerCase().includes(busqPaquete.toLowerCase()) &&
+    !paquetesVinculados.some(pv => pv.paquete_id === p.id))
+
+  const agregarPaqueteVinculado = async (p) => {
+    try {
+      await api.post(`/convenios/${convenio.id}/paquetes`, { paquete_id: p.id })
+      toast.success('Paquete vinculado con éxito')
+      setBusqPaquete(''); cargar()
+    } catch (e) { toast.error(e.response?.data?.error || 'Error') }
+  }
+
+  const quitarPaqueteVinculado = async (vinculoId) => {
+    try {
+      await api.delete(`/convenios/paquetes/${vinculoId}`)
+      toast.success('Paquete desvinculado')
+      cargar()
+    } catch (e) { toast.error(e.response?.data?.error || 'Error') }
+  }
 
   useEffect(() => { if (abierto) cargar() }, [abierto, cargar])
 
@@ -589,6 +619,55 @@ function TarjetaConvenio({ convenio, onEditar, onRecargar }) {
                       {it.nombre}
                       <button onClick={() => quitarItemPermitido(it.id)}
                         style={{ background:'none', border:'none', cursor:'pointer', color:'#0891B2',
+                          display:'flex', alignItems:'center' }}>
+                        <X size={11}/>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:18, marginBottom:4 }}>
+                <span style={{ fontSize:10, fontWeight:800, color:'#9CA3AF', letterSpacing:.6, textTransform:'uppercase' }}>
+                  Paquetes vinculados
+                </span>
+              </div>
+              <div style={{ position:'relative', marginBottom:8 }}>
+                <input value={busqPaquete} onChange={e => setBusqPaquete(e.target.value)}
+                  placeholder="Buscar paquete (ej: Servicio Inicial, Servicio Final)…"
+                  style={{ width:'100%', boxSizing:'border-box', padding:'8px 12px', border:'1.5px solid #E2E5F0',
+                    borderRadius:8, fontSize:12.5 }}/>
+                {candPaquetes.length > 0 && (
+                  <div style={{ border:'1.5px solid #ECEDF8', borderRadius:10, overflow:'hidden',
+                    maxHeight:160, overflowY:'auto', background:'#fff', marginTop:4, position:'absolute',
+                    left:0, right:0, zIndex:5, boxShadow:'0 8px 20px rgba(0,0,0,.1)' }}>
+                    {candPaquetes.map(p => (
+                      <div key={p.id} onClick={() => agregarPaqueteVinculado(p)}
+                        style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                          padding:'8px 12px', cursor:'pointer', borderBottom:'1px solid #F4F5FA' }}
+                        onMouseEnter={e => e.currentTarget.style.background='#F0FDFF'}
+                        onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                        <span style={{ fontSize:12.5 }}>{p.nombre}</span>
+                        <span style={{ fontSize:11, color:'#9CA3AF' }}>{fmt(p.precio_base)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {paquetesVinculados.length === 0 ? (
+                <div style={{ fontSize:12, color:'#D1D5DB', padding:'8px 0' }}>
+                  Sin paquetes vinculados a este convenio todavía.
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {paquetesVinculados.map(pv => (
+                    <span key={pv.id} style={{ display:'inline-flex', alignItems:'center', gap:6,
+                      background:'#F5F3FF', border:'1px solid #DDD6FE', color:'#6D28D9',
+                      borderRadius:20, padding:'4px 6px 4px 10px', fontSize:11.5, fontWeight:600 }}>
+                      {pv.nombre} · {fmt(pv.precio_base)}
+                      <button onClick={() => quitarPaqueteVinculado(pv.id)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#7C3AED',
                           display:'flex', alignItems:'center' }}>
                         <X size={11}/>
                       </button>

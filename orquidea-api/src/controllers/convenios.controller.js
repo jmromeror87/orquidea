@@ -397,3 +397,65 @@ export async function eliminarItemPermitido(req, reply) {
   if (!r.rows.length) return reply.code(404).send({ error: 'Ítem no encontrado' })
   return reply.send({ ok: true })
 }
+
+// ── Paquetes vinculados (ej: "Servicio Inicial", "Servicio Final") ─────────
+
+export async function listarPaquetesVinculados(req, reply) {
+  const { id } = req.params
+  const { sedeIds } = resolverSede(req)
+  if (!(await convenioPermitido(pool, id, sedeIds))) {
+    return reply.code(403).send({ error: 'No tiene acceso a este convenio' })
+  }
+  const r = await pool.query(`
+    SELECT cp.id, cp.paquete_id, p.nombre, p.precio_base
+    FROM convenio_paquetes cp
+    JOIN paquetes_servicio p ON p.id = cp.paquete_id
+    WHERE cp.convenio_id = $1
+    ORDER BY p.nombre`, [id]
+  )
+  return reply.send({ data: r.rows })
+}
+
+export async function agregarPaqueteVinculado(req, reply) {
+  const { id } = req.params
+  const { paquete_id } = req.body
+  if (!paquete_id) return reply.code(400).send({ error: 'paquete_id es obligatorio' })
+
+  const { sedeIds } = resolverSede(req)
+  if (!(await convenioPermitido(pool, id, sedeIds))) {
+    return reply.code(403).send({ error: 'No tiene acceso a este convenio' })
+  }
+
+  const conv = await pool.query(`SELECT id FROM convenios WHERE id=$1`, [id])
+  if (!conv.rows.length) return reply.code(404).send({ error: 'Convenio no encontrado' })
+
+  try {
+    const r = await pool.query(`
+      INSERT INTO convenio_paquetes (convenio_id, paquete_id) VALUES ($1,$2) RETURNING id`,
+      [id, paquete_id]
+    )
+    return reply.code(201).send({ data: r.rows[0] })
+  } catch (e) {
+    if (e.code === '23505') return reply.code(409).send({ error: 'Ese paquete ya está vinculado a este convenio' })
+    throw e
+  }
+}
+
+export async function eliminarPaqueteVinculado(req, reply) {
+  const { vinculoId } = req.params
+  const { sedeIds } = resolverSede(req)
+
+  if (sedeIds !== null) {
+    const chk = await pool.query(
+      `SELECT c.sede_id FROM convenio_paquetes cp JOIN convenios c ON c.id = cp.convenio_id WHERE cp.id = $1`,
+      [vinculoId]
+    )
+    if (!chk.rows.length || !sedeIds.includes(chk.rows[0].sede_id)) {
+      return reply.code(403).send({ error: 'No tiene acceso a este vínculo' })
+    }
+  }
+
+  const r = await pool.query(`DELETE FROM convenio_paquetes WHERE id=$1 RETURNING id`, [vinculoId])
+  if (!r.rows.length) return reply.code(404).send({ error: 'Vínculo no encontrado' })
+  return reply.send({ ok: true })
+}
