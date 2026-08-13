@@ -2101,7 +2101,20 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
     try {
       if (editId) await empresaService.actualizarServicio(editId,f); else await empresaService.crearServicio(f)
       setShow(false); onOk()
-    } catch { onErr() } finally { setSaving(false) }
+      toast.success(editId ? 'Servicio actualizado con éxito' : 'Servicio creado con éxito')
+    } catch (e) { onErr(); toast.error(e?.response?.data?.error || 'Error al guardar') } finally { setSaving(false) }
+  }
+
+  const eliminar = async (s) => {
+    if (!window.confirm(`¿Eliminar el servicio "${s.nombre}" (${s.codigo})? Esta acción no se puede deshacer.`)) return
+    try {
+      await empresaService.eliminarServicio(s.id)
+      if (editId === s.id) setShow(false)
+      onOk()
+      toast.success('Servicio eliminado con éxito')
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Error al eliminar el servicio')
+    }
   }
 
   const q = busq.trim().toLowerCase()
@@ -2148,7 +2161,7 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
       ) : (
       <div className="tbl-wrap">
         <table className="tbl">
-          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th colSpan={2}></th></tr></thead>
           <tbody>{pageItems.map(s => (
             <Fragment key={s.id}>
               <tr>
@@ -2161,10 +2174,12 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
                 <td style={{textAlign:'center'}}>{s.aplica_iva?`${s.porcentaje_iva}%`:'—'}</td>
                 <td><span className={`badge ${s.activo?'badge-green':'badge-red'}`}>{s.activo?'Activo':'Inactivo'}</span></td>
                 <td><button className="btn-icon" onClick={() => (show && editId===s.id) ? cerrar() : abrir(s)}><Pencil size={13}/></button></td>
+                <td><button className="btn-icon" title="Eliminar" onClick={() => eliminar(s)}
+                  style={{ color:'#DC2626' }}><Trash2 size={13}/></button></td>
               </tr>
               {show && editId === s.id && (
                 <tr>
-                  <td colSpan={9} style={{ padding:0, border:'none' }}>
+                  <td colSpan={10} style={{ padding:0, border:'none' }}>
                     <ServicioForm f={f} set={set} editId={editId} fmt={fmt} ivaDefecto={ivaDefecto}
                       precioVentaPreview={precioVentaPreview} utilidadPreview={utilidadPreview}
                       saving={saving} guardar={guardar} cerrar={cerrar}/>

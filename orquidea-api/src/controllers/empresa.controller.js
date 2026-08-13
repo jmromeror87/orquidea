@@ -381,5 +381,58 @@ export async function actualizarServicio(req, reply) {
     body.codigo_producto_dian, body.unidad_medida, body.activo, body.orden_display,
   ])
   if (!rows.length) return reply.status(404).send({ error: 'Servicio no encontrado' })
+
+  // Propagar nombre/categoría/precio del catálogo a los paquetes que ya tienen este ítem vinculado.
+  const actualizado = rows[0]
+  const paquetesAfectados = await query(
+    `UPDATE paquete_items SET nombre=$2, categoria=$3, precio_unitario=$4
+     WHERE catalogo_id=$1 RETURNING paquete_id`,
+    [id, actualizado.nombre, actualizado.categoria, actualizado.precio_base]
+  )
+  for (const { paquete_id } of paquetesAfectados.rows) {
+    await query(
+      `UPDATE paquetes_servicio SET precio_base = COALESCE(
+         (SELECT SUM(precio_unitario) FROM paquete_items WHERE paquete_id=$1), 0)
+       WHERE id=$1`,
+      [paquete_id]
+    )
+  }
+
   return reply.send({ data: rows[0], mensaje: 'Servicio actualizado correctamente' })
+}
+
+export async function eliminarServicio(req, reply) {
+  const { id } = req.params
+
+  const existe = await query(`SELECT id FROM servicios_catalogo WHERE id=$1`, [id])
+  if (!existe.rows.length) return reply.status(404).send({ error: 'Servicio no encontrado' })
+
+  // Usos que romperían datos reales de negocio si se borra en cascada — se bloquea la eliminación.
+  const [convenioItems, planServicios] = await Promise.all([
+    query(`SELECT 1 FROM convenio_items WHERE catalogo_id=$1 LIMIT 1`, [id]),
+    query(`SELECT 1 FROM plan_servicios WHERE servicio_id=$1 LIMIT 1`, [id]),
+  ])
+  if (convenioItems.rows.length) {
+    return reply.status(409).send({ error: 'Este servicio está vinculado a un convenio. Desvincúlelo antes de eliminarlo.' })
+  }
+  if (planServicios.rows.length) {
+    return reply.status(409).send({ error: 'Este servicio está incluido en un plan de póliza. Quítelo del plan antes de eliminarlo.' })
+  }
+
+  // Sacar el ítem de los paquetes que lo tengan y recalcular su precio_base con los que queden.
+  const paquetesAfectados = await query(
+    `SELECT DISTINCT paquete_id FROM paquete_items WHERE catalogo_id=$1`, [id]
+  )
+  await query(`DELETE FROM paquete_items WHERE catalogo_id=$1`, [id])
+  for (const { paquete_id } of paquetesAfectados.rows) {
+    await query(
+      `UPDATE paquetes_servicio SET precio_base = COALESCE(
+         (SELECT SUM(precio_unitario) FROM paquete_items WHERE paquete_id=$1), 0)
+       WHERE id=$1`,
+      [paquete_id]
+    )
+  }
+
+  await query(`DELETE FROM servicios_catalogo WHERE id=$1`, [id])
+  return reply.send({ ok: true, mensaje: 'Servicio eliminado correctamente' })
 }

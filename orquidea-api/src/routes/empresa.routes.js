@@ -13,7 +13,7 @@ import { requireRole }     from '../middlewares/role.middleware.js'
 import {
   obtenerEmpresa, actualizarEmpresa, actualizarParametros,
   listarSedes, crearSede, actualizarSede,
-  listarServicios, crearServicio, actualizarServicio,
+  listarServicios, crearServicio, actualizarServicio, eliminarServicio,
 } from '../controllers/empresa.controller.js'
 
 const soloAdmins = [verifyToken, requireRole('superadmin', 'administrador')]
@@ -33,4 +33,5 @@ export default async function empresaRoutes(fastify) {
   fastify.get ('/servicios',   { preHandler: [verifyToken] }, listarServicios)
   fastify.post('/servicios',   { preHandler: soloAdmins    }, crearServicio)
   fastify.put ('/servicios/:id',{ preHandler: soloAdmins   }, actualizarServicio)
+  fastify.delete('/servicios/:id',{ preHandler: soloAdmins }, eliminarServicio)
 }

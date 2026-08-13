@@ -22,4 +22,5 @@ export const empresaService = {
   listarServicios:    (params) => api.get('/empresa/servicios', { params }),
   crearServicio:      (data)   => api.post('/empresa/servicios', data),
   actualizarServicio: (id, d)  => api.put(`/empresa/servicios/${id}`, d),
+  eliminarServicio:   (id)     => api.delete(`/empresa/servicios/${id}`),
 }
