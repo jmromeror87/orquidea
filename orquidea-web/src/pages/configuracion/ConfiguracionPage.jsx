@@ -13,7 +13,7 @@ import {
   Building2, MapPin, FileText, Sliders,
   Package, Bell, Palette,
   Save, Plus, Pencil, CheckCircle2,
-  AlertCircle, Loader2, ChevronRight, ChevronLeft, X,
+  AlertCircle, Loader2, ChevronRight, ChevronLeft, X, Search,
   CreditCard, ToggleLeft, ToggleRight, Shield, DoorOpen, Users,
   PackagePlus, Trash2, GripVertical,
   Truck, UserSquare2,
@@ -2088,6 +2088,7 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   const [editId, setId] = useState(null)
   const [show, setShow] = useState(false)
   const [filt,  setFilt]= useState('')
+  const [busq,  setBusq]= useState('')
   const [pagina, setPagina] = useState(1)
   const set = k => v => setF(x => ({...x,[k]:v}))
   const fmt = n => Number(n||0).toLocaleString('es-CO')
@@ -2103,7 +2104,10 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
     } catch { onErr() } finally { setSaving(false) }
   }
 
-  const lista = filt ? servs.filter(s => s.categoria === filt) : servs
+  const q = busq.trim().toLowerCase()
+  const lista = servs
+    .filter(s => !filt || s.categoria === filt)
+    .filter(s => !q || s.nombre.toLowerCase().includes(q) || (s.codigo||'').toLowerCase().includes(q))
   const totalPaginas = Math.max(1, Math.ceil(lista.length / SERV_PAGE_SIZE))
   const paginaSeg = Math.min(pagina, totalPaginas)
   const pageItems = lista.slice((paginaSeg-1)*SERV_PAGE_SIZE, paginaSeg*SERV_PAGE_SIZE)
@@ -2111,14 +2115,23 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   const utilidadPreview = precioVentaPreview - (Number(f.costo) || 0)
 
   const cambiarFiltro = e => { setFilt(e.target.value); setPagina(1) }
+  const cambiarBusq = e => { setBusq(e.target.value); setPagina(1) }
 
   return (
     <SecCard titulo="Catálogo de Servicios" sub="Ítems disponibles para armar paquetes funerarios" Icon={Package} color="#0EA5E9">
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, gap:12 }}>
-        <select className="select-filter" value={filt} onChange={cambiarFiltro}>
-          <option value="">Todas las categorías</option>
-          {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, gap:12, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:10, flex:1, minWidth:260 }}>
+          <div style={{ position:'relative', flex:1, maxWidth:320 }}>
+            <Search size={14} color="#9CA3AF" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
+            <input value={busq} onChange={cambiarBusq} placeholder="Buscar por nombre o código…"
+              style={{ width:'100%', padding:'9px 12px 9px 32px', border:'1.5px solid #E2E5F0',
+                borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box' }}/>
+          </div>
+          <select className="select-filter" value={filt} onChange={cambiarFiltro}>
+            <option value="">Todas las categorías</option>
+            {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
         <button className="btn-primary" onClick={() => abrir()}><Plus size={15}/> Nuevo Servicio</button>
       </div>
 
@@ -2128,6 +2141,11 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
           saving={saving} guardar={guardar} cerrar={cerrar}/>
       )}
 
+      {lista.length === 0 ? (
+        <div style={{ textAlign:'center', padding:'40px 0', color:'#9CA3AF', fontSize:13 }}>
+          No se encontraron servicios{q ? ` para "${busq}"` : ''}.
+        </div>
+      ) : (
       <div className="tbl-wrap">
         <table className="tbl">
           <thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th style={{textAlign:'right'}}>Costo</th><th style={{textAlign:'right'}}>Precio Venta</th><th style={{textAlign:'right'}}>Utilidad</th><th>IVA</th><th>Estado</th><th></th></tr></thead>
@@ -2157,8 +2175,9 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
           ))}</tbody>
         </table>
       </div>
+      )}
 
-      {totalPaginas > 1 && (
+      {lista.length > 0 && totalPaginas > 1 && (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:12 }}>
           <span style={{ fontSize:11.5, color:'#9CA3AF' }}>
             Página {paginaSeg} de {totalPaginas} · {lista.length} servicios
