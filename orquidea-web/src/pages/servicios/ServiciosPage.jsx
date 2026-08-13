@@ -627,6 +627,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
   const [busqContConv,      setBusqContConv]        = useState('')
   const [candContConv,      setCandContConv]        = useState([])
   const [contratanteConvenioId, setContratanteConvenioId] = useState('')
+  const [paquetesConvenio,  setPaquetesConvenio]    = useState([])
+  const [paqueteConvenioId, setPaqueteConvenioId]   = useState('')
 
   useEffect(() => {
     if (busqContConv.length < 2) return setCandContConv([])
@@ -645,6 +647,12 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
   useEffect(() => {
     if (!convenioId) return setConvenioAutorizaciones([])
     api.get(`/convenios/${convenioId}`).then(r => setConvenioAutorizaciones(r.data.data?.autorizaciones || [])).catch(() => {})
+  }, [convenioId])
+
+  useEffect(() => {
+    setPaqueteConvenioId('')
+    if (!convenioId) return setPaquetesConvenio([])
+    api.get(`/convenios/${convenioId}/paquetes`).then(r => setPaquetesConvenio(r.data.data || [])).catch(() => setPaquetesConvenio([]))
   }, [convenioId])
 
   useEffect(() => {
@@ -887,7 +895,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
           difunto_id:      difuntoId,
           contrato_id:     vinculoTipo === 'CONTRATO' ? (contratoId || null) : null,
           contratante_id:  vinculoTipo === 'CONTRATO' && !contratoId ? (contratanteId || null) : null,
-          paquete_id:      vinculoTipo === 'CONTRATO' ? (paqueteId  || null) : null,
+          paquete_id:      vinculoTipo === 'CONTRATO' ? (paqueteId  || null) : vinculoTipo === 'CONVENIO' ? (paqueteConvenioId || null) : null,
           poliza_id:       vinculoTipo === 'POLIZA'   ? polizaId             : null,
           beneficiario_id: vinculoTipo === 'POLIZA'   ? beneficiarioId       : null,
           items_extras:    vinculoTipo === 'POLIZA'   ? extrasItems          : undefined,
@@ -1147,6 +1155,56 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                           </option>
                         ))}
                       </select>
+                    </div>
+                  )}
+
+                  {paquetesConvenio.length > 0 && (
+                    <div className="sv-field">
+                      <label>Servicio incluido <span style={{color:'#9CA3AF',fontWeight:400}}>(opcional — paquetes vinculados a este convenio)</span></label>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))', gap:10, marginTop:6 }}>
+                        {paquetesConvenio.map(p => {
+                          const sel = paqueteConvenioId === p.paquete_id
+                          const col = '#0891B2'
+                          return (
+                            <button key={p.paquete_id} type="button"
+                              onClick={() => {
+                                const next = sel ? '' : p.paquete_id
+                                setPaqueteConvenioId(next)
+                                if (!sel) setValorServicioConv(p.precio_base)
+                              }}
+                              style={{
+                                border: `2px solid ${sel ? col : '#E2E5F0'}`,
+                                borderRadius:14, padding:'12px 13px', cursor:'pointer', textAlign:'left',
+                                background: sel ? col + '15' : '#FAFBFF', transition:'all .15s', position:'relative',
+                              }}>
+                              {sel && (
+                                <span style={{ position:'absolute', top:8, right:8, width:18, height:18,
+                                  background:col, borderRadius:'50%', display:'flex', alignItems:'center',
+                                  justifyContent:'center', fontSize:10, color:'#fff', fontWeight:900 }}>✓</span>
+                              )}
+                              <div style={{ fontSize:12, fontWeight:900, color: sel ? col : '#0F1035', marginBottom:4 }}>
+                                {p.nombre}
+                              </div>
+                              <div style={{ fontSize:13, fontWeight:800, color: col, marginBottom:8 }}>
+                                {fmtCOP(p.precio_base)}
+                              </div>
+                              <ul style={{ margin:0, padding:0, listStyle:'none' }}>
+                                {(p.items||[]).slice(0,5).map((it,i) => (
+                                  <li key={i} style={{ display:'flex', alignItems:'flex-start', gap:5, fontSize:10.5,
+                                    color:'#6B7280', marginBottom:2, lineHeight:1.3 }}>
+                                    <span style={{ color:col, marginTop:1 }}>✔</span> {it.nombre}
+                                  </li>
+                                ))}
+                                {(p.items||[]).length > 5 && (
+                                  <li style={{ fontSize:10, color:'#9CA3AF', marginTop:3, fontStyle:'italic' }}>
+                                    +{p.items.length - 5} más incluidos…
+                                  </li>
+                                )}
+                              </ul>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
 

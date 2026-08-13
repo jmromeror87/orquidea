@@ -407,10 +407,19 @@ export async function listarPaquetesVinculados(req, reply) {
     return reply.code(403).send({ error: 'No tiene acceso a este convenio' })
   }
   const r = await pool.query(`
-    SELECT cp.id, cp.paquete_id, p.nombre, p.precio_base
+    SELECT cp.id, cp.paquete_id, p.nombre, p.precio_base,
+      COALESCE(
+        json_agg(
+          json_build_object('id', pi.id, 'nombre', pi.nombre, 'precio_unitario', pi.precio_unitario)
+          ORDER BY pi.orden
+        ) FILTER (WHERE pi.id IS NOT NULL),
+        '[]'
+      ) AS items
     FROM convenio_paquetes cp
     JOIN paquetes_servicio p ON p.id = cp.paquete_id
+    LEFT JOIN paquete_items pi ON pi.paquete_id = p.id
     WHERE cp.convenio_id = $1
+    GROUP BY cp.id, p.id
     ORDER BY p.nombre`, [id]
   )
   return reply.send({ data: r.rows })
