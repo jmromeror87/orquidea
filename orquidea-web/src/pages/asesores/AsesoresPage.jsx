@@ -22,6 +22,7 @@ import {
   Check, Ban, DollarSign, Search, RefreshCw, TrendingUp,
 } from 'lucide-react'
 import api from '../../services/api.js'
+import PercentInput from '../../components/ui/PercentInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import { useAuthStore } from '../../store/auth.store.js'
 
@@ -326,13 +327,11 @@ export default function AsesoresPage() {
                   <td>
                     {esAdmin ? (
                       <div className="as-pct">
-                        <input
-                          type="number" min="0" max="100" step="0.1"
+                        <PercentInput
                           placeholder={config?.porcentaje_default ?? '—'}
                           value={editPct[a.id] ?? a.porcentaje_comision ?? ''}
-                          onChange={e => setEditPct(p => ({ ...p, [a.id]: e.target.value }))}
+                          onChange={v => setEditPct(p => ({ ...p, [a.id]: v }))}
                         />
-                        %
                         {editPct[a.id] !== undefined && (
                           <button className="as-pct-save" onClick={() => guardarPct(a.id)} title="Guardar"><Check size={14} /></button>
                         )}
@@ -363,10 +362,9 @@ export default function AsesoresPage() {
             <div className="as-mbody">
               <div className="as-field">
                 <label>Porcentaje por defecto (%)</label>
-                <input
-                  type="number" min="0" max="100" step="0.1"
+                <PercentInput
                   value={config.porcentaje_default}
-                  onChange={e => setConfig(c => ({ ...c, porcentaje_default: e.target.value }))}
+                  onChange={v => setConfig(c => ({ ...c, porcentaje_default: v }))}
                 />
               </div>
             </div>

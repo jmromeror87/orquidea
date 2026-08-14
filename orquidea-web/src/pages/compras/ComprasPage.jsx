@@ -24,6 +24,8 @@ import {
   Calendar, AlertTriangle, CheckCircle, Eye, Edit3, ThumbsUp,
 } from 'lucide-react'
 import api from '../../services/api.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import PercentInput from '../../components/ui/PercentInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 
@@ -436,7 +438,7 @@ function ModalNuevaSolicitud({ onClose, onOk }) {
               </div>
               <div className="cmp-field">
                 <label className="cmp-label">Costo est. ($)</label>
-                <input className="cmp-input cmp-full" type="number" min="0" value={item.costo_estimado} onChange={e => updateItem(idx, 'costo_estimado', e.target.value)} />
+                <CurrencyInput className="cmp-input cmp-full" value={item.costo_estimado} onChange={v => updateItem(idx, 'costo_estimado', v)} />
               </div>
             </div>
             <div className="cmp-field" style={{ margin: 0 }}>
@@ -797,7 +799,7 @@ function ModalProveedor({ proveedor, onClose, onOk }) {
           </div>
           <div className="cmp-field">
             <label className="cmp-label">Descuento habitual (%)</label>
-            <input className="cmp-input cmp-full" type="number" min="0" max="100" step="0.1" value={form.descuento_habitual} onChange={e => setForm(p => ({ ...p, descuento_habitual: e.target.value }))} />
+            <PercentInput className="cmp-input cmp-full" value={form.descuento_habitual} onChange={v => setForm(p => ({ ...p, descuento_habitual: v }))} />
           </div>
         </div>
 
@@ -996,7 +998,7 @@ function ModalNuevaOC({ onClose, onOk }) {
               </div>
               <div className="cmp-field">
                 <label className="cmp-label">Costo unit.</label>
-                <input className="cmp-input cmp-full" type="number" min="0" value={item.costo_unitario} onChange={e => updateItem(idx, 'costo_unitario', e.target.value)} />
+                <CurrencyInput className="cmp-input cmp-full" value={item.costo_unitario} onChange={v => updateItem(idx, 'costo_unitario', v)} />
               </div>
             </div>
           </div>
@@ -1147,7 +1149,7 @@ function ModalNuevaRecepcion({ onClose, onOk }) {
                   </div>
                   <div className="cmp-field">
                     <label className="cmp-label">Costo unit.</label>
-                    <input className="cmp-input cmp-full" type="number" min="0" value={item.costo_unitario} onChange={e => updateItem(idx, 'costo_unitario', e.target.value)} />
+                    <CurrencyInput className="cmp-input cmp-full" value={item.costo_unitario} onChange={v => updateItem(idx, 'costo_unitario', v)} />
                   </div>
                 </div>
                 {parseFloat(item.cantidad_rechazada) > 0 && (
@@ -1221,7 +1223,7 @@ function ModalPagarCuenta({ cuenta, onClose, onOk }) {
         <div className="cmp-row">
           <div className="cmp-field">
             <label className="cmp-label">Monto a pagar ($)</label>
-            <input className="cmp-input cmp-full" type="number" min="0" max={cuenta.monto_pendiente} step="100" value={form.monto} onChange={e => setForm(p => ({ ...p, monto: e.target.value }))} />
+            <CurrencyInput className="cmp-input cmp-full" value={form.monto} onChange={v => setForm(p => ({ ...p, monto: v }))} />
           </div>
           <div className="cmp-field">
             <label className="cmp-label">Fecha pago</label>

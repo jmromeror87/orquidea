@@ -23,6 +23,9 @@ import {
   Power, Search,
 } from 'lucide-react'
 import api from '../../services/api.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import PercentInput from '../../components/ui/PercentInput.jsx'
+import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import { useAuthStore } from '../../store/auth.store.js'
 
@@ -215,13 +218,13 @@ function ModalConvenio({ convenio, onClose, onSaved }) {
             </div>
             <div className="cv-field">
               <label>Teléfono</label>
-              <input value={form.contacto_telefono} onChange={e => setForm(p => ({...p, contacto_telefono:e.target.value}))}/>
+              <PhoneInput value={form.contacto_telefono} onChange={v => setForm(p => ({...p, contacto_telefono:v}))}/>
             </div>
           </div>
 
           <div className="cv-field">
             <label>Email de contacto</label>
-            <input value={form.contacto_email} onChange={e => setForm(p => ({...p, contacto_email:e.target.value}))}/>
+            <input type="email" value={form.contacto_email} onChange={e => setForm(p => ({...p, contacto_email:e.target.value}))} placeholder="nombre@dominio.com"/>
           </div>
 
           <div className="cv-grid2">
@@ -234,8 +237,11 @@ function ModalConvenio({ convenio, onClose, onSaved }) {
             </div>
             <div className="cv-field">
               <label>Valor {form.cobertura_tipo === 'PORCENTAJE' ? '(%)' : '($)'}</label>
-              <input type="number" min="0" max={form.cobertura_tipo === 'PORCENTAJE' ? 100 : undefined}
-                value={form.cobertura_valor} onChange={e => setForm(p => ({...p, cobertura_valor:e.target.value}))}/>
+              {form.cobertura_tipo === 'PORCENTAJE' ? (
+                <PercentInput value={form.cobertura_valor} onChange={v => setForm(p => ({...p, cobertura_valor:v}))}/>
+              ) : (
+                <CurrencyInput value={form.cobertura_valor} onChange={v => setForm(p => ({...p, cobertura_valor:v}))}/>
+              )}
             </div>
           </div>
           <div style={{ fontSize:11, color:'#9CA3AF', marginTop:-8, marginBottom:14 }}>
@@ -320,8 +326,11 @@ function FilaAutorizacion({ aut, convenioId, onChange }) {
           <option value="PORCENTAJE">%</option>
           <option value="MONTO_FIJO">$ fijo</option>
         </select>
-        <input type="number" value={form.cobertura_valor} onChange={e => setForm(p => ({...p, cobertura_valor:e.target.value}))}
-          style={{ padding:'7px 10px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12.5 }}/>
+        {form.cobertura_tipo === 'PORCENTAJE' ? (
+          <PercentInput value={form.cobertura_valor} onChange={v => setForm(p => ({...p, cobertura_valor:v}))}/>
+        ) : (
+          <CurrencyInput value={form.cobertura_valor} onChange={v => setForm(p => ({...p, cobertura_valor:v}))}/>
+        )}
         <input type="number" placeholder="Tope $" value={form.tope_maximo}
           onChange={e => setForm(p => ({...p, tope_maximo:e.target.value}))}
           style={{ padding:'7px 10px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12.5 }}/>
@@ -556,9 +565,11 @@ function TarjetaConvenio({ convenio, onEditar, onRecargar }) {
                     <option value="PORCENTAJE">%</option>
                     <option value="MONTO_FIJO">$ fijo</option>
                   </select>
-                  <input type="number" value={nuevaAut.cobertura_valor}
-                    onChange={e => setNuevaAut(p => ({...p, cobertura_valor:e.target.value}))}
-                    style={{ padding:'7px 10px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12.5 }}/>
+                  {nuevaAut.cobertura_tipo === 'PORCENTAJE' ? (
+                    <PercentInput value={nuevaAut.cobertura_valor} onChange={v => setNuevaAut(p => ({...p, cobertura_valor:v}))}/>
+                  ) : (
+                    <CurrencyInput value={nuevaAut.cobertura_valor} onChange={v => setNuevaAut(p => ({...p, cobertura_valor:v}))}/>
+                  )}
                   <input type="number" placeholder="Tope $" value={nuevaAut.tope_maximo}
                     onChange={e => setNuevaAut(p => ({...p, tope_maximo:e.target.value}))}
                     style={{ padding:'7px 10px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12.5 }}/>

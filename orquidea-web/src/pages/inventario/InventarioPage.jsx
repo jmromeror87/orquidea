@@ -17,6 +17,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import {
   Package, DollarSign, AlertTriangle, ArrowLeftRight,
   Search, RefreshCw, Plus, Eye, Edit2, Truck,
@@ -265,11 +266,11 @@ function ModalProducto({ producto, categorias, onClose, onSaved }) {
             </div>
             <div className="inv-field">
               <label className="inv-label">Costo promedio (COP)</label>
-              <input className="inv-input" type="number" min="0" value={form.costo_promedio} onChange={e => set('costo_promedio', e.target.value)}/>
+              <CurrencyInput value={form.costo_promedio} onChange={v => set('costo_promedio', v)}/>
             </div>
             <div className="inv-field">
               <label className="inv-label">Precio de venta (COP)</label>
-              <input className="inv-input" type="number" min="0" value={form.precio_venta} onChange={e => set('precio_venta', e.target.value)}/>
+              <CurrencyInput value={form.precio_venta} onChange={v => set('precio_venta', v)}/>
             </div>
             <div className="inv-field">
               <label className="inv-label">Stock mínimo</label>
@@ -579,7 +580,7 @@ function ModalMovimiento({ productoInicial, onClose, onSaved }) {
             {tipo === 'ENTRADA' && (
               <div className="inv-field">
                 <label className="inv-label">Costo unitario (COP)</label>
-                <input className="inv-input" type="number" min="0" value={form.costo_unitario} onChange={e => set('costo_unitario', e.target.value)}/>
+                <CurrencyInput value={form.costo_unitario} onChange={v => set('costo_unitario', v)}/>
               </div>
             )}
 
@@ -897,8 +898,8 @@ function ModalOC({ bodegas, onClose, onSaved }) {
               </div>
               <input className="inv-input" type="number" min="1" style={{width:80}} value={item.cantidad_solicitada}
                 onChange={e => updateItem(idx,'cantidad_solicitada',e.target.value)} placeholder="Cant."/>
-              <input className="inv-input" type="number" min="0" style={{width:120}} value={item.costo_unitario}
-                onChange={e => updateItem(idx,'costo_unitario',e.target.value)} placeholder="Costo unit."/>
+              <CurrencyInput style={{width:120}} value={item.costo_unitario}
+                onChange={v => updateItem(idx,'costo_unitario',v)} placeholder="Costo unit."/>
               <div style={{width:120,fontSize:12,color:'#6B7280',alignSelf:'center'}}>
                 {fmt((parseFloat(item.cantidad_solicitada)||0)*(parseFloat(item.costo_unitario)||0))}
               </div>

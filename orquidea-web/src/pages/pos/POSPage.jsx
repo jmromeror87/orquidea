@@ -25,6 +25,8 @@ import {
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import PhoneInput from '../../components/ui/PhoneInput.jsx'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n || 0)
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('es-CO', { dateStyle:'medium', timeStyle:'short' }) : '—'
@@ -136,7 +138,7 @@ function AbrirCaja({ onAbierta }) {
         </div>
         <div className="pos-field">
           <label>Monto de apertura (efectivo en caja) <span style={{ color:'#EF4444' }}>*</span></label>
-          <input type="number" min="0" value={monto} onChange={e => setMonto(e.target.value)} placeholder="Ej: 100000"/>
+          <CurrencyInput value={monto} onChange={v => setMonto(v)} placeholder="Ej: 100000"/>
         </div>
         <div className="pos-field" style={{ marginBottom:6 }}>
           <label>Observaciones <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opcional)</span></label>
@@ -200,7 +202,7 @@ function ModalCerrarCaja({ caja, onClose, onCerrada }) {
 
           <div className="pos-field">
             <label>Monto real contado en caja <span style={{ color:'#EF4444' }}>*</span></label>
-            <input type="number" min="0" value={montoReal} onChange={e => setMontoReal(e.target.value)} placeholder="Ej: 130000"/>
+            <CurrencyInput value={montoReal} onChange={v => setMontoReal(v)} placeholder="Ej: 130000"/>
           </div>
           {diferencia !== null && diferencia !== 0 && (
             <div style={{ fontSize:12.5, fontWeight:700, color: diferencia > 0 ? '#059669' : '#DC2626', marginTop:-8, marginBottom:14 }}>
@@ -455,7 +457,7 @@ function ModalClienteRapido({ onClose, onCreado }) {
           </div>
           <div className="pos-field" style={{ marginBottom:6 }}>
             <label>Teléfono</label>
-            <input value={form.telefono} onChange={e => setForm(p => ({ ...p, telefono: e.target.value }))} placeholder="Ej: 3001234567"/>
+            <PhoneInput value={form.telefono} onChange={v => setForm(p => ({ ...p, telefono: v }))} placeholder="Ej: 3001234567"/>
           </div>
 
           <div style={{ display:'flex', gap:10, marginTop:14 }}>
@@ -770,10 +772,10 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
                       style={{ flex:1.3, padding:'7px 8px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12 }}>
                       {formas.map(f => <option key={f.codigo} value={f.codigo}>{f.icono} {f.nombre}</option>)}
                     </select>
-                    <input type="number" min="0" value={p.monto}
-                      onChange={e => actualizarPago(idx, 'monto', e.target.value)}
+                    <CurrencyInput value={p.monto}
+                      onChange={v => actualizarPago(idx, 'monto', v)}
                       placeholder="Monto"
-                      style={{ width:90, padding:'7px 8px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12 }}/>
+                      style={{ width:90 }}/>
                     {noEfectivo && (
                       <button onClick={() => setShowSoporteIdx(idx)} title={soportado ? 'Soporte adjunto ✓' : 'Adjuntar soporte'}
                         style={{ width:30, borderRadius:8, border:`1.5px solid ${soportado ? '#A7F3D0' : '#E2E5F0'}`,

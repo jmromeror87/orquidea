@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Wallet, Search, Loader2, X, RefreshCw, Handshake, Users, CheckCircle2 } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 
 const fmtCOP = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(Number(v)||0)
 const fmtFecha = v => v ? new Date(v).toLocaleDateString('es-CO') : '—'
@@ -68,8 +69,7 @@ function ModalAbono({ item, onClose, onSaved }) {
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           <div>
             <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Monto del abono *</label>
-            <input type="number" min="0" value={monto} onChange={e => setMonto(e.target.value)}
-              placeholder="0" style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0', borderRadius:10, fontSize:13, boxSizing:'border-box' }}/>
+            <CurrencyInput value={monto} onChange={v => setMonto(v)} placeholder="0"/>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
             <div>

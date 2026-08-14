@@ -33,6 +33,8 @@ import {
   Wrench, PackageSearch, ClipboardList, Users, UserPlus, UserMinus,
 } from 'lucide-react'
 import api from '../../services/api.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 
@@ -1082,8 +1084,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                   {paqueteId && (
                     <div className="sv-field">
                       <label>Valor a cobrar <span style={{color:'#9CA3AF',fontWeight:400}}>(editable — por si hay descuento)</span></label>
-                      <input type="number" min="0" value={valorContrato}
-                        onChange={e => setValorContrato(e.target.value)} placeholder="0"/>
+                      <CurrencyInput value={valorContrato}
+                        onChange={v => setValorContrato(v)} placeholder="0"/>
                     </div>
                   )}
 
@@ -1226,8 +1228,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                     </div>
                     <div className="sv-field" style={{ marginBottom:0 }}>
                       <label>Valor del servicio</label>
-                      <input type="number" min="0" value={valorServicioConv}
-                        onChange={e => setValorServicioConv(e.target.value)} placeholder="Ej: 5000000"/>
+                      <CurrencyInput value={valorServicioConv}
+                        onChange={v => setValorServicioConv(v)} placeholder="Ej: 5000000"/>
                     </div>
                   </div>
 
@@ -2069,8 +2071,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
               <div className="sv-grid2">
                 <div className="sv-field">
                   <label>Teléfono</label>
-                  <input value={quickForm.telefono}
-                    onChange={e => setQuickForm(p => ({...p, telefono:e.target.value}))}/>
+                  <PhoneInput value={quickForm.telefono}
+                    onChange={v => setQuickForm(p => ({...p, telefono:v}))}/>
                 </div>
                 <div className="sv-field">
                   <label>Email</label>
@@ -3393,9 +3395,9 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
 
         <div style={{ textAlign:'right', minWidth:96 }}>
           {enEd
-            ? <input type="number" value={editVals.precio_unit}
-                onChange={e => setEditVals(p => ({ ...p, precio_unit:e.target.value }))}
-                style={{ ...inp, width:86, textAlign:'right' }}/>
+            ? <CurrencyInput value={editVals.precio_unit}
+                onChange={v => setEditVals(p => ({ ...p, precio_unit:v }))}
+                style={{ width:86 }}/>
             : <><div style={{ fontSize:10, color:'#9CA3AF' }}>Precio</div>
                <div style={{ fontSize:12, fontWeight:700, color: col }}>{fmtCOP(it.precio_unit)}</div></>
           }

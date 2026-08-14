@@ -25,6 +25,8 @@ import {
   ShieldCheck, Zap, DollarSign, Package,
 } from 'lucide-react'
 import api from '../../services/api.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
@@ -496,8 +498,8 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
           <div className="ct-grid2">
             <div className="ct-field" style={{ marginBottom:0 }}>
               <label>Valor total <span className="ct-req">*</span></label>
-              <input type="number" min="0" value={form.valor_total}
-                onChange={e => setForm(p => ({...p, valor_total:e.target.value}))} placeholder="0"/>
+              <CurrencyInput value={form.valor_total}
+                onChange={v => setForm(p => ({...p, valor_total:v}))} placeholder="0"/>
             </div>
             {form.modalidad === 'CUOTAS' ? (
               <div className="ct-field" style={{ marginBottom:0 }}>
@@ -518,8 +520,8 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
             <div className="ct-grid3" style={{ marginTop:14 }}>
               <div className="ct-field" style={{ marginBottom:0 }}>
                 <label>Valor cuota ($)</label>
-                <input type="number" min="0" value={form.valor_cuota}
-                  onChange={e => setForm(p => ({...p, valor_cuota:e.target.value}))}/>
+                <CurrencyInput value={form.valor_cuota}
+                  onChange={v => setForm(p => ({...p, valor_cuota:v}))}/>
               </div>
               <div className="ct-field" style={{ marginBottom:0 }}>
                 <label>Día de cobro (1–28)</label>
@@ -598,8 +600,8 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
             <div className="ct-grid2">
               <div className="ct-field">
                 <label>Teléfono</label>
-                <input value={quickForm.telefono}
-                  onChange={e => setQuickForm(p => ({...p, telefono:e.target.value}))}/>
+                <PhoneInput value={quickForm.telefono}
+                  onChange={v => setQuickForm(p => ({...p, telefono:v}))}/>
               </div>
               <div className="ct-field">
                 <label>Email</label>

@@ -29,6 +29,7 @@ import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -456,8 +457,8 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
           <div className="pl-grid3">
             <div className="pl-field" style={{ marginBottom:0 }}>
               <label>Cuota mensual <span className="pl-req">*</span></label>
-              <input type="number" min="0" value={form.valor_cuota}
-                onChange={e => setForm(p => ({...p, valor_cuota:e.target.value}))} placeholder="0"/>
+              <CurrencyInput value={form.valor_cuota}
+                onChange={v => setForm(p => ({...p, valor_cuota:v}))} placeholder="0"/>
             </div>
             <div className="pl-field" style={{ marginBottom:0 }}>
               <label>Día de cobro</label>
@@ -822,8 +823,8 @@ function ModalPago({ poliza, onClose, onSaved }) {
             {modo === 'mes' && (
               <div className="pl-field">
                 <label>Monto <span className="pl-req">*</span></label>
-                <input type="number" min="0" value={form.monto}
-                  onChange={e => setForm(p => ({...p, monto:e.target.value}))}/>
+                <CurrencyInput value={form.monto}
+                  onChange={v => setForm(p => ({...p, monto:v}))}/>
               </div>
             )}
             <div className="pl-field">

@@ -9,6 +9,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import {
   DollarSign, AlertTriangle, Clock, TrendingUp, Search,
   CheckCircle, XCircle, Printer, RefreshCw, ChevronRight,
@@ -546,11 +547,11 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
         <div className="pg-row">
           <div className="pg-field">
             <label className="pg-label">Descuento ($)</label>
-            <input className="pg-input" style={{width:'100%'}} type="number" min="0" value={descuento} onChange={e=>setDescuento(e.target.value)}/>
+            <CurrencyInput style={{width:'100%'}} value={descuento} onChange={v=>setDescuento(v)}/>
           </div>
           <div className="pg-field">
             <label className="pg-label">Recargo mora ($)</label>
-            <input className="pg-input" style={{width:'100%'}} type="number" min="0" value={recargo} onChange={e=>setRecargo(e.target.value)}/>
+            <CurrencyInput style={{width:'100%'}} value={recargo} onChange={v=>setRecargo(v)}/>
           </div>
         </div>
 

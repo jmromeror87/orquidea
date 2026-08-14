@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, CheckCircle, XCircle, ShieldCheck, Users, Clock, DollarSign, ToggleLeft, ToggleRight, PlusCircle, Search, Package } from 'lucide-react'
 import api from '../../services/api.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import { toast } from '../../store/toast.store.js'
 
 const CATEGORIAS_SERVICIO = [
@@ -423,10 +424,9 @@ export default function PlanesPolizaPage() {
                 <div className="pp-row cols3">
                   <div className="pp-field">
                     <label>Cuota mensual (COP) *</label>
-                    <input
-                      type="number" min={0}
+                    <CurrencyInput
                       value={form.valor_mensual}
-                      onChange={e => set('valor_mensual', e.target.value)}
+                      onChange={v => set('valor_mensual', v)}
                       placeholder="58000"
                     />
                   </div>
@@ -440,10 +440,9 @@ export default function PlanesPolizaPage() {
                   </div>
                   <div className="pp-field">
                     <label>Cobro por excedente (COP)</label>
-                    <input
-                      type="number" min={0}
+                    <CurrencyInput
                       value={form.valor_excedente}
-                      onChange={e => set('valor_excedente', e.target.value)}
+                      onChange={v => set('valor_excedente', v)}
                       placeholder="0"
                     />
                   </div>
@@ -451,10 +450,9 @@ export default function PlanesPolizaPage() {
                 <div className="pp-row cols2">
                   <div className="pp-field">
                     <label>Valor de afiliación (COP)</label>
-                    <input
-                      type="number" min={0}
+                    <CurrencyInput
                       value={form.valor_afiliacion}
-                      onChange={e => set('valor_afiliacion', e.target.value)}
+                      onChange={v => set('valor_afiliacion', v)}
                       placeholder="20000"
                     />
                     <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>
@@ -463,10 +461,9 @@ export default function PlanesPolizaPage() {
                   </div>
                   <div className="pp-field">
                     <label>Valor por beneficiario adicional (COP)</label>
-                    <input
-                      type="number" min={0}
+                    <CurrencyInput
                       value={form.valor_beneficiario_adicional}
-                      onChange={e => set('valor_beneficiario_adicional', e.target.value)}
+                      onChange={v => set('valor_beneficiario_adicional', v)}
                       placeholder="0"
                     />
                   </div>
@@ -567,11 +564,11 @@ export default function PlanesPolizaPage() {
                     >
                       {CATEGORIAS_SERVICIO.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <input
-                      type="number" min={0} placeholder="Precio"
+                    <CurrencyInput
+                      placeholder="Precio"
                       value={nuevoServ.precio_base}
-                      onChange={e => setNuevoServ(n => ({ ...n, precio_base: e.target.value }))}
-                      style={{ flex:'1 1 100px', border:'1.5px solid #e2e8f0', borderRadius:8, padding:'7px 10px', fontSize:13, outline:'none' }}
+                      onChange={v => setNuevoServ(n => ({ ...n, precio_base: v }))}
+                      style={{ flex:'1 1 100px' }}
                     />
                     <button type="button" onClick={crearServicioRapido} disabled={creandoServ}
                       className="pp-btn-save" style={{ padding:'7px 14px', fontSize:12.5 }}>

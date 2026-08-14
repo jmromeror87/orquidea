@@ -85,3 +85,15 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--color-primary) !important;
   box-shadow: 0 0 0 3px rgba(46,49,146,.1);
 }
+
+/* Quita las flechas de incremento/decremento en TODOS los inputs numéricos
+   del sistema — el usuario escribe el valor, no lo "gira" con spinners. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

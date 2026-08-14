@@ -27,6 +27,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
 import api from '../../services/api.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import './RecaudoPage.css'
 
@@ -429,11 +430,10 @@ function TabOrden() {
                         <div className="rc-panel-row">
                           <div className="rc-panel-field">
                             <label className="rc-panel-label">Valor cobrado</label>
-                            <input
-                              type="number" className="rc-panel-input"
+                            <CurrencyInput
                               placeholder={fmtCOP(v.valor_cuota)}
                               value={formVisita.valor_cobrado}
-                              onChange={e => setFormVisita(f => ({ ...f, valor_cobrado: e.target.value }))}
+                              onChange={v => setFormVisita(f => ({ ...f, valor_cobrado: v }))}
                             />
                           </div>
                           <div className="rc-panel-field">
@@ -1412,11 +1412,10 @@ function TabMiPanel() {
                       <div className="rp-pago-row">
                         <div className="rp-pago-field">
                           <label>Valor cobrado</label>
-                          <input
-                            type="number"
+                          <CurrencyInput
                             value={formPago.valor}
                             placeholder={String(v.valor_cuota || 0)}
-                            onChange={e => setFormPago(f => ({ ...f, valor: e.target.value }))}
+                            onChange={v => setFormPago(f => ({ ...f, valor: v }))}
                           />
                         </div>
                         <div className="rp-pago-field">

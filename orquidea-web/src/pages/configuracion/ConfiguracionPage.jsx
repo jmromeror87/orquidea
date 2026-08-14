@@ -22,6 +22,9 @@ import {
 import { empresaService } from '../../services/empresa.service.js'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
+import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import PercentInput from '../../components/ui/PercentInput.jsx'
+import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { aplicarColoresTema } from '../../context/ThemeContext.jsx'
 
 const TABS = [
@@ -633,11 +636,9 @@ function TabPaquetes() {
                   <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
                     Precio de venta <span style={{color:'#9CA3AF',fontWeight:400}}>(opcional)</span>
                   </label>
-                  <input type="number" min="0" value={pForm.precio_venta}
-                    onChange={e => setPForm(p=>({...p,precio_venta:e.target.value}))}
-                    placeholder="Déjelo vacío para vender al costo"
-                    style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0',
-                      borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box' }}/>
+                  <CurrencyInput value={pForm.precio_venta}
+                    onChange={v => setPForm(p=>({...p,precio_venta:v}))}
+                    placeholder="Déjelo vacío para vender al costo"/>
                   <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:4 }}>
                     Es el valor que se muestra y cobra al elegir este paquete en Servicios. Si lo deja vacío, se usa el costo de arriba.
                   </div>
@@ -1066,9 +1067,9 @@ function TabEmpresa({ data, saving, setSaving, onOk, onErr }) {
 
       <Div label="Contacto" />
       <div className="g3">
-        <div className="campo"><label>Correo Electrónico</label><input value={f.email} onChange={e=>set('email')(e.target.value)} type="email" /></div>
-        <div className="campo"><label>Teléfono Principal</label><input value={f.telefono_1} onChange={e=>set('telefono_1')(e.target.value)} /></div>
-        <div className="campo"><label>Teléfono Previsión</label><input value={f.telefono_2} onChange={e=>set('telefono_2')(e.target.value)} /></div>
+        <div className="campo"><label>Correo Electrónico</label><input value={f.email} onChange={e=>set('email')(e.target.value)} type="email" placeholder="nombre@dominio.com" /></div>
+        <div className="campo"><label>Teléfono Principal</label><PhoneInput value={f.telefono_1} onChange={v=>set('telefono_1')(v)} /></div>
+        <div className="campo"><label>Teléfono Previsión</label><PhoneInput value={f.telefono_2} onChange={v=>set('telefono_2')(v)} /></div>
         <div className="campo span3"><label>Sitio Web</label><input value={f.sitio_web} onChange={e=>set('sitio_web')(e.target.value)} placeholder="https://" /></div>
       </div>
 
@@ -1208,8 +1209,8 @@ function TabSedes({ sedes, saving, setSaving, onOk, onErr }) {
               </select>
             </div>
             <div className="campo span3"><label>Dirección Completa</label><input value={f.direccion} onChange={e=>set('direccion')(e.target.value)} placeholder="Carrera 6 No 13-56" /></div>
-            <div className="campo"><label>Teléfono 1</label><input value={f.telefono_1} onChange={e=>set('telefono_1')(e.target.value)} /></div>
-            <div className="campo"><label>Teléfono 2</label><input value={f.telefono_2} onChange={e=>set('telefono_2')(e.target.value)} /></div>
+            <div className="campo"><label>Teléfono 1</label><PhoneInput value={f.telefono_1} onChange={v=>set('telefono_1')(v)} /></div>
+            <div className="campo"><label>Teléfono 2</label><PhoneInput value={f.telefono_2} onChange={v=>set('telefono_2')(v)} /></div>
             <div className="campo"><label>Salas de Velación</label><input value={f.num_salas} onChange={e=>set('num_salas')(e.target.value)} type="number" min={0} /></div>
             <div className="campo span2"><label>Responsable</label><input value={f.responsable_nombre} onChange={e=>set('responsable_nombre')(e.target.value)} /></div>
             <div className="campo" style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
@@ -1736,7 +1737,7 @@ function TabFlota() {
                   <input className="campo-input" value={formC.documento} onChange={e => setFormC(p=>({...p, documento:e.target.value}))}/>
                 </div>
                 <div className="campo"><label>Teléfono</label>
-                  <input className="campo-input" value={formC.telefono} onChange={e => setFormC(p=>({...p, telefono:e.target.value}))}/>
+                  <PhoneInput className="campo-input" value={formC.telefono} onChange={v => setFormC(p=>({...p, telefono:v}))}/>
                 </div>
                 <div className="campo"><label>N° Licencia</label>
                   <input className="campo-input" value={formC.licencia_numero} onChange={e => setFormC(p=>({...p, licencia_numero:e.target.value}))}/>
@@ -1799,7 +1800,7 @@ function TabDian({ data, saving, setSaving, onOk, onErr }) {
       <div className="g2">
         <div className="campo span2"><label>API Key Dataico</label><input value={f.dataico_api_key} onChange={e=>set('dataico_api_key')(e.target.value)} type="password" placeholder="Ingrese para actualizar" /></div>
         <div className="campo"><label>Ambiente</label><select value={f.dataico_ambiente} onChange={e=>set('dataico_ambiente')(e.target.value)}><option value="habilitacion">Habilitación (pruebas)</option><option value="produccion">Producción</option></select></div>
-        <div className="campo"><label>Correo habilitado DIAN</label><input value={f.fe_correo_habilitado} onChange={e=>set('fe_correo_habilitado')(e.target.value)} type="email" /></div>
+        <div className="campo"><label>Correo habilitado DIAN</label><input value={f.fe_correo_habilitado} onChange={e=>set('fe_correo_habilitado')(e.target.value)} type="email" placeholder="facturacion@empresa.com" /></div>
       </div>
       <Div label="Resolución de Facturación" />
       <div className="g3">
@@ -1898,7 +1899,7 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
         <div className="g3">
           <div className="campo">
             <label>% IVA</label>
-            <input value={f.porcentaje_iva_defecto ?? 19} onChange={e=>set('porcentaje_iva_defecto')(e.target.value)} type="number" min={0} max={100} step="0.01" />
+            <PercentInput value={f.porcentaje_iva_defecto ?? 19} onChange={v=>set('porcentaje_iva_defecto')(v)} />
           </div>
         </div>
         <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:4 }}>
@@ -1935,10 +1936,10 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
             <div className="g3">
               <div className="campo">
                 <label>Tasa diaria (%)</label>
-                <input
-                  type="number" step="0.0001" min="0" max="1"
+                <PercentInput
+                  max={5}
                   value={tasaDiaria}
-                  onChange={e => setM('tasa_interes_diario')(parseFloat(e.target.value) / 100 || 0)}
+                  onChange={v => setM('tasa_interes_diario')(parseFloat(v) / 100 || 0)}
                 />
                 <small style={{color:'#6B7280',fontSize:11}}>≈ {tasaMensual}% mensual · Máx legal Colombia: 1% mensual</small>
               </div>
@@ -2054,7 +2055,7 @@ function ServicioForm({ f, set, editId, fmt, ivaDefecto, precioVentaPreview, uti
         <div className="g3">
           <div className="campo">
             <label>Costo (lo que le cuesta a la funeraria) *</label>
-            <input value={f.costo} onChange={e=>set('costo')(e.target.value)} type="number" min={0}/>
+            <CurrencyInput value={f.costo} onChange={v=>set('costo')(v)} />
           </div>
           <div className="campo">
             <label>Tipo de margen</label>
@@ -2065,7 +2066,9 @@ function ServicioForm({ f, set, editId, fmt, ivaDefecto, precioVentaPreview, uti
           </div>
           <div className="campo">
             <label>{f.margen_tipo === 'FIJO' ? 'Precio de venta ($)' : 'Margen (%)'}</label>
-            <input value={f.margen_valor} onChange={e=>set('margen_valor')(e.target.value)} type="number" min={0}/>
+            {f.margen_tipo === 'FIJO'
+              ? <CurrencyInput value={f.margen_valor} onChange={v=>set('margen_valor')(v)} />
+              : <PercentInput value={f.margen_valor} onChange={v=>set('margen_valor')(v)} max={1000} />}
           </div>
         </div>
         <div style={{ display:'flex', gap:24, marginTop:12, paddingTop:12, borderTop:'1px dashed #CBD5E1' }}>
@@ -2704,7 +2707,7 @@ function TabRolesPersonal() {
               </div>
               <div className="campo">
                 <label>Costo interno (COP)</label>
-                <input value={f.costo_interno} onChange={e=>setF(p=>({...p,costo_interno:Number(e.target.value)}))} type="number" min={0}/>
+                <CurrencyInput value={f.costo_interno} onChange={v=>setF(p=>({...p,costo_interno:Number(v)||0}))} />
               </div>
               <div className="campo">
                 <label>Orden</label>
@@ -2822,7 +2825,7 @@ function TabTiposTraslado() {
             <div className="g3">
               <div className="campo">
                 <label>Costo interno (COP)</label>
-                <input value={f.costo_interno} onChange={e=>setF(p=>({...p,costo_interno:Number(e.target.value)}))} type="number" min={0}/>
+                <CurrencyInput value={f.costo_interno} onChange={v=>setF(p=>({...p,costo_interno:Number(v)||0}))} />
               </div>
               <div className="campo span3">
                 <label>Ítem vendible vinculado (opcional)</label>
