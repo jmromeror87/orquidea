@@ -121,6 +121,11 @@ const CSS = `
 .pp-add-extra { display:flex; align-items:center; gap:6px; background:#f8fafc; border:1.5px dashed #cbd5e1; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:#64748b; cursor:pointer; width:100%; justify-content:center; transition:.15s; }
 .pp-add-extra:hover { border-color:#059669; color:#059669; background:#f0fdf4; }
 .pp-card-extra { margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0; display:flex; flex-wrap:wrap; gap:4px; }
+.pp-checklist { margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0; }
+.pp-check-item { display:flex; align-items:flex-start; gap:6px; font-size:11.5px; color:#4b5563;
+  line-height:1.35; margin-bottom:4px; }
+.pp-check-item svg { color:#059669; flex-shrink:0; margin-top:2px; }
+.pp-check-more { font-size:11px; color:#059669; font-weight:700; margin-top:2px; }
 `
 
 function Toggle({ label, checked, onChange }) {
@@ -323,10 +328,15 @@ export default function PlanesPolizaPage() {
                       </div>
                     )}
                     {Array.isArray(p.servicios) && p.servicios.length > 0 && (
-                      <div className="pp-card-extra">
-                        {p.servicios.map(s => (
-                          <span key={s.id} className="pp-chip si"><Package size={11}/> {s.nombre}</span>
+                      <div className="pp-checklist">
+                        {p.servicios.slice(0,5).map(s => (
+                          <div key={s.id} className="pp-check-item">
+                            <CheckCircle size={12}/> <span>{s.nombre}</span>
+                          </div>
                         ))}
+                        {p.servicios.length > 5 && (
+                          <div className="pp-check-more">+{p.servicios.length - 5} más incluidos</div>
+                        )}
                       </div>
                     )}
                   </div>
