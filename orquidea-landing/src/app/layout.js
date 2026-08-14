@@ -22,6 +22,7 @@ import './globals.css'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
 import FloatingContact from '@/components/FloatingContact'
+import StructuredData from '@/components/StructuredData'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const playfair = Playfair_Display({ variable: '--font-serif', subsets: ['latin'] })
@@ -41,12 +42,15 @@ export const metadata = {
     locale: 'es_CO',
     siteName: 'Funeraria San José de Abrego',
   },
+  alternates: { canonical: '/' },
+  robots: { index: true, follow: true },
 }
 
 export default function RootLayout({ children }) {
   return (
     <html lang="es" className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-stone-50 text-brand-900">
+        <StructuredData />
         <SiteHeader />
         <main className="flex-1">{children}</main>
         <SiteFooter />
