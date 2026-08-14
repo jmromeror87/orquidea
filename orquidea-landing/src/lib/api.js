@@ -20,7 +20,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
 async function get(path, revalidate = 3600) {
   const res = await fetch(`${API_URL}/api/publico${path}`, { next: { revalidate } })
-  if (!res.ok) return []
+  if (!res.ok) throw new Error(`API ${path} respondió ${res.status}`)
   const json = await res.json()
   return json.data || []
 }
