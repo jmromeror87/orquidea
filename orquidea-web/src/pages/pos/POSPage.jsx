@@ -27,6 +27,7 @@ import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
+import { useAuthStore } from '../../store/auth.store.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n || 0)
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('es-CO', { dateStyle:'medium', timeStyle:'short' }) : '—'
@@ -543,10 +544,13 @@ function ClienteSelector({ clienteId, clienteLabel, onSeleccionar, onLimpiar }) 
 // ── Pantalla principal: vender ──────────────────────────────────────────────
 function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) {
   const { formas } = useFormasPago()
+  const usuario = useAuthStore(s => s.usuario)
+  const puedeFijarPrecio = ['superadmin', 'administrador'].includes(usuario?.rol)
   const [q, setQ] = useState('')
   const [productos, setProductos] = useState([])
   const [loadingProds, setLoadingProds] = useState(true)
-  const [carrito, setCarrito] = useState([]) // [{producto, cantidad}]
+  const [carrito, setCarrito] = useState([]) // [{producto, cantidad, precio_unit_nuevo}]
+  const [fijarPrecioProd, setFijarPrecioProd] = useState(null) // producto pendiente de precio
   const [clienteId, setClienteId] = useState('')
   const [clienteLabel, setClienteLabel] = useState('')
   // Pago dividido (multi-tender): una o varias líneas [{metodo_pago, monto, referencia, soporte_url}]
@@ -568,14 +572,30 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
   useEffect(() => { const t = setTimeout(cargarCatalogo, 250); return () => clearTimeout(t) }, [cargarCatalogo])
 
   const agregar = (prod) => {
+    if (!(+prod.precio_venta > 0)) {
+      if (!puedeFijarPrecio) return toast.error('Este producto no tiene precio — pide a un administrador que lo fije.')
+      setFijarPrecioProd(prod)
+      return
+    }
+    agregarAlCarrito(prod)
+  }
+
+  const agregarAlCarrito = (prod, precioNuevo) => {
     setCarrito(prev => {
       const existe = prev.find(i => i.producto.id === prod.id)
       if (existe) {
         if (existe.cantidad >= +prod.stock_disponible) { toast.error('No hay más stock disponible de este producto'); return prev }
         return prev.map(i => i.producto.id === prod.id ? { ...i, cantidad: i.cantidad + 1 } : i)
       }
-      return [...prev, { producto: prod, cantidad: 1 }]
+      const producto = precioNuevo ? { ...prod, precio_venta: precioNuevo } : prod
+      return [...prev, { producto, cantidad: 1, precio_unit_nuevo: precioNuevo || undefined }]
     })
+  }
+
+  const confirmarPrecioNuevo = (precio) => {
+    if (!(+precio > 0)) return toast.error('Ingresa un precio válido')
+    agregarAlCarrito(fijarPrecioProd, +precio)
+    setFijarPrecioProd(null)
   }
 
   const cambiarCantidad = (id, delta) => {
@@ -638,7 +658,7 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
     try {
       const res = await api.post('/pos/ventas', {
         caja_id: caja.id,
-        items: carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.cantidad })),
+        items: carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.cantidad, precio_unit_nuevo: i.precio_unit_nuevo })),
         pagos: pagos.map(p => ({ metodo_pago: p.metodo_pago, monto: +p.monto, referencia: p.referencia || null, soporte_url: p.soporte_url || null })),
         cliente_id: clienteId || null,
       })
@@ -693,14 +713,24 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
                 <Package size={28} style={{ marginBottom:8 }}/><br/>
                 Sin productos con stock disponible en esta bodega
               </div>
-            ) : productos.map(p => (
-              <div key={p.id} className="pos-prod" onClick={() => agregar(p)}>
-                <div style={{ fontSize:18 }}>{p.categoria_icono || '📦'}</div>
-                <div className="pos-prod-nombre">{p.nombre}</div>
-                <div className="pos-prod-precio">{fmt(p.precio_venta)}</div>
-                <div className="pos-prod-stock">Stock: {p.stock_disponible}</div>
-              </div>
-            ))}
+            ) : productos.map(p => {
+              const sinPrecio = !(+p.precio_venta > 0)
+              return (
+                <div key={p.id} className="pos-prod" onClick={() => agregar(p)}
+                  style={sinPrecio ? { opacity:.75 } : undefined}>
+                  <div style={{ fontSize:18 }}>{p.categoria_icono || '📦'}</div>
+                  <div className="pos-prod-nombre">{p.nombre}</div>
+                  {sinPrecio ? (
+                    <div className="pos-prod-precio" style={{ color:'#D97706', fontSize:11.5 }}>
+                      {puedeFijarPrecio ? 'Sin precio — click para fijar' : 'Sin precio'}
+                    </div>
+                  ) : (
+                    <div className="pos-prod-precio">{fmt(p.precio_venta)}</div>
+                  )}
+                  <div className="pos-prod-stock">Stock: {p.stock_disponible}</div>
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -839,6 +869,39 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
         <ModalRecibo ventaId={ventaCreada} onClose={() => setVentaCreada(null)}
           onNuevaVenta={() => { setVentaCreada(null); searchRef.current?.focus() }}/>
       )}
+      {fijarPrecioProd && (
+        <ModalFijarPrecio producto={fijarPrecioProd} onClose={() => setFijarPrecioProd(null)} onConfirmar={confirmarPrecioNuevo}/>
+      )}
+    </div>
+  )
+}
+
+// ── Fijar precio a un producto que no lo tiene (solo admin/superadmin) ──────
+function ModalFijarPrecio({ producto, onClose, onConfirmar }) {
+  const [precio, setPrecio] = useState('')
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(15,16,53,.45)', zIndex:1000,
+      display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:16, width:380, maxWidth:'92vw', padding:22 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:900, color:'#0F1035' }}>Fijar precio de venta</div>
+            <div style={{ fontSize:12, color:'#9CA3AF' }}>{producto.nombre}</div>
+          </div>
+          <button onClick={onClose} style={{ border:'none', background:'none', cursor:'pointer' }}><X size={16}/></button>
+        </div>
+        <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Precio de venta</label>
+        <CurrencyInput value={precio} onChange={setPrecio} placeholder="0" autoFocus/>
+        <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:6 }}>
+          Este precio queda guardado — la próxima vez cualquier cajero podrá venderlo sin que se lo vuelvan a pedir.
+        </div>
+        <button onClick={() => onConfirmar(precio)}
+          style={{ width:'100%', marginTop:16, padding:'11px 0', background:'linear-gradient(135deg,#16A34A,#15803D)',
+            color:'#fff', border:'none', borderRadius:12, fontWeight:800, fontSize:14, cursor:'pointer' }}>
+          Fijar precio y agregar al carrito
+        </button>
+      </div>
     </div>
   )
 }

@@ -311,7 +311,7 @@ export async function catalogo(req, reply) {
     LEFT JOIN inv_categorias c ON c.id = p.categoria_id
     JOIN inv_ubicaciones ub ON ub.bodega_id = $1 AND ub.activo = TRUE
     LEFT JOIN inv_stock st ON st.producto_id = p.id AND st.ubicacion_id = ub.id
-    WHERE p.activo = TRUE AND p.precio_venta > 0 ${where}
+    WHERE p.activo = TRUE ${where}
     GROUP BY p.id, c.nombre, c.icono
     HAVING COALESCE(SUM(st.cantidad), 0) > 0
     ORDER BY p.nombre
@@ -365,11 +365,26 @@ export async function registrarVenta(req, reply) {
       if (!prod.rows.length) { await client.query('ROLLBACK'); return reply.code(400).send({ error: 'Producto no encontrado o inactivo' }) }
 
       // Precio SIEMPRE tomado del servidor — nunca del cliente, evita manipulación.
-      const precioUnit = parseFloat(prod.rows[0].precio_venta)
+      // Única excepción: un producto que todavía no tiene precio fijado (ej.
+      // recién cargado en un inventario inicial sin lista de precios). Ahí,
+      // y solo ahí, un admin/superadmin puede fijarlo en el momento de la
+      // venta — y ese precio queda guardado para que cualquier cajero lo
+      // use de ahí en adelante sin volver a pedirlo.
+      let precioUnit = parseFloat(prod.rows[0].precio_venta)
       const costoUnit = parseFloat(prod.rows[0].costo_promedio || 0)
       if (!(precioUnit > 0)) {
-        await client.query('ROLLBACK')
-        return reply.code(400).send({ error: 'Este producto no tiene precio de venta configurado. Actualízalo desde Inventario antes de venderlo.' })
+        const override = Number(it.precio_unit_nuevo)
+        const puedeFijarPrecio = ['superadmin', 'administrador'].includes(req.user.rol)
+        if (!override || override <= 0) {
+          await client.query('ROLLBACK')
+          return reply.code(400).send({ error: 'Este producto no tiene precio de venta configurado. Actualízalo desde Inventario antes de venderlo.' })
+        }
+        if (!puedeFijarPrecio) {
+          await client.query('ROLLBACK')
+          return reply.code(403).send({ error: 'Este producto no tiene precio — solo un administrador puede fijarlo.' })
+        }
+        precioUnit = override
+        await client.query(`UPDATE inv_productos SET precio_venta=$1, actualizado_en=NOW() WHERE id=$2`, [override, it.producto_id])
       }
 
       // El stock de un producto puede repartirse entre varias ubicaciones de
