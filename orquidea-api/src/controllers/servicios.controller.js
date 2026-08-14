@@ -538,8 +538,12 @@ export async function crear(req, reply) {
     if (!contratoIdFinal && contratante_id) {
       let valorPaquete = 0
       if (paquete_id) {
-        const pkRes = await db.query(`SELECT precio_base FROM paquetes_servicio WHERE id = $1`, [paquete_id])
-        valorPaquete = pkRes.rows[0]?.precio_base || 0
+        const pkRes = await db.query(`SELECT precio_base, precio_venta FROM paquetes_servicio WHERE id = $1`, [paquete_id])
+        valorPaquete = pkRes.rows[0]?.precio_venta || pkRes.rows[0]?.precio_base || 0
+      }
+      // Permite ajustar el valor al vender (ej. descuento negociado), sin tocar el precio del paquete
+      if (req.body.valor_total_override != null && +req.body.valor_total_override > 0) {
+        valorPaquete = +req.body.valor_total_override
       }
       const contRes = await db.query(`
         INSERT INTO contratos (

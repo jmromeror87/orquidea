@@ -680,6 +680,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
   // PATH A — Paquetes de servicio
   const [listaPaquetes, setListaPaquetes] = useState([])
   const [paqueteId,     setPaqueteId]     = useState('')
+  const [valorContrato, setValorContrato] = useState('')
 
   useEffect(() => {
     api.get('/contratos/paquetes', { params: { tipo: 'CONTRATO' } }).then(r => setListaPaquetes(r.data.data || [])).catch(() => {})
@@ -896,6 +897,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
           contrato_id:     vinculoTipo === 'CONTRATO' ? (contratoId || null) : null,
           contratante_id:  vinculoTipo === 'CONTRATO' && !contratoId ? (contratanteId || null) : null,
           paquete_id:      vinculoTipo === 'CONTRATO' ? (paqueteId  || null) : vinculoTipo === 'CONVENIO' ? (paqueteConvenioId || null) : null,
+          valor_total_override: vinculoTipo === 'CONTRATO' && paqueteId && !contratoId ? (valorContrato || null) : null,
           poliza_id:       vinculoTipo === 'POLIZA'   ? polizaId             : null,
           beneficiario_id: vinculoTipo === 'POLIZA'   ? beneficiarioId       : null,
           items_extras:    vinculoTipo === 'POLIZA'   ? extrasItems          : undefined,
@@ -1040,7 +1042,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                           const bgLight = sel ? col + '15' : '#FAFBFF'
                           return (
                             <button key={p.id} type="button"
-                              onClick={() => setPaqueteId(sel ? '' : p.id)}
+                              onClick={() => { setPaqueteId(sel ? '' : p.id); setValorContrato(sel ? '' : (p.precio_venta || p.precio_base)) }}
                               style={{
                                 border: `2px solid ${sel ? col : '#E2E5F0'}`,
                                 borderRadius:14, padding:'12px 13px', cursor:'pointer', textAlign:'left',
@@ -1055,7 +1057,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                                 {p.nombre}
                               </div>
                               <div style={{ fontSize:13, fontWeight:800, color: col, marginBottom:8 }}>
-                                {new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(p.precio_base)}
+                                {new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(p.precio_venta || p.precio_base)}
                               </div>
                               <ul style={{ margin:0, padding:0, listStyle:'none' }}>
                                 {(p.items||[]).slice(0,5).map((it,i) => (
@@ -1075,6 +1077,14 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                         })}
                       </div>
                     </>
+                  )}
+
+                  {paqueteId && (
+                    <div className="sv-field">
+                      <label>Valor a cobrar <span style={{color:'#9CA3AF',fontWeight:400}}>(editable — por si hay descuento)</span></label>
+                      <input type="number" min="0" value={valorContrato}
+                        onChange={e => setValorContrato(e.target.value)} placeholder="0"/>
+                    </div>
                   )}
 
                   {/* Difunto — búsqueda libre */}

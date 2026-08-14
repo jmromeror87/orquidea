@@ -276,7 +276,9 @@ export async function paquetes(req, reply) {
   if (tipo) { vals.push(tipo); conds.push(`$${vals.length} = ANY(ps.tipos)`) }
   const res = await pool.query(`
     SELECT
-      ps.id, ps.nombre, ps.descripcion, ps.precio_base, ps.activo, ps.tipos,
+      ps.id, ps.nombre, ps.descripcion, ps.precio_base, ps.precio_venta,
+      COALESCE(ps.precio_venta, ps.precio_base) AS precio_efectivo,
+      ps.activo, ps.tipos,
       COALESCE(
         json_agg(
           json_build_object(
@@ -304,26 +306,26 @@ export async function paquetes(req, reply) {
 const TIPOS_PAQUETE_VALIDOS = ['CONVENIO', 'CONTRATO']
 
 export async function crearPaquete(req, reply) {
-  const { nombre, descripcion = '', activo = true, tipos } = req.body
+  const { nombre, descripcion = '', activo = true, tipos, precio_venta } = req.body
   if (!nombre) return reply.status(400).send({ error: 'El nombre es obligatorio' })
   const tiposLimpios = (Array.isArray(tipos) ? tipos : TIPOS_PAQUETE_VALIDOS).filter(t => TIPOS_PAQUETE_VALIDOS.includes(t))
   const r = await pool.query(
-    `INSERT INTO paquetes_servicio (nombre, descripcion, precio_base, activo, tipos)
-     VALUES ($1,$2,0,$3,$4) RETURNING *`,
-    [nombre, descripcion, activo, tiposLimpios.length ? tiposLimpios : TIPOS_PAQUETE_VALIDOS]
+    `INSERT INTO paquetes_servicio (nombre, descripcion, precio_base, precio_venta, activo, tipos)
+     VALUES ($1,$2,0,$3,$4,$5) RETURNING *`,
+    [nombre, descripcion, precio_venta || null, activo, tiposLimpios.length ? tiposLimpios : TIPOS_PAQUETE_VALIDOS]
   )
   return reply.status(201).send({ data: r.rows[0] })
 }
 
 export async function actualizarPaquete(req, reply) {
   const { id } = req.params
-  const { nombre, descripcion, activo, tipos } = req.body
+  const { nombre, descripcion, activo, tipos, precio_venta } = req.body
   const tiposLimpios = Array.isArray(tipos) ? tipos.filter(t => TIPOS_PAQUETE_VALIDOS.includes(t)) : null
   const r = await pool.query(
     `UPDATE paquetes_servicio
-     SET nombre=$1, descripcion=$2, activo=$3, tipos=COALESCE($5, tipos)
+     SET nombre=$1, descripcion=$2, activo=$3, tipos=COALESCE($5, tipos), precio_venta=$6
      WHERE id=$4 RETURNING *`,
-    [nombre, descripcion ?? '', activo, id, tiposLimpios]
+    [nombre, descripcion ?? '', activo, id, tiposLimpios, precio_venta || null]
   )
   if (!r.rows.length) return reply.status(404).send({ error: 'Paquete no encontrado' })
   return reply.send({ data: r.rows[0] })

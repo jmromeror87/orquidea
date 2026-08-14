@@ -340,7 +340,7 @@ function TabPaquetes() {
   const [msg,        setMsg]        = useState('')
   const [filtroTipo, setFiltroTipo] = useState('TODOS')
 
-  const PBLANK = { nombre:'', descripcion:'', precio_base:'', activo:true, tipos:['CONTRATO','CONVENIO'] }
+  const PBLANK = { nombre:'', descripcion:'', precio_base:'', precio_venta:'', activo:true, tipos:['CONTRATO','CONVENIO'] }
   const [pForm, setPForm] = useState({ ...PBLANK })
 
   // Items
@@ -374,7 +374,7 @@ function TabPaquetes() {
 
   const abrirPaquete = (p = null) => {
     setSelected(p)
-    setPForm(p ? { nombre:p.nombre, descripcion:p.descripcion||'', precio_base:p.precio_base, activo:p.activo, tipos:p.tipos||['CONTRATO','CONVENIO'] } : { ...PBLANK })
+    setPForm(p ? { nombre:p.nombre, descripcion:p.descripcion||'', precio_base:p.precio_base, precio_venta:p.precio_venta||'', activo:p.activo, tipos:p.tipos||['CONTRATO','CONVENIO'] } : { ...PBLANK })
     setMsg('')
     setModal('paquete')
   }
@@ -531,12 +531,15 @@ function TabPaquetes() {
                   </div>
 
                   {/* Precio */}
-                  <div style={{
-                    fontSize:22, fontWeight:900, letterSpacing:-.5,
-                    color: p.activo ? col : '#CBD5E1',
-                    marginBottom:14
-                  }}>
-                    {fmtCOP(p.precio_base)}
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ fontSize:22, fontWeight:900, letterSpacing:-.5, color: p.activo ? col : '#CBD5E1' }}>
+                      {fmtCOP(p.precio_venta || p.precio_base)}
+                    </div>
+                    {p.precio_venta > 0 && (
+                      <div style={{ fontSize:11, color:'#9CA3AF', fontWeight:600 }}>
+                        Costo: {fmtCOP(p.precio_base)}
+                      </div>
+                    )}
                   </div>
 
                   {/* Ítems */}
@@ -615,7 +618,7 @@ function TabPaquetes() {
                 {selected && (
                   <div>
                     <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
-                      Precio base
+                      Costo (suma de ítems)
                     </label>
                     <div style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0',
                       borderRadius:10, fontSize:13, boxSizing:'border-box', background:'#F8F9FC', color:'#374151', fontWeight:700 }}>
@@ -626,6 +629,19 @@ function TabPaquetes() {
                     </div>
                   </div>
                 )}
+                <div>
+                  <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
+                    Precio de venta <span style={{color:'#9CA3AF',fontWeight:400}}>(opcional)</span>
+                  </label>
+                  <input type="number" min="0" value={pForm.precio_venta}
+                    onChange={e => setPForm(p=>({...p,precio_venta:e.target.value}))}
+                    placeholder="Déjelo vacío para vender al costo"
+                    style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0',
+                      borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box' }}/>
+                  <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:4 }}>
+                    Es el valor que se muestra y cobra al elegir este paquete en Servicios. Si lo deja vacío, se usa el costo de arriba.
+                  </div>
+                </div>
                 <div>
                   <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
                     Descripción

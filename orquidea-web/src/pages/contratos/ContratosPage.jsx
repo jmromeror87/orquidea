@@ -329,7 +329,7 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
   const onPaquete = (e) => {
     const pid = e.target.value
     const pkg = paquetes.find(p => p.id === pid)
-    setForm(p => ({ ...p, paquete_id: pid, valor_total: pkg?.precio_base || p.valor_total }))
+    setForm(p => ({ ...p, paquete_id: pid, valor_total: (pkg?.precio_venta || pkg?.precio_base) || p.valor_total }))
   }
 
   const guardar = async () => {
@@ -488,7 +488,7 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
             <select value={form.paquete_id} onChange={onPaquete}>
               <option value="">— Sin paquete / personalizado —</option>
               {paquetes.map(p => (
-                <option key={p.id} value={p.id}>{p.nombre} · {fmt(p.precio_base)}</option>
+                <option key={p.id} value={p.id}>{p.nombre} · {fmt(p.precio_venta || p.precio_base)}</option>
               ))}
             </select>
           </div>
