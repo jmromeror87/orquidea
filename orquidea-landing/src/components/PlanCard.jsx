@@ -21,6 +21,7 @@ import BenefitIcon from './BenefitIcons'
 
 // Estilo por tipo de plan — todos derivados de la paleta de marca (sin
 // inventar colores nuevos), asociados al campo real `tipo` de cada plan.
+// Es el respaldo cuando un plan no tiene un estilo propio en ESTILO_PLAN.
 const ESTILO_TIPO = {
   INDIVIDUAL: { icon: 'corazon', header: 'from-gold-500 to-gold-600', tagline: 'Protección personal, sin complicaciones' },
   FAMILIAR: { icon: 'familia', header: 'from-brand-700 to-brand-900', tagline: 'Tranquilidad y respaldo para tu familia' },
@@ -28,12 +29,27 @@ const ESTILO_TIPO = {
   COLECTIVO: { icon: 'maletin', header: 'from-gold-600 to-brand-900', tagline: 'Bienestar exequial para tu equipo' },
 }
 
+// Estilo propio por plan (identificado por su código único) — todos los
+// planes hoy son tipo FAMILIAR, así que sin esto se verían idénticos.
+// Cada uno recibe su propio ícono y color para diferenciarse a simple vista.
+const ESTILO_PLAN = {
+  'PLAN-EJECUTIVO':     { icon: 'maletin',   header: 'from-brand-800 to-brand-950',   tagline: 'Cobertura ejecutiva para tu familia' },
+  'PLAN-SERVTIPOA':     { icon: 'documento', header: 'from-indigo-500 to-indigo-700', tagline: 'Servicios esenciales, cobertura completa' },
+  'PLAN-PREFERENCIAL':  { icon: 'estrella',  header: 'from-gold-500 to-gold-700',     tagline: 'Beneficios preferenciales para tu familia' },
+  'PLAN-USA':           { icon: 'escudo',    header: 'from-sky-500 to-sky-700',       tagline: 'Protección con alcance internacional' },
+  'PLAN-BASICOSANJOSE': { icon: 'corazon',   header: 'from-emerald-500 to-emerald-700', tagline: 'Respaldo esencial y accesible' },
+  'PLAN-SANJOSE':       { icon: 'familia',   header: 'from-teal-500 to-teal-700',     tagline: 'Tranquilidad para toda la familia' },
+  'PLAN-PET':           { icon: 'usuario',   header: 'from-rose-500 to-rose-700',     tagline: 'Cobertura ampliada con traslado nacional' },
+  'PLAN-RECORDAR':      { icon: 'corazon',   header: 'from-violet-500 to-violet-700', tagline: 'Un recuerdo digno para siempre' },
+  'PLAN-CRISTOREY':     { icon: 'escudo',    header: 'from-amber-600 to-brand-900',   tagline: 'Fe y respaldo en cada momento' },
+}
+
 export default function PlanCard({ plan }) {
   // "Premium" se distingue del resto de planes individuales con su propio color.
   const esPremium = plan.nombre?.toLowerCase().includes('premium')
   const estilo = esPremium
     ? { icon: 'estrella', header: 'from-sky-400 to-sky-600', tagline: 'La cobertura más completa' }
-    : ESTILO_TIPO[plan.tipo] || ESTILO_TIPO.INDIVIDUAL
+    : ESTILO_PLAN[plan.codigo] || ESTILO_TIPO[plan.tipo] || ESTILO_TIPO.INDIVIDUAL
   const todos = Array.isArray(plan.servicios_incluidos) ? plan.servicios_incluidos : []
   const incluidos = todos.filter(item => item.incluido !== false)
 
