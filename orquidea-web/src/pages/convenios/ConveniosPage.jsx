@@ -43,8 +43,8 @@ const BLANK = {
   sede_id:'',
 }
 const ABSORBE_META = {
-  FAMILIA:   { label:'La familia paga el resto', short:'Familia' },
-  FUNERARIA: { label:'La funeraria absorbe el resto (familia no paga)', short:'Funeraria' },
+  FAMILIA:   { label:'El excedente queda en cartera de la familia', short:'Familia' },
+  FUNERARIA: { label:'Excepcional: la empresa lo condona (no queda en cartera)', short:'Condonado' },
 }
 
 const CSS = `

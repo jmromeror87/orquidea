@@ -42,6 +42,7 @@ import ComprasPage       from './pages/compras/ComprasPage.jsx'
 import RecaudoPage      from './pages/recaudo/RecaudoPage.jsx'
 import AsesoresPage     from './pages/asesores/AsesoresPage.jsx'
 import ConveniosPage    from './pages/convenios/ConveniosPage.jsx'
+import CarteraConveniosPage from './pages/convenios/CarteraConveniosPage.jsx'
 import POSPage          from './pages/pos/POSPage.jsx'
 import MemorialesPage   from './pages/memoriales/MemorialesPage.jsx'
 import SolicitudesPage  from './pages/solicitudes/SolicitudesPage.jsx'
@@ -79,6 +80,7 @@ export default function App() {
         <Route path="/recaudo"       element={<RecaudoPage />} />
         <Route path="/asesores"      element={<AsesoresPage />} />
         <Route path="/convenios"     element={<ConveniosPage />} />
+        <Route path="/cartera-convenios" element={<CarteraConveniosPage />} />
         <Route path="/pos"          element={<POSPage />} />
         <Route path="/memoriales"   element={<MemorialesPage />} />
         <Route path="/solicitudes"  element={<SolicitudesPage />} />

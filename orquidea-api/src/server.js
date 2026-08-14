@@ -58,6 +58,7 @@ import zonasRecaudoRoutes  from './routes/zonas_recaudo.routes.js'
 import recaudoRoutes       from './routes/recaudo.routes.js'
 import moraRoutes          from './routes/mora.routes.js'
 import conveniosRoutes     from './routes/convenios.routes.js'
+import carteraTercerosRoutes from './routes/carteraTerceros.routes.js'
 import posRoutes           from './routes/pos.routes.js'
 import publicoRoutes       from './routes/publico.routes.js'
 import memorialesRoutes    from './routes/memoriales.routes.js'
@@ -135,6 +136,7 @@ app.register(moraRoutes,          { prefix: '/api/mora' })
 app.register(asesoresRoutes,      { prefix: '/api/asesores' })
 app.register(flotaRoutes,         { prefix: '/api/flota' })
 app.register(conveniosRoutes,     { prefix: '/api/convenios' })
+app.register(carteraTercerosRoutes, { prefix: '/api/cartera-terceros' })
 app.register(posRoutes,           { prefix: '/api/pos' })
 app.register(publicoRoutes,       { prefix: '/api/publico' })
 app.register(memorialesRoutes,    { prefix: '/api/memoriales' })

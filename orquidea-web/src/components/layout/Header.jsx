@@ -33,6 +33,7 @@ const RUTAS = {
   '/recaudo':      { modulo:'Recaudo',             titulo:'Recaudo por Zonas',                 sub:'Gestión operativa de cobro en ruta — Funeraria San José de Abrego', color:'#6366F1' },
   '/asesores':     { modulo:'Asesores',             titulo:'Asesores Comerciales',              sub:'Comisiones y desempeño de ventas',               color:'#EC4899' },
   '/convenios':    { modulo:'Convenios',            titulo:'Convenios',                         sub:'EPS, aseguradoras, alcaldías y empresas',        color:'#0D9488' },
+  '/cartera-convenios': { modulo:'Cartera Convenios', titulo:'Cartera de Convenios',            sub:'Cuentas por cobrar a convenios y familias',      color:'#0D9488' },
   '/pos':          { modulo:'Punto de Venta',        titulo:'Punto de Venta',                    sub:'Venta de mostrador y caja menor',                color:'#16A34A' },
   '/memoriales':   { modulo:'Memoriales',            titulo:'Memoriales',                        sub:'Novenarios, aniversarios y misas del sitio web', color:'#4C1D95' },
   '/solicitudes':  { modulo:'Solicitudes',           titulo:'Solicitudes',                       sub:'Prospectos que llegan desde la página web',     color:'#DB2777' },

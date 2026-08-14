@@ -1239,16 +1239,20 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                             </div>
                             <div>
                               <div style={{ fontSize:10, fontWeight:800, color:'#9A3412', textTransform:'uppercase', letterSpacing:.5 }}>
-                                {coberturaCalc.absorbe_resto === 'FUNERARIA' ? 'Absorbe la funeraria' : 'A cargo de la familia'}
+                                {coberturaCalc.absorbe_resto === 'FUNERARIA' ? 'Condonado por la empresa' : 'Cartera a cargo de la familia'}
                               </div>
                               <div style={{ fontSize:17, fontWeight:900, color:'#C2410C' }}>
                                 {fmtCOP(coberturaCalc.absorbe_resto === 'FUNERARIA' ? coberturaCalc.valor_absorbido_funeraria : coberturaCalc.valor_a_cargo_familia)}
                               </div>
                             </div>
                           </div>
-                          {coberturaCalc.absorbe_resto === 'FUNERARIA' && (
+                          {coberturaCalc.absorbe_resto === 'FUNERARIA' ? (
                             <div style={{ fontSize:11, color:'#7C3AED', fontWeight:700, marginTop:8 }}>
-                              🏢 La familia no paga nada — la funeraria asume la diferencia como parte del convenio.
+                              🏢 Caso excepcional: la empresa condona esta diferencia, no queda en cartera de nadie.
+                            </div>
+                          ) : (
+                            <div style={{ fontSize:11, color:'#9A3412', fontWeight:700, marginTop:8 }}>
+                              📋 Lo que cubre el convenio y el excedente de la familia quedan en cartera (Módulo Cartera de Convenios) — la funeraria no lo pierde, lo cobra después.
                             </div>
                           )}
                           {coberturaCalc.tope_aplicado && (
@@ -3476,7 +3480,7 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
           border:'1px solid #A5F3FC', color:'#0E7490', borderRadius:10, padding:'9px 14px',
           fontSize:12, fontWeight:600, marginBottom:16 }}>
           🤝 Este valor total alimenta automáticamente la cobertura del convenio — cada vez que agregas,
-          editas o quitas un ítem, se recalcula cuánto cubre el convenio y cuánto absorbe {data.convenio_absorbe_resto === 'FUNERARIA' ? 'la funeraria' : 'la familia'} (pestaña Contratante).
+          editas o quitas un ítem, se recalcula cuánto cubre el convenio y cuánto queda en cartera de {data.convenio_absorbe_resto === 'FUNERARIA' ? 'nadie (la empresa lo condona)' : 'la familia'} (pestaña Contratante).
         </div>
       )}
 
@@ -3802,7 +3806,7 @@ function ConvenioCoberturaBox({ data, servicioId, onSaved }) {
           </div>
           <div>
             <div style={{ fontSize:10, fontWeight:800, color: absorbeFuneraria ? '#6D28D9' : '#9A3412', textTransform:'uppercase', letterSpacing:.5 }}>
-              {absorbeFuneraria ? 'Absorbe la funeraria' : 'A cargo de la familia'}
+              {absorbeFuneraria ? 'Condonado por la empresa' : 'Cartera a cargo de la familia'}
             </div>
             <div style={{ fontSize:20, fontWeight:900, color: absorbeFuneraria ? '#7C3AED' : '#C2410C' }}>{fmtCOPBox(resto)}</div>
             <div style={{ fontSize:11, color: absorbeFuneraria ? '#6D28D9' : '#9A3412', fontWeight:700 }}>{pctResto}% del servicio</div>

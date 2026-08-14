@@ -24,6 +24,7 @@ import pool from '../config/database.js'
 import { agregarMaterial, eliminarMaterial } from '../utils/tanatopraxiaMateriales.js'
 import { anthropic } from '../utils/anthropicClient.js'
 import { computeCobertura } from './convenios.controller.js'
+import { sincronizarCartera } from './carteraTerceros.controller.js'
 import { resolverSede, sedeParaCrear, convenioPermitido } from '../utils/sede.js'
 import { pipeline } from 'node:stream/promises'
 import fs from 'node:fs'
@@ -705,6 +706,25 @@ export async function crear(req, reply) {
       [difunto_id, fechaFallecimiento]
     )
 
+    // ── Cartera: lo que autoriza el convenio y el excedente NUNCA los       ──
+    // absorbe la funeraria — quedan como cuentas por cobrar (ver módulo       ──
+    // "Cartera de terceros"), salvo que el convenio marque absorbe_resto      ──
+    // = 'FUNERARIA' (excepción explícita).
+    if (convenio_id) {
+      const difRes = await db.query(`SELECT nombres, apellidos FROM terceros WHERE id=$1`, [difunto_id])
+      const nombreServicio = difRes.rows[0] ? `${difRes.rows[0].nombres} ${difRes.rows[0].apellidos}` : null
+      await sincronizarCartera(db, {
+        servicioId: servicioId,
+        sedeId: sedeParaCrear(req),
+        convenioId: convenio_id,
+        contratanteConvenioId: contratante_convenio_id || null,
+        valorCubierto: convenioCobertura ? convenioCobertura.valor_cubierto : 0,
+        absorbeResto: convenioCobertura ? convenioCobertura.absorbe_resto : null,
+        valorServicio: convenio_valor_servicio != null ? +convenio_valor_servicio : 0,
+        nombreServicio,
+      })
+    }
+
     await db.query('COMMIT')
     return reply.code(201).send({ data: ins.rows[0] })
   } catch (e) {
@@ -1347,7 +1367,10 @@ export async function recalcularConvenioCobertura(req, reply) {
   const { convenio_valor_servicio } = req.body
 
   const sfRes = await pool.query(
-    `SELECT convenio_id, convenio_autorizacion_id, convenio_valor_servicio FROM servicios_funerarios WHERE id=$1`, [id]
+    `SELECT sf.convenio_id, sf.convenio_autorizacion_id, sf.convenio_valor_servicio,
+            sf.contratante_convenio_id, sf.sede_id, t.nombres, t.apellidos
+     FROM servicios_funerarios sf LEFT JOIN terceros t ON t.id = sf.difunto_id
+     WHERE sf.id=$1`, [id]
   )
   if (!sfRes.rows.length) return reply.code(404).send({ error: 'Servicio no encontrado' })
   const sf = sfRes.rows[0]
@@ -1368,6 +1391,12 @@ export async function recalcularConvenioCobertura(req, reply) {
     WHERE id = $4`,
     [valorServicio, resultado.valor_cubierto, resultado.absorbe_resto, id]
   )
+  await sincronizarCartera(pool, {
+    servicioId: id, sedeId: sf.sede_id, convenioId: sf.convenio_id,
+    contratanteConvenioId: sf.contratante_convenio_id,
+    valorCubierto: resultado.valor_cubierto, absorbeResto: resultado.absorbe_resto,
+    valorServicio, nombreServicio: sf.nombres ? `${sf.nombres} ${sf.apellidos}` : null,
+  })
   await audit(id, req.user?.id, 'convenio', 'Recalculó la cobertura del convenio con la configuración actual')
   return reply.send({ data: resultado })
 }
@@ -1551,7 +1580,10 @@ async function validarPresupuestoConvenio(servicioId, montoNuevoItem, excluirIte
 // desactualiza). Se llama después de crear/editar/eliminar un ítem.
 async function sincronizarCoberturaConvenio(servicioId) {
   const sfRes = await pool.query(
-    `SELECT convenio_id, convenio_autorizacion_id FROM servicios_funerarios WHERE id=$1`, [servicioId]
+    `SELECT sf.convenio_id, sf.convenio_autorizacion_id, sf.contratante_convenio_id, sf.sede_id,
+            t.nombres, t.apellidos
+     FROM servicios_funerarios sf LEFT JOIN terceros t ON t.id = sf.difunto_id
+     WHERE sf.id=$1`, [servicioId]
   )
   const sf = sfRes.rows[0]
   if (!sf?.convenio_id) return
@@ -1572,6 +1604,12 @@ async function sincronizarCoberturaConvenio(servicioId) {
     WHERE id = $4`,
     [valorServicio, resultado.valor_cubierto, resultado.absorbe_resto, servicioId]
   )
+  await sincronizarCartera(pool, {
+    servicioId, sedeId: sf.sede_id, convenioId: sf.convenio_id,
+    contratanteConvenioId: sf.contratante_convenio_id,
+    valorCubierto: resultado.valor_cubierto, absorbeResto: resultado.absorbe_resto,
+    valorServicio, nombreServicio: sf.nombres ? `${sf.nombres} ${sf.apellidos}` : null,
+  })
 }
 
 export async function agregarItem(req, reply) {
