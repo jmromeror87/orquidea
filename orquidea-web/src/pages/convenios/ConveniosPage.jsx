@@ -50,7 +50,16 @@ const ABSORBE_META = {
 const CSS = `
   .cv-page { display:flex; flex-direction:column; height:100%; background:#F7F8FC; overflow:hidden; }
   .cv-head { background:#fff; border-bottom:1.5px solid #ECEDF8; padding:18px 24px; flex-shrink:0;
-    display:flex; align-items:center; justify-content:space-between; }
+    display:flex; align-items:center; justify-content:space-between; gap:20px; }
+  .cv-search { flex:1; max-width:380px; display:flex; align-items:center; gap:8px;
+    background:#F7F8FC; border:1.5px solid #E8EAF0; border-radius:11px; padding:9px 14px;
+    transition:border-color .15s, background .15s; }
+  .cv-search:focus-within { border-color:#0891B2; background:#fff; box-shadow:0 0 0 3px rgba(8,145,178,.1); }
+  .cv-search input { flex:1; border:none; outline:none; background:transparent; font-size:13px; color:#0F1035; min-width:0; }
+  .cv-search input::placeholder { color:#9CA3AF; }
+  .cv-search-clear { border:none; background:#E8EAF0; color:#6B7280; border-radius:50%;
+    width:18px; height:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+  .cv-search-clear:hover { background:#DCE0EC; }
   .cv-head-icon { width:44px; height:44px; border-radius:14px; background:linear-gradient(135deg,#0891B2,#0E7490);
     display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(8,145,178,.3); flex-shrink:0; }
   .cv-titulo { font-size:22px; font-weight:900; color:#0F1035; letter-spacing:-.5px; }
@@ -728,6 +737,18 @@ export default function ConveniosPage() {
               </div>
             </div>
           </div>
+
+          {convenios.length > 0 && (
+            <div className="cv-search">
+              <Search size={14} color="#9CA3AF"/>
+              <input value={busq} onChange={e => setBusq(e.target.value)}
+                placeholder="Buscar por nombre, NIT o contacto…"/>
+              {busq && (
+                <button className="cv-search-clear" onClick={() => setBusq('')} title="Limpiar"><X size={13}/></button>
+              )}
+            </div>
+          )}
+
           <div style={{ display:'flex', gap:10 }}>
             <button className="cv-btn cv-btn-ghost" onClick={cargar} title="Recargar">
               <RefreshCw size={14} className={loading ? 'cv-spin' : ''}/>
@@ -737,16 +758,6 @@ export default function ConveniosPage() {
             </button>
           </div>
         </div>
-
-        {convenios.length > 0 && (
-          <div style={{ position:'relative', maxWidth:340, margin:'0 0 16px' }}>
-            <Search size={14} color="#9CA3AF" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
-            <input value={busq} onChange={e => setBusq(e.target.value)}
-              placeholder="Buscar por nombre, NIT o contacto…"
-              style={{ width:'100%', padding:'9px 12px 9px 32px', border:'1.5px solid #E2E5F0',
-                borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box' }}/>
-          </div>
-        )}
 
         <div className="cv-list">
           {loading && convenios.length === 0 ? (
