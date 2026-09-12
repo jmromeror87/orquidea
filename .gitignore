@@ -28,3 +28,9 @@ whatsapp-service/node_modules/
 whatsapp-service/.wwebjs_auth/
 whatsapp-service/.wwebjs_cache/
 whatsapp-service/.env
+
+# Respaldo local de .env, no debe subirse
+orquidea-api/.env.dev.bak
+
+# Servicio de WhatsApp: proyecto aparte, no pertenece a este repo
+orquidea-whatsapp/

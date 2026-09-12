@@ -18,6 +18,7 @@
  */
 import pool from '../config/database.js'
 import { resolverSede, sedeParaCrear, bodegaPermitida } from '../utils/sede.js'
+import { contabilizarEvento } from '../services/contabilidad.service.js'
 import { pipeline } from 'node:stream/promises'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -304,7 +305,7 @@ export async function catalogo(req, reply) {
   if (q) { params.push(`%${q}%`); where = `AND (p.nombre ILIKE $2 OR p.codigo_sku ILIKE $2)` }
 
   const { rows } = await pool.query(`
-    SELECT p.id, p.codigo_sku, p.nombre, p.precio_venta, p.imagen_url,
+    SELECT p.id, p.codigo_sku, p.nombre, p.precio_venta, p.imagen_url, p.unidad_medida,
       c.nombre AS categoria_nombre, c.icono AS categoria_icono,
       COALESCE(SUM(st.cantidad), 0) AS stock_disponible
     FROM inv_productos p
@@ -316,6 +317,22 @@ export async function catalogo(req, reply) {
     HAVING COALESCE(SUM(st.cantidad), 0) > 0
     ORDER BY p.nombre
   `, params)
+
+  // Presentaciones de venta (caja, docena, unidad...) de todos los productos
+  // del catálogo, en una sola consulta — se agrupan por producto en JS para
+  // no hacer N+1 queries.
+  if (rows.length) {
+    const { rows: pres } = await pool.query(
+      `SELECT * FROM inv_producto_presentaciones WHERE producto_id = ANY($1::uuid[]) AND activo = TRUE ORDER BY factor_conversion`,
+      [rows.map(r => r.id)]
+    )
+    const porProducto = new Map()
+    for (const p of pres) {
+      if (!porProducto.has(p.producto_id)) porProducto.set(p.producto_id, [])
+      porProducto.get(p.producto_id).push(p)
+    }
+    for (const r of rows) r.presentaciones = porProducto.get(r.id) || []
+  }
 
   return reply.send({ data: rows })
 }
@@ -364,28 +381,41 @@ export async function registrarVenta(req, reply) {
       )
       if (!prod.rows.length) { await client.query('ROLLBACK'); return reply.code(400).send({ error: 'Producto no encontrado o inactivo' }) }
 
-      // Precio SIEMPRE tomado del servidor — nunca del cliente, evita manipulación.
-      // Única excepción: un producto que todavía no tiene precio fijado (ej.
-      // recién cargado en un inventario inicial sin lista de precios). Ahí,
-      // y solo ahí, un admin/superadmin puede fijarlo en el momento de la
-      // venta — y ese precio queda guardado para que cualquier cajero lo
-      // use de ahí en adelante sin volver a pedirlo.
-      let precioUnit = parseFloat(prod.rows[0].precio_venta)
       const costoUnit = parseFloat(prod.rows[0].costo_promedio || 0)
-      if (!(precioUnit > 0)) {
-        const override = Number(it.precio_unit_nuevo)
-        const puedeFijarPrecio = ['superadmin', 'administrador'].includes(req.user.rol)
-        if (!override || override <= 0) {
+
+      // Si el ítem viene con presentacion_id (caja, docena...), el precio y
+      // la cantidad "real" cobrada son los de esa presentación, pero el
+      // inventario SIEMPRE se descuenta en unidades base del producto —
+      // factor_conversion es el puente entre ambos mundos.
+      let precioUnit, factor = 1, presentacion = null
+      if (it.presentacion_id) {
+        const pres = await client.query(
+          `SELECT * FROM inv_producto_presentaciones WHERE id=$1 AND producto_id=$2 AND activo=TRUE`,
+          [it.presentacion_id, it.producto_id]
+        )
+        if (!pres.rows.length) {
           await client.query('ROLLBACK')
-          return reply.code(400).send({ error: 'Este producto no tiene precio de venta configurado. Actualízalo desde Inventario antes de venderlo.' })
+          return reply.code(400).send({ error: 'La presentación seleccionada no es válida para este producto' })
         }
-        if (!puedeFijarPrecio) {
-          await client.query('ROLLBACK')
-          return reply.code(403).send({ error: 'Este producto no tiene precio — solo un administrador puede fijarlo.' })
-        }
-        precioUnit = override
-        await client.query(`UPDATE inv_productos SET precio_venta=$1, actualizado_en=NOW() WHERE id=$2`, [override, it.producto_id])
+        presentacion = pres.rows[0]
+        factor = parseFloat(presentacion.factor_conversion)
+        // Precio por unidad BASE, para que el kardex y el costo/margen sigan
+        // siendo comparables entre presentaciones distintas del mismo producto.
+        precioUnit = parseFloat(presentacion.precio) / factor
+      } else {
+        // Precio SIEMPRE tomado del servidor — nunca del cliente, evita
+        // manipulación. El precio de venta se configura en Inventario (costeo
+        // + margen), nunca en el mostrador: si falta, la venta se bloquea.
+        precioUnit = parseFloat(prod.rows[0].precio_venta)
       }
+      if (!(precioUnit > 0)) {
+        await client.query('ROLLBACK')
+        return reply.code(400).send({ error: 'Este producto no tiene precio de venta configurado. Actualízalo desde Inventario antes de venderlo.' })
+      }
+
+      // Cantidad en unidades BASE consumidas del inventario (si vino en una
+      // presentación, se multiplica por su factor de conversión).
+      const cantidadBase = +it.cantidad * factor
 
       // El stock de un producto puede repartirse entre varias ubicaciones de
       // la misma bodega — se suma el disponible en TODAS y se descuenta en
@@ -400,13 +430,17 @@ export async function registrarVenta(req, reply) {
       `, [it.producto_id, bodegaId])
 
       const disponibleTotal = stockPorUbic.rows.reduce((acc, r) => acc + parseFloat(r.cantidad), 0)
-      if (disponibleTotal < +it.cantidad) {
+      if (disponibleTotal < cantidadBase) {
         await client.query('ROLLBACK')
-        return reply.code(400).send({ error: `Stock insuficiente para el producto seleccionado (disponible: ${disponibleTotal})` })
+        return reply.code(400).send({ error: `Stock insuficiente para el producto seleccionado (disponible: ${disponibleTotal} ${presentacion ? 'unidades base' : ''})` })
       }
 
-      subtotal += precioUnit * +it.cantidad
-      itemsConCosto.push({ ...it, precioUnit, costoUnit, stockPorUbic: stockPorUbic.rows })
+      subtotal += precioUnit * cantidadBase
+      itemsConCosto.push({
+        ...it, precioUnit, costoUnit, stockPorUbic: stockPorUbic.rows,
+        cantidadBase, presentacion_id: it.presentacion_id || null,
+        cantidad_presentacion: it.presentacion_id ? +it.cantidad : null,
+      })
     }
 
     const total = subtotal
@@ -434,14 +468,19 @@ export async function registrarVenta(req, reply) {
     const venta = ventaRes.rows[0]
 
     for (const p of pagos) {
+      // El vuelto solo aplica a efectivo — con qué billete pagó el cliente
+      // vs. lo que realmente costaba esta línea de pago. Si no mandan
+      // monto_recibido (pago exacto, o no es efectivo), no hay vuelto.
+      const montoRecibido = p.metodo_pago === 'efectivo' && +p.monto_recibido > 0 ? +p.monto_recibido : null
+      const cambio = montoRecibido != null ? Math.max(0, montoRecibido - +p.monto) : null
       await client.query(`
-        INSERT INTO pos_venta_pagos (venta_id, metodo_pago, monto, referencia, soporte_url)
-        VALUES ($1,$2,$3,$4,$5)
-      `, [venta.id, p.metodo_pago, p.monto, p.referencia || null, p.soporte_url || null])
+        INSERT INTO pos_venta_pagos (venta_id, metodo_pago, monto, referencia, soporte_url, monto_recibido, cambio)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `, [venta.id, p.metodo_pago, p.monto, p.referencia || null, p.soporte_url || null, montoRecibido, cambio])
     }
 
     for (const it of itemsConCosto) {
-      let restante = +it.cantidad
+      let restante = it.cantidadBase
       let ultimoMovId = null
       for (const ubic of it.stockPorUbic) {
         if (restante <= 0) break
@@ -464,9 +503,38 @@ export async function registrarVenta(req, reply) {
       }
 
       await client.query(`
-        INSERT INTO pos_venta_items (venta_id, producto_id, cantidad, precio_unitario, costo_unitario, movimiento_id)
-        VALUES ($1,$2,$3,$4,$5,$6)
-      `, [venta.id, it.producto_id, it.cantidad, it.precioUnit, it.costoUnit, ultimoMovId])
+        INSERT INTO pos_venta_items
+          (venta_id, producto_id, cantidad, precio_unitario, costo_unitario, movimiento_id, presentacion_id, cantidad_presentacion)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [venta.id, it.producto_id, it.cantidadBase, it.precioUnit, it.costoUnit, ultimoMovId, it.presentacion_id, it.cantidad_presentacion])
+    }
+
+    // Contabilización: un comprobante VENTA_POS por cada medio de pago usado.
+    // Si el pago es mixto, el costo de lo vendido se prorratea entre los
+    // comprobantes en la misma proporción que el dinero recibido por cada
+    // medio; el último medio absorbe el residuo de redondeo para que la
+    // suma de costos contabilizados cuadre exactamente con costoTotal.
+    const costoTotal = itemsConCosto.reduce((acc, it) => acc + it.costoUnit * it.cantidadBase, 0)
+    let costoAsignado = 0
+    for (let i = 0; i < pagos.length; i++) {
+      const p = pagos[i]
+      const esUltimo = i === pagos.length - 1
+      const costoPago = esUltimo
+        ? Math.round((costoTotal - costoAsignado) * 100) / 100
+        : Math.round(costoTotal * (+p.monto / total) * 100) / 100
+      costoAsignado += costoPago
+
+      await contabilizarEvento(client, {
+        evento_codigo: 'VENTA_POS',
+        montos: { total: +p.monto, costo: costoPago },
+        forma_pago_codigo: p.metodo_pago,
+        concepto: `Venta de mostrador POS-${venta.numero}`,
+        tercero_id: cliente_id || null,
+        sede_id: sedeId,
+        documento_origen_tipo: 'pos_ventas',
+        documento_origen_id: venta.id,
+        usuario_id: req.user.id,
+      })
     }
 
     await client.query('COMMIT')
@@ -508,7 +576,8 @@ export async function obtenerRecibo(req, reply) {
   `, [id])
 
   const pagos = await pool.query(`
-    SELECT metodo_pago, monto, referencia, soporte_url FROM pos_venta_pagos WHERE venta_id = $1 ORDER BY creado_en
+    SELECT metodo_pago, monto, referencia, soporte_url, monto_recibido, cambio
+    FROM pos_venta_pagos WHERE venta_id = $1 ORDER BY creado_en
   `, [id])
 
   return reply.send({ data: { ...venta.rows[0], items: items.rows, pagos: pagos.rows } })

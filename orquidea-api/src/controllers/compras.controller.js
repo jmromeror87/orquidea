@@ -19,6 +19,7 @@
 import pool from '../config/database.js'
 import { auditarCompra, obtenerAuditoria } from '../utils/comprasAuditoria.js'
 import { resolverSede, bodegaPermitida } from '../utils/sede.js'
+import { contabilizarEvento } from '../services/contabilidad.service.js'
 
 // Helper: expression for tercero display name
 const TNOM = `COALESCE(t.razon_social, CONCAT(TRIM(COALESCE(t.nombres,'')), ' ', TRIM(COALESCE(t.apellidos,''))))`
@@ -971,6 +972,24 @@ export async function crearRecepcion(req, reply) {
           (proveedor_id, orden_compra_id, recepcion_id, concepto, monto_total, fecha_vencimiento)
         VALUES ($1,$2,$3,$4,$5, CURRENT_DATE)
       `, [proveedor_id, orden_compra_id, recepcion_id, `OC #${oc.numero}`, oc.total])
+
+      if (+oc.total > 0) {
+        const prov = await client.query(
+          `SELECT cp.tercero_id, b.sede_id FROM cmp_proveedores cp, inv_bodegas b
+           WHERE cp.id = $1 AND b.id = $2`,
+          [proveedor_id, oc.bodega_destino_id]
+        )
+        await contabilizarEvento(client, {
+          evento_codigo: 'COMPRA_RECIBIDA',
+          montos: { total: +oc.total },
+          concepto: `Recepción completa OC #${oc.numero}`,
+          tercero_id: prov.rows[0]?.tercero_id || null,
+          sede_id: prov.rows[0]?.sede_id || null,
+          documento_origen_tipo: 'inv_ordenes_compra',
+          documento_origen_id: orden_compra_id,
+          usuario_id: recibido_por,
+        })
+      }
     }
 
     await auditarCompra(client, {
@@ -1112,6 +1131,26 @@ export async function registrarPago(req, reply) {
       modulo: 'cuenta_pagar', entidadId: id, usuarioId: req.user.id,
       accion: `Registró pago de $${montoNum.toLocaleString('es-CO')} (${metodo_pago || 'sin método'})`,
       metadatos: { monto: montoNum, referencia_pago, nuevo_estado: nuevoEstado },
+    })
+
+    const ctx = await client.query(`
+      SELECT cp.tercero_id, b.sede_id
+      FROM cmp_proveedores cp
+      LEFT JOIN inv_ordenes_compra oc ON oc.id = $2
+      LEFT JOIN inv_bodegas b ON b.id = oc.bodega_destino_id
+      WHERE cp.id = $1
+    `, [cuenta.proveedor_id, cuenta.orden_compra_id])
+
+    await contabilizarEvento(client, {
+      evento_codigo: 'PAGO_PROVEEDOR',
+      montos: { total: montoNum },
+      forma_pago_codigo: metodo_pago || cuenta.metodo_pago || 'efectivo',
+      concepto: `Pago a proveedor — ${cuenta.concepto}`,
+      tercero_id: ctx.rows[0]?.tercero_id || null,
+      sede_id: ctx.rows[0]?.sede_id || null,
+      documento_origen_tipo: 'cmp_cuentas_pagar',
+      documento_origen_id: id,
+      usuario_id: req.user.id,
     })
 
     await client.query('COMMIT')

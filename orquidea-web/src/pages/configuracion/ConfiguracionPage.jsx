@@ -8,7 +8,7 @@
  * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import {
   Building2, MapPin, FileText, Sliders,
   Package, Bell, Palette,
@@ -18,6 +18,7 @@ import {
   PackagePlus, Trash2, GripVertical,
   Truck, UserSquare2,
   MessageCircle, Smartphone, RefreshCw, XCircle, Send, Wifi, WifiOff,
+  Upload, Image as ImageIcon,
 } from 'lucide-react'
 import { empresaService } from '../../services/empresa.service.js'
 import api from '../../services/api.js'
@@ -93,7 +94,7 @@ const CSS = `
   .cfg-tab.active .cfg-tab-arr { opacity:1; }
 
   /* ── Content ── */
-  .cfg-content { flex:1; overflow-y:auto; padding:28px 32px; }
+  .cfg-content { flex:1; min-height:0; overflow-y:auto; padding:28px 32px; }
   .cfg-content::-webkit-scrollbar { width:4px; }
   .cfg-content::-webkit-scrollbar-thumb { background:#DDE1F0; border-radius:4px; }
 
@@ -2031,6 +2032,54 @@ function calcularPrecioVentaPreview(costo, margenTipo, margenValor) {
 
 const SERV_PAGE_SIZE = 8
 
+// Buscador simple de producto de Inventario, para enlazar una entrada del
+// catálogo de servicios con el bien físico que realmente descuenta stock.
+function ProductoInventarioBuscador({ valor, onElegir }) {
+  const [busq, setBusq] = useState('')
+  const [opciones, setOpciones] = useState([])
+  const [abierto, setAbierto] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!busq.trim()) return setOpciones([])
+      api.get('/inventario/productos', { params: { q: busq.trim(), limit: 15 } })
+        .then(r => setOpciones(r.data.data || [])).catch(() => {})
+    }, 250)
+    return () => clearTimeout(t)
+  }, [busq])
+
+  if (valor) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', border:'1.5px solid #BBF7D0',
+        background:'#F0FDF4', borderRadius:10, fontSize:13 }}>
+        <Package size={14} color="#059669" />
+        <span style={{ flex:1, fontWeight:600 }}>{valor.nombre}</span>
+        <button onClick={() => onElegir(null)} style={{ background:'none', border:'none', color:'#EF4444', cursor:'pointer', fontSize:12 }}>Quitar</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ position:'relative' }}>
+      <input value={busq} onChange={e => { setBusq(e.target.value); setAbierto(true) }} onFocus={() => setAbierto(true)}
+        onBlur={() => setTimeout(() => setAbierto(false), 150)}
+        placeholder="Buscar producto por nombre o código…" />
+      {abierto && opciones.length > 0 && (
+        <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:30, background:'#fff',
+          border:'1.5px solid #E2E5F0', borderRadius:10, marginTop:4, maxHeight:220, overflowY:'auto',
+          boxShadow:'0 8px 24px rgba(15,16,53,.12)' }}>
+          {opciones.map(p => (
+            <div key={p.id} onMouseDown={e => e.preventDefault()} onClick={() => { onElegir(p); setBusq('') }}
+              style={{ padding:'8px 12px', cursor:'pointer', fontSize:12.5, borderBottom:'1px solid #F3F4F6' }}>
+              {p.nombre} <span style={{ color:'#9CA3AF' }}>· stock {p.total_stock ?? 0}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ServicioForm({ f, set, editId, fmt, ivaDefecto, precioVentaPreview, utilidadPreview, saving, guardar, cerrar }) {
   return (
     <div className="form-panel">
@@ -2046,6 +2095,13 @@ function ServicioForm({ f, set, editId, fmt, ivaDefecto, precioVentaPreview, uti
           <div className="campo"><label>Código</label><input value="Se asigna automáticamente" disabled style={{background:'#F4F5FA',color:'#9CA3AF'}} /></div>
         )}
         <div className="campo"><label>Categoría</label><select value={f.categoria} onChange={e=>set('categoria')(e.target.value)}>{CATEGORIAS.map(c=><option key={c}>{c}</option>)}</select></div>
+        <div className="campo span3">
+          <label>Producto de Inventario vinculado <span style={{fontWeight:400,textTransform:'none',color:'#94A3B8'}}>(opcional — si es un bien físico, agregarlo a un servicio descontará stock real)</span></label>
+          <ProductoInventarioBuscador
+            valor={f.producto_id ? { id:f.producto_id, nombre:f.producto_nombre } : null}
+            onElegir={(p) => { set('producto_id')(p?.id || null); set('producto_nombre')(p?.nombre || '') }}
+          />
+        </div>
       </div>
 
       <div style={{ background:'#F8FAFC', border:'1.5px solid #E2E8F0', borderRadius:12, padding:'14px 16px', margin:'4px 0 16px' }}>
@@ -2102,7 +2158,7 @@ function ServicioForm({ f, set, editId, fmt, ivaDefecto, precioVentaPreview, uti
 }
 
 function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
-  const EMPTY = { nombre:'', codigo:'', categoria:'ATAUD', descripcion:'', costo:0, margen_tipo:'PORCENTAJE', margen_valor:0, aplica_iva:false, porcentaje_iva:0, activo:true }
+  const EMPTY = { nombre:'', codigo:'', categoria:'ATAUD', descripcion:'', costo:0, margen_tipo:'PORCENTAJE', margen_valor:0, aplica_iva:false, porcentaje_iva:0, activo:true, producto_id:null, producto_nombre:'' }
   const [f, setF]       = useState(EMPTY)
   const [editId, setId] = useState(null)
   const [show, setShow] = useState(false)
@@ -3234,8 +3290,18 @@ function TabFormasPago() {
   const [saving, setSaving]     = useState(false)
   const [msg, setMsg]           = useState('')
 
-  const BLANK_FORMA = { codigo:'', nombre:'', icono:'💳', requiere_referencia:false, requiere_soporte:false, orden:99 }
+  const BLANK_FORMA = { codigo:'', nombre:'', icono:'💳', icono_url:'', requiere_referencia:false, requiere_soporte:false, orden:99 }
   const [form, setForm] = useState(BLANK_FORMA)
+  const logoInputRef = useRef(null)
+
+  const subirLogo = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    const reader = new FileReader()
+    reader.onload = (ev) => setForm(p => ({ ...p, icono_url: ev.target.result }))
+    reader.readAsDataURL(f)
+    e.target.value = ''
+  }
 
   const cargar = async () => {
     setLoading(true)
@@ -3250,7 +3316,7 @@ function TabFormasPago() {
   const abrirNueva = () => { setEditando(null); setForm(BLANK_FORMA); setModal(true) }
   const abrirEditar = (f) => {
     setEditando(f)
-    setForm({ codigo:f.codigo, nombre:f.nombre, icono:f.icono,
+    setForm({ codigo:f.codigo, nombre:f.nombre, icono:f.icono, icono_url:f.icono_url || '',
               requiere_referencia:f.requiere_referencia, requiere_soporte:f.requiere_soporte, orden:f.orden })
     setModal(true)
   }
@@ -3307,8 +3373,10 @@ function TabFormasPago() {
               }}>
                 <div style={{ width:44, height:44, borderRadius:12, flexShrink:0,
                   background: f.activo ? '#ECFDF5' : '#F3F4F6',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>
-                  {f.icono}
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, overflow:'hidden' }}>
+                  {f.icono_url
+                    ? <img src={f.icono_url} alt="" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+                    : f.icono}
                 </div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:700, fontSize:14, color: f.activo ? '#111827' : '#9CA3AF' }}>
@@ -3379,6 +3447,42 @@ function TabFormasPago() {
                       borderRadius:10, fontSize:13, boxSizing:'border-box' }}/>
                 </div>
               </div>
+
+              <div>
+                <label style={{ fontSize:12, fontWeight:700, color:'#374151', display:'block', marginBottom:4 }}>
+                  Ícono / logo real
+                </label>
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ width:52, height:52, borderRadius:12, border:'1.5px solid #E2E5F0',
+                    background:'#FAFBFF', display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:22, overflow:'hidden', flexShrink:0 }}>
+                    {form.icono_url
+                      ? <img src={form.icono_url} alt="" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+                      : (form.icono || <ImageIcon size={20} color="#9CA3AF"/>)}
+                  </div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    <label style={{ display:'inline-flex', alignItems:'center', gap:6, cursor:'pointer',
+                      background:'#F4F5FA', border:'1.5px solid #E2E5F0', borderRadius:9, padding:'7px 12px',
+                      fontSize:12, fontWeight:700, color:'#374151' }}>
+                      <Upload size={13}/>{form.icono_url ? 'Cambiar logo' : 'Subir logo'}
+                      <input ref={logoInputRef} type="file" accept=".png,.jpg,.jpeg,.svg,.webp"
+                        style={{ display:'none' }} onChange={subirLogo}/>
+                    </label>
+                    {form.icono_url && (
+                      <button type="button" onClick={() => setForm(p => ({ ...p, icono_url:'' }))}
+                        style={{ background:'none', border:'none', color:'#EF4444', fontSize:11.5,
+                          fontWeight:700, cursor:'pointer', textAlign:'left', padding:0 }}>
+                        Quitar logo
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:6 }}>
+                  PNG/SVG con fondo transparente da mejor resultado. Si subes un logo, se usa en vez del
+                  emoji en todo el sistema (POS, cartera, pólizas, contratos, recibos).
+                </div>
+              </div>
+
               <div style={{ display:'grid', gap:10 }}>
                 <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', userSelect:'none' }}>
                   <input type="checkbox" checked={form.requiere_referencia}

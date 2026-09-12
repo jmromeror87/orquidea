@@ -13,6 +13,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, LogOut, ChevronDown, MapPin } from 'lucide-react'
 import { useAuthStore } from '../../store/auth.store.js'
 import api from '../../services/api.js'
+import { authService } from '../../services/auth.service.js'
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/api\/?$/, '')
 
@@ -37,6 +38,9 @@ const RUTAS = {
   '/pos':          { modulo:'Punto de Venta',        titulo:'Punto de Venta',                    sub:'Venta de mostrador y caja menor',                color:'#16A34A' },
   '/memoriales':   { modulo:'Memoriales',            titulo:'Memoriales',                        sub:'Novenarios, aniversarios y misas del sitio web', color:'#4C1D95' },
   '/solicitudes':  { modulo:'Solicitudes',           titulo:'Solicitudes',                       sub:'Prospectos que llegan desde la página web',     color:'#DB2777' },
+  '/contabilidad': { modulo:'Contabilidad',           titulo:'Contabilidad',                      sub:'Plan de cuentas, comprobantes y libro diario',   color:'#4338CA' },
+  '/tesoreria':    { modulo:'Tesorería',              titulo:'Tesorería',                          sub:'Comprobantes de ingreso y egreso — caja y bancos', color:'#0D9488' },
+  '/auditoria':    { modulo:'Auditoría',              titulo:'Auditoría',                          sub:'Actividad de usuarios, sesiones e inicios de sesión', color:'#6B21A8' },
 }
 
 const ROL_LABELS = {
@@ -258,7 +262,9 @@ export default function Header() {
 
   const ruta = RUTAS[location.pathname] || { modulo:'ERP', titulo:'Orquídea ERP', sub:'Sistema de gestión funeraria', color:'#2E3192' }
 
-  const handleLogout = () => { logout(); navigate('/login', { replace: true }) }
+  // El registro de auditoría es best-effort — si falla, igual se cierra la
+  // sesión localmente; nunca debe bloquear al usuario para salir.
+  const handleLogout = () => { authService.logout().catch(() => {}); logout(); navigate('/login', { replace: true }) }
 
   // Campanita de notificaciones — cuenta solicitudes nuevas que llegan de la
   // landing page, se refresca cada 30s para que se sienta "en vivo".

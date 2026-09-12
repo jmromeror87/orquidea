@@ -233,40 +233,32 @@ export async function actualizar(req, reply) {
     return reply.code(403).send({ data: null, error: 'No tiene acceso a este tercero' })
   }
 
+  // Se arma el UPDATE solo con los campos que realmente vinieron en el body
+  // (no con COALESCE(valor, columna)) — con COALESCE, borrar un campo a
+  // vacío desde el formulario (ej. quitar un teléfono u observaciones)
+  // quedaba silenciosamente ignorado, porque '' se normalizaba a null y
+  // COALESCE(null, columna) conserva el valor viejo. El usuario reportó
+  // "edito un tercero y no actualiza" — este era el motivo.
+  const CAMPOS = [
+    'tipo_documento_id', 'numero_documento', 'dv', 'tipo_persona',
+    'nombres', 'apellidos', 'razon_social', 'fecha_nacimiento', 'sexo', 'rh',
+    'telefono', 'telefono_alt', 'email', 'direccion', 'barrio', 'vereda',
+    'departamento_id', 'municipio_id', 'zona_id', 'observaciones', 'activo',
+    'estado_civil', 'ocupacion',
+  ]
+  const sets = []
+  const vals = [id]
+  for (const campo of CAMPOS) {
+    if (Object.prototype.hasOwnProperty.call(req.body, campo)) {
+      vals.push(req.body[campo] === '' ? null : req.body[campo])
+      sets.push(`${campo} = $${vals.length}`)
+    }
+  }
+  if (!sets.length) return reply.code(400).send({ data: null, error: 'No se envió ningún campo para actualizar' })
+
   const { rows } = await pool.query(
-    `UPDATE terceros SET
-       tipo_documento_id = COALESCE($2,  tipo_documento_id),
-       numero_documento  = COALESCE($3,  numero_documento),
-       dv                = COALESCE($4,  dv),
-       tipo_persona      = COALESCE($5,  tipo_persona),
-       nombres           = COALESCE($6,  nombres),
-       apellidos         = COALESCE($7,  apellidos),
-       razon_social      = COALESCE($8,  razon_social),
-       fecha_nacimiento  = COALESCE($9,  fecha_nacimiento),
-       sexo              = COALESCE($10, sexo),
-       rh                = COALESCE($11, rh),
-       telefono          = COALESCE($12, telefono),
-       telefono_alt      = COALESCE($13, telefono_alt),
-       email             = COALESCE($14, email),
-       direccion         = COALESCE($15, direccion),
-       barrio            = COALESCE($21, barrio),
-       vereda            = COALESCE($22, vereda),
-       departamento_id   = COALESCE($16, departamento_id),
-       municipio_id      = COALESCE($17, municipio_id),
-       zona_id           = COALESCE($18, zona_id),
-       observaciones     = COALESCE($19, observaciones),
-       activo            = COALESCE($20, activo),
-       estado_civil      = COALESCE($23, estado_civil),
-       ocupacion         = COALESCE($24, ocupacion),
-       actualizado       = NOW()
-     WHERE id = $1 RETURNING *`,
-    [id,
-     tipo_documento_id || null, numero_documento || null, dv ?? null, tipo_persona || null,
-     nombres || null, apellidos || null, razon_social || null, fecha_nacimiento || null,
-     sexo || null, rh || null, telefono || null, telefono_alt || null,
-     email || null, direccion || null, departamento_id || null,
-     municipio_id || null, zona_id || null, observaciones || null, activo ?? null,
-     barrio || null, vereda || null, estado_civil || null, ocupacion || null]
+    `UPDATE terceros SET ${sets.join(', ')}, actualizado = NOW() WHERE id = $1 RETURNING *`,
+    vals
   )
   if (!rows.length) return reply.code(404).send({ data: null, error: 'Tercero no encontrado' })
   return reply.send({ data: rows[0], error: null })

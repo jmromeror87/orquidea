@@ -23,7 +23,7 @@ import {
   Search, RefreshCw, Plus, Eye, Edit2, Truck,
   ChevronDown, ChevronUp, X, Check, Loader2,
   Warehouse, MapPin, ShoppingCart, FileText,
-  Settings, Trash2,
+  Settings, Trash2, Camera, CircleDollarSign, Tag, Layers, Star,
 } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
@@ -79,7 +79,7 @@ const CSS = `
 .inv-tab:not(.active):hover { background:#F4F5FA; color:#2E3192; }
 
 /* Content area */
-.inv-content { flex:1; overflow:auto; padding:20px; }
+.inv-content { flex:1; min-height:0; overflow:auto; padding:20px; }
 
 /* Toolbar */
 .inv-toolbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
@@ -141,7 +141,7 @@ const CSS = `
 .inv-modal-lg { max-width:800px; }
 .inv-modal-head { padding:20px 24px 16px; border-bottom:1px solid #ECEDF8; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .inv-modal-title { font-size:17px; font-weight:800; color:#0F1035; }
-.inv-modal-body { padding:20px 24px; overflow-y:auto; flex:1; }
+.inv-modal-body { padding:20px 24px; overflow-y:auto; flex:1; min-height:0; }
 .inv-modal-foot { padding:16px 24px; border-top:1px solid #ECEDF8; display:flex; justify-content:flex-end; gap:10px; flex-shrink:0; }
 .inv-close { background:none; border:none; cursor:pointer; color:#9CA3AF; padding:4px; border-radius:8px; display:flex; }
 .inv-close:hover { background:#F3F4F6; color:#374151; }
@@ -183,20 +183,154 @@ const CSS = `
 /* Loading */
 .inv-loading { display:flex; align-items:center; justify-content:center; gap:8px; padding:40px; color:#6B7280; font-size:14px; }
 .inv-empty { text-align:center; padding:40px; color:#9CA3AF; font-size:14px; }
+
+/* Drawer (panel deslizante lateral — estilo producto) */
+@keyframes inv-slide-in { from { transform:translateX(100%); opacity:0 } to { transform:translateX(0); opacity:1 } }
+.inv-drawer-overlay { position:fixed; inset:0; background:rgba(15,16,53,.45); z-index:1000; }
+.inv-drawer { position:fixed; top:0; right:0; bottom:0; width:520px; max-width:96vw; background:#fff;
+  z-index:1001; box-shadow:-10px 0 40px rgba(0,0,0,.16); display:flex; flex-direction:column;
+  animation:inv-slide-in .22s ease; }
+.inv-drawer-hdr { padding:20px 24px; background:linear-gradient(135deg,#2E3192,#4338CA);
+  display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.inv-drawer-title { font-size:16px; font-weight:800; color:#fff; }
+.inv-drawer-sub { font-size:11.5px; color:rgba(255,255,255,.75); margin-top:2px; }
+.inv-drawer-close { background:rgba(255,255,255,.15); border:none; cursor:pointer; border-radius:8px;
+  padding:7px; color:#fff; display:flex; }
+.inv-drawer-close:hover { background:rgba(255,255,255,.28); }
+.inv-drawer-body { flex:1; min-height:0; overflow-y:auto; padding:22px 24px; display:flex; flex-direction:column; gap:16px; }
+.inv-drawer-ftr { padding:14px 24px; border-top:1px solid #F0F1FA; display:flex; gap:10px; flex-shrink:0; }
+
+.inv-section { border:1.5px solid #ECEDF8; border-radius:14px; padding:16px; background:#FAFBFF; }
+.inv-section-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+.inv-section-hdr-title { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:800; color:#2E3192; }
+.inv-section-hint { font-size:11px; color:#9CA3AF; margin-bottom:12px; line-height:1.5; }
+
+.inv-img-box { border:1.5px dashed #C7CBE8; border-radius:12px; background:#fff; height:120px;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; transition:border-color .15s; }
+.inv-img-box:hover { border-color:#4338CA; }
+.inv-img-preview { width:100%; height:100%; object-fit:cover; }
+.inv-img-remove { font-size:11px; color:#EF4444; background:none; border:none; cursor:pointer; padding:0; margin-top:6px; }
 `
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MODAL: PRODUCTO
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// SECCIÓN: PRESENTACIONES DE VENTA (caja, docena, unidad...)
+// El inventario siempre se controla en la unidad BASE del producto —
+// factor_conversion dice cuántas unidades base trae cada presentación.
+// ═══════════════════════════════════════════════════════════════════════════
+function SeccionPresentaciones({ productoId, unidadBase }) {
+  const [lista, setLista] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [nuevo, setNuevo] = useState({ nombre: '', factor_conversion: '', precio: '', es_default: false, es_unidad_compra: false })
+  const [guardando, setGuardando] = useState(false)
+
+  const cargar = async () => {
+    setLoading(true)
+    try {
+      const r = await api.get(`/inventario/productos/${productoId}/presentaciones`)
+      setLista(r.data.data || [])
+    } catch { /* noop */ } finally { setLoading(false) }
+  }
+
+  useEffect(() => { cargar() }, [productoId])
+
+  const agregar = async () => {
+    if (!nuevo.nombre.trim()) return toast.error('El nombre de la presentación es requerido')
+    if (!(+nuevo.factor_conversion > 0)) return toast.error('El factor de conversión debe ser mayor a 0')
+    if (nuevo.precio === '' || +nuevo.precio < 0) return toast.error('Ingresa el precio de la presentación')
+    setGuardando(true)
+    try {
+      await api.post(`/inventario/productos/${productoId}/presentaciones`, nuevo)
+      toast.success('Presentación agregada con éxito')
+      setNuevo({ nombre: '', factor_conversion: '', precio: '', es_default: false, es_unidad_compra: false })
+      cargar()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo agregar la presentación')
+    } finally { setGuardando(false) }
+  }
+
+  const marcarDefault = async (p) => {
+    try {
+      await api.put(`/inventario/presentaciones/${p.id}`, { es_default: true })
+      toast.success('Presentación marcada como predeterminada')
+      cargar()
+    } catch { toast.error('No se pudo actualizar') }
+  }
+
+  const eliminar = async (p) => {
+    try {
+      await api.delete(`/inventario/presentaciones/${p.id}`)
+      toast.success('Presentación eliminada')
+      cargar()
+    } catch { toast.error('No se pudo eliminar') }
+  }
+
+  return (
+    <div className="inv-section">
+      <div className="inv-section-hdr">
+        <div className="inv-section-hdr-title"><Layers size={13}/>Presentaciones de venta</div>
+      </div>
+      <div className="inv-section-hint">
+        Vende el mismo producto por caja, docena o unidad — el factor indica cuántas unidades base
+        ({unidadBase || 'UNIDAD'}) contiene (ej. Caja x50 = factor 50). El precio es el de <strong>toda la presentación</strong>,
+        no por unidad. El inventario siempre se descuenta en unidades base.
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', padding: 8 }}>Cargando…</div>
+      ) : lista.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: '#9CA3AF', textAlign: 'center', padding: '6px 0 10px' }}>
+          Sin presentaciones — se vende solo por unidad.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 10 }}>
+          {lista.map(p => (
+            <div key={p.id} style={{
+              display: 'grid', gridTemplateColumns: '1fr 60px 100px 24px 22px', gap: 8, alignItems: 'center',
+              marginBottom: 6, background: '#fff', border: '1px solid #E2E5F0', borderRadius: 9, padding: '7px 10px',
+            }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0F1035' }}>{p.nombre}</span>
+              <span style={{ fontSize: 11.5, color: '#6B7280', textAlign: 'center' }}>x{p.factor_conversion}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F1035' }}>${Number(p.precio).toLocaleString('es-CO')}</span>
+              <button type="button" title="Presentación por defecto en el POS" onClick={() => marcarDefault(p)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', justifyContent: 'center' }}>
+                <Star size={15} fill={p.es_default ? '#D97706' : 'none'} color={p.es_default ? '#D97706' : '#C7CBE8'}/>
+              </button>
+              <button type="button" onClick={() => eliminar(p)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FCA5A5', padding: 2, display: 'flex', justifyContent: 'center' }}>
+                <X size={14}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px', gap: 8, marginBottom: 8 }}>
+        <input className="inv-input" placeholder="Ej: Caja x50" value={nuevo.nombre}
+          onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))}/>
+        <input className="inv-input" type="number" min="1" placeholder="Factor" style={{ textAlign: 'center' }}
+          value={nuevo.factor_conversion} onChange={e => setNuevo(n => ({ ...n, factor_conversion: e.target.value }))}/>
+        <CurrencyInput ayuda={false} value={nuevo.precio} onChange={v => setNuevo(n => ({ ...n, precio: v }))}/>
+      </div>
+      <button type="button" className="inv-btn inv-btn-outline inv-btn-sm" onClick={agregar} disabled={guardando}>
+        <Plus size={12}/> {guardando ? 'Agregando…' : 'Agregar presentación'}
+      </button>
+    </div>
+  )
+}
+
 function ModalProducto({ producto, categorias, onClose, onSaved }) {
   const [form, setForm] = useState({
-    categoria_id: '', codigo_sku: '', nombre: '', descripcion: '',
+    categoria_id: '', codigo_sku: '', nombre: '', descripcion: '', imagen_url: '',
     unidad_medida: 'UNIDAD', costo_promedio: 0, precio_venta: 0,
     stock_minimo: 0, stock_maximo: 9999, es_perecedero: false,
     ...producto,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const imgRef = useRef(null)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -206,6 +340,16 @@ function ModalProducto({ producto, categorias, onClose, onSaved }) {
     const cat = categorias.find(c => c.id === form.categoria_id)
     const prefix = cat ? cat.nombre.substring(0, 3).toUpperCase() : 'PRD'
     set('codigo_sku', `${prefix}-${fecha}-${rand}`)
+  }
+
+  const onImagen = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (f.size > 500 * 1024) { toast.error('La imagen no puede superar 500KB'); e.target.value = ''; return }
+    const reader = new FileReader()
+    reader.onload = (ev) => set('imagen_url', ev.target.result)
+    reader.readAsDataURL(f)
+    e.target.value = ''
   }
 
   const submit = async () => {
@@ -231,76 +375,138 @@ function ModalProducto({ producto, categorias, onClose, onSaved }) {
   }
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="inv-modal">
-        <div className="inv-modal-head">
-          <span className="inv-modal-title">{producto?.id ? 'Editar Producto' : 'Nuevo Producto'}</span>
-          <button className="inv-close" onClick={onClose}><X size={18}/></button>
+    <>
+      <div className="inv-drawer-overlay" onClick={onClose} />
+      <div className="inv-drawer">
+        <div className="inv-drawer-hdr">
+          <div>
+            <div className="inv-drawer-title">{producto?.id ? 'Editar producto' : 'Nuevo producto'}</div>
+            <div className="inv-drawer-sub">{producto?.id ? 'Modifica los datos del producto' : 'Completa los datos del producto'}</div>
+          </div>
+          <button className="inv-drawer-close" onClick={onClose}><X size={16}/></button>
         </div>
-        <div className="inv-modal-body">
+
+        <div className="inv-drawer-body">
           {error && <div className="inv-alert inv-alert-error">{error}</div>}
-          <div className="inv-form-grid">
-            <div className="inv-field inv-form-full">
-              <label className="inv-label">Nombre del producto *</label>
-              <input className="inv-input" value={form.nombre} onChange={e => set('nombre', e.target.value)} placeholder="Nombre del producto"/>
+
+          {/* Identificación */}
+          <div className="inv-section">
+            <div className="inv-section-hdr">
+              <div className="inv-section-hdr-title"><FileText size={13}/>Identificación</div>
             </div>
-            <div className="inv-field">
-              <label className="inv-label">Código SKU *</label>
-              <div style={{display:'flex',gap:6}}>
-                <input className="inv-input" style={{flex:1}} value={form.codigo_sku} onChange={e => set('codigo_sku', e.target.value)} placeholder="AUTO"/>
-                <button className="inv-btn inv-btn-outline inv-btn-sm" onClick={generarSKU}>Auto</button>
+            <div className="inv-section-hint">Foto, nombre y códigos para buscarlo rápido en el POS.</div>
+
+            <div className="inv-field" style={{ marginBottom: 12 }}>
+              <label className="inv-label">Foto del producto</label>
+              <div className="inv-img-box" onClick={() => imgRef.current.click()}>
+                {form.imagen_url
+                  ? <img src={form.imagen_url} alt="" className="inv-img-preview"/>
+                  : (
+                    <div style={{ color: '#9CA3AF', fontSize: 12, textAlign: 'center' }}>
+                      <Camera size={22} style={{ display: 'block', margin: '0 auto 6px' }} color="#C7CBE8"/>
+                      Clic para subir imagen (máx 500KB)
+                    </div>
+                  )}
+                <input ref={imgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImagen}/>
+              </div>
+              {form.imagen_url && (
+                <button className="inv-img-remove" onClick={() => set('imagen_url', '')}>✕ Quitar imagen</button>
+              )}
+            </div>
+
+            <div className="inv-field" style={{ marginBottom: 12 }}>
+              <label className="inv-label">Nombre *</label>
+              <input className="inv-input" value={form.nombre} onChange={e => set('nombre', e.target.value)} placeholder="Ej: Cirio Diferentes Motivos"/>
+            </div>
+
+            <div className="inv-form-grid">
+              <div className="inv-field">
+                <label className="inv-label">Código SKU *</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input className="inv-input" style={{ flex: 1 }} value={form.codigo_sku} onChange={e => set('codigo_sku', e.target.value)} placeholder="AUTO"/>
+                  <button className="inv-btn inv-btn-outline inv-btn-sm" onClick={generarSKU}>Auto</button>
+                </div>
+              </div>
+              <div className="inv-field">
+                <label className="inv-label">Unidad de medida</label>
+                <select className="inv-input inv-select" value={form.unidad_medida} onChange={e => set('unidad_medida', e.target.value)}>
+                  {['UNIDAD','CAJA','METRO','KG','LITRO','PAQUETE'].map(u => <option key={u}>{u}</option>)}
+                </select>
               </div>
             </div>
+          </div>
+
+          {/* Precio y stock */}
+          <div className="inv-section">
+            <div className="inv-section-hdr">
+              <div className="inv-section-hdr-title"><CircleDollarSign size={13}/>Precio y stock</div>
+            </div>
+            <div className="inv-section-hint">Precio base, costo y niveles de inventario.</div>
+
+            <div className="inv-form-grid" style={{ marginBottom: 12 }}>
+              <div className="inv-field">
+                <label className="inv-label">Precio de venta (COP) *</label>
+                <CurrencyInput value={form.precio_venta} onChange={v => set('precio_venta', v)}/>
+              </div>
+              <div className="inv-field">
+                <label className="inv-label">Costo promedio (COP)</label>
+                <CurrencyInput value={form.costo_promedio} onChange={v => set('costo_promedio', v)}/>
+              </div>
+            </div>
+
+            <div className="inv-form-grid">
+              <div className="inv-field">
+                <label className="inv-label">Stock mínimo</label>
+                <input className="inv-input" type="number" min="0" value={form.stock_minimo} onChange={e => set('stock_minimo', e.target.value)}/>
+              </div>
+              <div className="inv-field">
+                <label className="inv-label">Stock máximo</label>
+                <input className="inv-input" type="number" min="0" value={form.stock_maximo} onChange={e => set('stock_maximo', e.target.value)}/>
+              </div>
+            </div>
+          </div>
+
+          {/* Categoría */}
+          <div className="inv-section">
             <div className="inv-field">
-              <label className="inv-label">Categoría</label>
+              <label className="inv-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Tag size={11}/>Categoría</label>
               <select className="inv-input inv-select" value={form.categoria_id} onChange={e => set('categoria_id', e.target.value)}>
                 <option value="">— Sin categoría —</option>
                 {categorias.map(c => <option key={c.id} value={c.id}>{c.icono} {c.nombre}</option>)}
               </select>
             </div>
-            <div className="inv-field">
-              <label className="inv-label">Unidad de medida</label>
-              <select className="inv-input inv-select" value={form.unidad_medida} onChange={e => set('unidad_medida', e.target.value)}>
-                {['UNIDAD','CAJA','METRO','KG','LITRO','PAQUETE'].map(u => <option key={u}>{u}</option>)}
-              </select>
+          </div>
+
+          {/* Presentaciones de venta */}
+          {producto?.id ? (
+            <SeccionPresentaciones productoId={producto.id} unidadBase={form.unidad_medida}/>
+          ) : (
+            <div className="inv-section" style={{ fontSize: 11.5, color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center' }}>
+              Guarda el producto primero para poder agregarle presentaciones (caja, docena, etc.)
             </div>
-            <div className="inv-field">
-              <label className="inv-label">Costo promedio (COP)</label>
-              <CurrencyInput value={form.costo_promedio} onChange={v => set('costo_promedio', v)}/>
-            </div>
-            <div className="inv-field">
-              <label className="inv-label">Precio de venta (COP)</label>
-              <CurrencyInput value={form.precio_venta} onChange={v => set('precio_venta', v)}/>
-            </div>
-            <div className="inv-field">
-              <label className="inv-label">Stock mínimo</label>
-              <input className="inv-input" type="number" min="0" value={form.stock_minimo} onChange={e => set('stock_minimo', e.target.value)}/>
-            </div>
-            <div className="inv-field">
-              <label className="inv-label">Stock máximo</label>
-              <input className="inv-input" type="number" min="0" value={form.stock_maximo} onChange={e => set('stock_maximo', e.target.value)}/>
-            </div>
-            <div className="inv-field inv-form-full">
+          )}
+
+          <div className="inv-section">
+            <div className="inv-field" style={{ marginBottom: 12 }}>
               <label className="inv-label">Descripción</label>
               <textarea className="inv-input inv-textarea" value={form.descripcion || ''} onChange={e => set('descripcion', e.target.value)} placeholder="Descripción opcional"/>
             </div>
-            <div className="inv-field inv-form-full">
-              <label className="inv-checkbox-row">
-                <input type="checkbox" checked={form.es_perecedero} onChange={e => set('es_perecedero', e.target.checked)}/>
-                Producto perecedero
-              </label>
-            </div>
+            <label className="inv-checkbox-row">
+              <input type="checkbox" checked={form.es_perecedero} onChange={e => set('es_perecedero', e.target.checked)}/>
+              Producto perecedero
+            </label>
           </div>
         </div>
-        <div className="inv-modal-foot">
-          <button className="inv-btn inv-btn-outline" onClick={onClose}>Cancelar</button>
-          <button className="inv-btn inv-btn-primary" onClick={submit} disabled={loading}>
+
+        <div className="inv-drawer-ftr">
+          <button className="inv-btn inv-btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+          <button className="inv-btn inv-btn-primary" style={{ flex: 2 }} onClick={submit} disabled={loading}>
             {loading ? <Loader2 size={14} className="spin"/> : <Check size={14}/>}
             {producto?.id ? 'Guardar cambios' : 'Crear producto'}
           </button>
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -898,7 +1104,7 @@ function ModalOC({ bodegas, onClose, onSaved }) {
               </div>
               <input className="inv-input" type="number" min="1" style={{width:80}} value={item.cantidad_solicitada}
                 onChange={e => updateItem(idx,'cantidad_solicitada',e.target.value)} placeholder="Cant."/>
-              <CurrencyInput style={{width:120}} value={item.costo_unitario}
+              <CurrencyInput style={{width:120}} ayuda={false} value={item.costo_unitario}
                 onChange={v => updateItem(idx,'costo_unitario',v)} placeholder="Costo unit."/>
               <div style={{width:120,fontSize:12,color:'#6B7280',alignSelf:'center'}}>
                 {fmt((parseFloat(item.cantidad_solicitada)||0)*(parseFloat(item.costo_unitario)||0))}

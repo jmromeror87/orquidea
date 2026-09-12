@@ -52,7 +52,7 @@ const BLANK = {
   tipo_contrato:'INMEDIATO', modalidad:'CONTADO',
   valor_total:'', num_cuotas:1, valor_cuota:'', dia_cobro:'',
   fecha_inicio: new Date().toISOString().split('T')[0],
-  fecha_vencimiento:'', fecha_servicio:'', observaciones:'',
+  fecha_vencimiento:'', fecha_servicio:'', observaciones:'', numero_legado:'',
 }
 
 // ── Chips ──────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ const CSS = `
   .ct-btn-primary:hover { transform:translateY(-1px); box-shadow:0 5px 16px rgba(245,158,11,.4); }
   .ct-btn-ghost { background:#F4F5FA; color:#374151; border:1.5px solid #E2E5F0; }
   .ct-btn-ghost:hover { background:#ECEDF8; }
-  .ct-table-wrap { flex:1; overflow:auto; padding:0 24px; }
+  .ct-table-wrap { flex:1; min-height:0; overflow:auto; padding:0 24px; }
   .ct-table { width:100%; border-collapse:separate; border-spacing:0; }
   .ct-table thead th { padding:10px 14px; text-align:left; font-size:10.5px; font-weight:800;
     color:#9CA3AF; letter-spacing:.6px; text-transform:uppercase; background:#F7F8FC;
@@ -165,7 +165,7 @@ const CSS = `
   .ct-drawer-stab.active { background:linear-gradient(135deg,#F59E0B,#D97706); color:#fff;
     font-weight:800; box-shadow:0 3px 10px rgba(245,158,11,.3); }
   .ct-drawer-stab .stab-icon { font-size:16px; line-height:1; flex-shrink:0; }
-  .ct-drawer-content { flex:1; overflow-y:auto; padding:28px 32px; }
+  .ct-drawer-content { flex:1; min-height:0; overflow-y:auto; padding:28px 32px; }
   /* Cards drawer contrato */
   .ctd-card { background:#fff; border:1.5px solid #FDE68A; border-radius:14px; margin-bottom:16px; overflow:hidden; }
   .ctd-card-head { display:flex; align-items:center; gap:9px; padding:12px 16px;
@@ -187,7 +187,7 @@ const CSS = `
     background:#F7F8FC; display:flex; align-items:center; justify-content:center;
     cursor:pointer; color:#6B7280; flex-shrink:0; transition:all .15s; }
   .ct-mclose:hover { background:#FEE2E2; border-color:#FECACA; color:#EF4444; }
-  .ct-mbody { padding:22px 24px; overflow-y:auto; overflow-x:hidden; flex:1; }
+  .ct-mbody { padding:22px 24px; overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; }
   .ct-grid2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
   .ct-grid3 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap:14px; }
   .ct-field { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; min-width:0; }
@@ -238,6 +238,7 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
     fecha_vencimiento: contrato.fecha_vencimiento?.split('T')[0] || '',
     fecha_servicio:    contrato.fecha_servicio?.split('T')[0]    || '',
     observaciones:     contrato.observaciones      || '',
+    numero_legado:     contrato.numero_legado      || '',
   } : { ...BLANK })
 
   const [busqCont, setBusqCont]         = useState(contrato?.contratante_nombre || '')
@@ -537,6 +538,12 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
           )}
 
           <div className="ct-field" style={{ marginTop:14 }}>
+            <label>N.° contrato sistema anterior <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opcional)</span></label>
+            <input value={form.numero_legado} placeholder="Ej: C-2019-0215"
+              onChange={e => setForm(p => ({...p, numero_legado:e.target.value}))}/>
+          </div>
+
+          <div className="ct-field" style={{ marginTop:14 }}>
             <label>Observaciones</label>
             <textarea value={form.observaciones}
               onChange={e => setForm(p => ({...p, observaciones:e.target.value}))}
@@ -815,6 +822,11 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                     <CtdField label="Vencimiento" value={fmtDate(data.fecha_vencimiento)}/>
                     <CtdField label="Fecha servicio" value={fmtDate(data.fecha_servicio)}/>
                   </div>
+                  {data.numero_legado && (
+                    <div className="ctd-grid3" style={{ marginTop:10 }}>
+                      <CtdField label="N.° contrato sistema anterior" value={data.numero_legado}/>
+                    </div>
+                  )}
                 </CtdCard>
 
                 {data.observaciones && (
@@ -992,7 +1004,7 @@ export default function ContratosPage() {
             <div className="ct-search">
               <Search size={14} className="ct-search-icon"/>
               <input value={q} onChange={e => setQ(e.target.value)}
-                placeholder="Buscar por número, contratante, difunto…"/>
+                placeholder="Buscar por número, N.° sistema anterior, contratante, difunto…"/>
             </div>
             <select className="ct-select" value={estado} onChange={e => setEstado(e.target.value)}>
               <option value="">Todos los estados</option>

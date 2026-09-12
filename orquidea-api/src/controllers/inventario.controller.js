@@ -348,11 +348,108 @@ export async function detalleProducto(req, reply) {
     ORDER BY m.fecha DESC LIMIT 10
   `, [id])
 
+  const presentaciones = await pool.query(
+    `SELECT * FROM inv_producto_presentaciones WHERE producto_id = $1 AND activo = TRUE ORDER BY factor_conversion`,
+    [id]
+  )
+
   return reply.send({
     ...prod.rows[0],
     stock_detalle: stockDetalle.rows,
     movimientos_recientes: movimientos.rows,
+    presentaciones: presentaciones.rows,
   })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRESENTACIONES DE VENTA
+// Un producto se controla en inventario siempre en su unidad_medida BASE.
+// Las presentaciones (caja, docena, unidad...) son solo formas alternativas
+// de venderlo — factor_conversion dice cuántas unidades base trae cada una.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function listarPresentaciones(req, reply) {
+  const { producto_id } = req.params
+  const { rows } = await pool.query(
+    `SELECT * FROM inv_producto_presentaciones WHERE producto_id = $1 AND activo = TRUE ORDER BY factor_conversion`,
+    [producto_id]
+  )
+  return reply.send({ data: rows })
+}
+
+export async function crearPresentacion(req, reply) {
+  const { producto_id } = req.params
+  const { nombre, factor_conversion, precio, es_default = false, es_unidad_compra = false } = req.body
+
+  if (!nombre?.trim()) return reply.code(400).send({ error: 'El nombre de la presentación es requerido' })
+  if (!(+factor_conversion > 0)) return reply.code(400).send({ error: 'El factor de conversión debe ser mayor a 0' })
+  if (!(+precio >= 0)) return reply.code(400).send({ error: 'El precio debe ser mayor o igual a 0' })
+
+  const prod = await pool.query(`SELECT id FROM inv_productos WHERE id = $1`, [producto_id])
+  if (!prod.rows.length) return reply.code(404).send({ error: 'Producto no encontrado' })
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    if (es_default) {
+      await client.query(`UPDATE inv_producto_presentaciones SET es_default = FALSE WHERE producto_id = $1`, [producto_id])
+    }
+    const { rows } = await client.query(`
+      INSERT INTO inv_producto_presentaciones (producto_id, nombre, factor_conversion, precio, es_default, es_unidad_compra)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+    `, [producto_id, nombre.trim(), +factor_conversion, +precio, !!es_default, !!es_unidad_compra])
+    await client.query('COMMIT')
+    return reply.code(201).send({ data: rows[0] })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
+export async function actualizarPresentacion(req, reply) {
+  const { id } = req.params
+  const { nombre, factor_conversion, precio, es_default, es_unidad_compra } = req.body
+
+  const existe = await pool.query(`SELECT producto_id FROM inv_producto_presentaciones WHERE id = $1`, [id])
+  if (!existe.rows.length) return reply.code(404).send({ error: 'Presentación no encontrada' })
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    if (es_default) {
+      await client.query(
+        `UPDATE inv_producto_presentaciones SET es_default = FALSE WHERE producto_id = $1 AND id <> $2`,
+        [existe.rows[0].producto_id, id]
+      )
+    }
+    const { rows } = await client.query(`
+      UPDATE inv_producto_presentaciones SET
+        nombre = COALESCE($1, nombre),
+        factor_conversion = COALESCE($2, factor_conversion),
+        precio = COALESCE($3, precio),
+        es_default = COALESCE($4, es_default),
+        es_unidad_compra = COALESCE($5, es_unidad_compra)
+      WHERE id = $6 RETURNING *
+    `, [nombre?.trim() || null, factor_conversion ?? null, precio ?? null, es_default ?? null, es_unidad_compra ?? null, id])
+    await client.query('COMMIT')
+    return reply.send({ data: rows[0] })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
+export async function eliminarPresentacion(req, reply) {
+  const { id } = req.params
+  const { rows } = await pool.query(
+    `UPDATE inv_producto_presentaciones SET activo = FALSE WHERE id = $1 RETURNING id`, [id]
+  )
+  if (!rows.length) return reply.code(404).send({ error: 'Presentación no encontrada' })
+  return reply.send({ data: { id } })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -485,12 +582,22 @@ export async function listarMovimientos(req, reply) {
 }
 
 export async function registrarMovimiento(req, reply) {
+  // Postgres rechaza "" como UUID (solo acepta un UUID válido o NULL) — el
+  // formulario manda "" para los campos de ubicación/servicio/OC que no
+  // aplican según el tipo de movimiento (ej. ENTRADA no tiene ubicación
+  // origen), así que se sanean aquí antes de tocar la base de datos.
+  const vacioANull = v => (v === '' || v === undefined ? null : v)
   const {
     tipo, producto_id,
-    ubicacion_origen_id, ubicacion_destino_id,
+    ubicacion_origen_id: ubicacionOrigenRaw, ubicacion_destino_id: ubicacionDestinoRaw,
     cantidad, costo_unitario = 0,
-    referencia, motivo, servicio_id, orden_compra_id, notas,
+    referencia, motivo,
+    servicio_id: servicioIdRaw, orden_compra_id: ordenCompraIdRaw, notas,
   } = req.body
+  const ubicacion_origen_id  = vacioANull(ubicacionOrigenRaw)
+  const ubicacion_destino_id = vacioANull(ubicacionDestinoRaw)
+  const servicio_id = vacioANull(servicioIdRaw)
+  const orden_compra_id = vacioANull(ordenCompraIdRaw)
 
   const usuario_id = req.user.id
   const { sedeIds } = resolverSede(req)

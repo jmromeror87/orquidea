@@ -11,6 +11,7 @@
 import pool from '../config/database.js'
 import { generarComision } from '../utils/comisiones.js'
 import { resolverSede, sedeParaCrear } from '../utils/sede.js'
+import { contabilizarEvento } from '../services/contabilidad.service.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ const JOINS = `
 
 const SELECT_LIST = `
   SELECT
-    c.id, c.numero, c.tipo_contrato, c.modalidad, c.estado,
+    c.id, c.numero, c.numero_legado, c.tipo_contrato, c.modalidad, c.estado,
     c.valor_total, c.valor_pagado, c.saldo_pendiente,
     c.num_cuotas, c.valor_cuota, c.dia_cobro,
     c.fecha_inicio, c.fecha_vencimiento, c.fecha_servicio,
@@ -61,6 +62,7 @@ export async function listar(req, reply) {
   if (q) {
     conditions.push(`(
       CAST(c.numero AS TEXT) ILIKE $${i}
+      OR c.numero_legado ILIKE $${i}
       OR COALESCE(cont.nombres||' '||cont.apellidos, cont.razon_social) ILIKE $${i}
       OR cont.numero_documento ILIKE $${i}
       OR COALESCE(dif.nombres||' '||dif.apellidos,'') ILIKE $${i}
@@ -136,7 +138,7 @@ export async function crear(req, reply) {
     tipo_contrato = 'INMEDIATO', modalidad = 'CONTADO',
     valor_total, num_cuotas = 1, valor_cuota = 0, dia_cobro,
     fecha_inicio, fecha_vencimiento, fecha_servicio,
-    observaciones,
+    observaciones, numero_legado,
   } = req.body
 
   if (!contratante_id) return reply.code(400).send({ error: 'contratante_id es obligatorio' })
@@ -155,8 +157,8 @@ export async function crear(req, reply) {
         tipo_contrato, modalidad, valor_total,
         num_cuotas, valor_cuota, dia_cobro,
         fecha_inicio, fecha_vencimiento, fecha_servicio,
-        observaciones, usuario_id, sede_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        observaciones, usuario_id, sede_id, numero_legado
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       RETURNING id, numero`,
       [
         contratante_id, difunto_id || null, paquete_id || null,
@@ -168,6 +170,7 @@ export async function crear(req, reply) {
         observaciones || null,
         req.user.id,
         sedeParaCrear(req),
+        numero_legado || null,
       ]
     )
 
@@ -176,6 +179,17 @@ export async function crear(req, reply) {
       origenTipo: 'CONTRATO',
       origenId: ins.rows[0].id,
       valorBase: +valor_total,
+    })
+
+    await contabilizarEvento(db, {
+      evento_codigo: 'CONTRATO_VENTA',
+      montos: { total: +valor_total },
+      concepto: `Venta contrato #${ins.rows[0].numero}`,
+      tercero_id: contratante_id,
+      sede_id: sedeParaCrear(req),
+      documento_origen_tipo: 'contratos',
+      documento_origen_id: ins.rows[0].id,
+      usuario_id: req.user.id,
     })
 
     await db.query('COMMIT')
@@ -195,7 +209,7 @@ export async function actualizar(req, reply) {
   const {
     difunto_id, paquete_id, tipo_contrato, modalidad,
     valor_total, num_cuotas, valor_cuota, dia_cobro,
-    fecha_inicio, fecha_vencimiento, fecha_servicio, observaciones,
+    fecha_inicio, fecha_vencimiento, fecha_servicio, observaciones, numero_legado,
   } = req.body
 
   const res = await pool.query(`
@@ -212,6 +226,7 @@ export async function actualizar(req, reply) {
       fecha_vencimiento = COALESCE($10, fecha_vencimiento),
       fecha_servicio    = COALESCE($11, fecha_servicio),
       observaciones     = COALESCE($12, observaciones),
+      numero_legado     = COALESCE($14, numero_legado),
       actualizado       = NOW()
     WHERE id = $13 AND estado <> 'cancelado'
     RETURNING id`,
@@ -220,7 +235,7 @@ export async function actualizar(req, reply) {
       modalidad || null, valor_total || null, num_cuotas || null,
       valor_cuota || null, dia_cobro || null,
       fecha_inicio || null, fecha_vencimiento || null, fecha_servicio || null,
-      observaciones || null, id,
+      observaciones || null, id, numero_legado || null,
     ]
   )
 

@@ -20,7 +20,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Store, Search, Plus, Minus, Trash2, ShoppingCart, X, Loader2,
   Lock, Unlock, Printer, Receipt, AlertTriangle, CheckCircle2, Package,
-  UserPlus, User, History, ShieldCheck, Ban, TrendingUp, Wallet, ChevronRight,
+  UserPlus, User, History, ShieldCheck, Ban, TrendingUp, Wallet, ChevronRight, ChevronLeft,
 } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
@@ -28,6 +28,7 @@ import { useFormasPago } from '../../hooks/useFormasPago.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
+import { imprimirReciboPOS } from '../../utils/recibo.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n || 0)
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('es-CO', { dateStyle:'medium', timeStyle:'short' }) : '—'
@@ -47,15 +48,39 @@ const CSS = `
   .pos-search { display:flex; align-items:center; gap:8px; background:#fff; border:1.5px solid #E2E5F0;
     border-radius:12px; padding:10px 14px; margin-bottom:12px; }
   .pos-search input { border:none; outline:none; flex:1; font-size:14px; }
-  .pos-grid { flex:1; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
-    gap:10px; align-content:start; padding:2px; }
-  .pos-prod { background:#fff; border:1.5px solid #ECEDF8; border-radius:12px; padding:12px; cursor:pointer;
-    transition:all .12s; display:flex; flex-direction:column; gap:4px; }
-  .pos-prod:hover { border-color:#16A34A; box-shadow:0 4px 14px rgba(22,163,74,.12); transform:translateY(-1px); }
-  .pos-prod-nombre { font-size:12.5px; font-weight:700; color:#0F1035; line-height:1.3; }
-  .pos-prod-precio { font-size:14px; font-weight:800; color:#16A34A; }
+  .pos-cats { display:flex; gap:7px; margin-bottom:12px; flex-wrap:wrap; }
+  .pos-cat-pill { border:1.5px solid #E2E5F0; background:#fff; color:#374151; border-radius:20px;
+    padding:7px 15px; font-size:12.5px; font-weight:700; cursor:pointer; transition:all .12s; white-space:nowrap; }
+  .pos-cat-pill:hover { border-color:#4338CA; color:#4338CA; }
+  .pos-cat-pill.active { background:linear-gradient(135deg,#2E3192,#4338CA); border-color:transparent; color:#fff;
+    box-shadow:0 3px 10px rgba(46,49,146,.28); }
+  .pos-grid { flex:1; min-height:0; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr));
+    gap:12px; align-content:start; padding:2px; }
+  .pos-prod { background:#fff; border:1.5px solid #ECEDF8; border-radius:14px; padding:14px; cursor:pointer;
+    transition:all .12s; display:flex; flex-direction:column; gap:6px; }
+  .pos-prod:hover { border-color:#4338CA; box-shadow:0 4px 14px rgba(67,56,202,.12); transform:translateY(-1px); }
+  .pos-prod-img { width:100%; height:88px; border-radius:10px; background:#F4F5FA; display:flex;
+    align-items:center; justify-content:center; overflow:hidden; font-size:30px; }
+  .pos-prod-img img { width:100%; height:100%; object-fit:cover; }
+  .pos-prod-nombre { font-size:12.5px; font-weight:700; color:#0F1035; line-height:1.3; min-height:32px; }
+  .pos-prod-precio { font-size:15px; font-weight:900; color:#4338CA; }
   .pos-prod-stock { font-size:10.5px; color:#9CA3AF; }
-  .pos-cart-items { flex:1; overflow-y:auto; padding:12px; }
+  .pos-prod-add { margin-top:2px; border:none; border-radius:9px; padding:8px; font-size:12px; font-weight:800;
+    cursor:pointer; background:linear-gradient(135deg,#2E3192,#4338CA); color:#fff;
+    display:flex; align-items:center; justify-content:center; gap:5px; transition:all .12s; }
+  .pos-prod-add:hover { box-shadow:0 4px 12px rgba(46,49,146,.32); }
+  .pos-cart-empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; color:#9CA3AF; padding:50px 20px; gap:10px; }
+  .pos-cart-empty-icon { width:56px; height:56px; border-radius:16px; background:#F4F5FA; display:flex;
+    align-items:center; justify-content:center; color:#C7CBE8; }
+  .pos-pay-pills { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; margin-bottom:10px; }
+  .pos-pay-pill { border:1.5px solid #E2E5F0; background:#fff; color:#374151; border-radius:10px;
+    padding:9px 10px; font-size:12.5px; font-weight:700; cursor:pointer; transition:all .12s;
+    display:flex; align-items:center; gap:6px; justify-content:center; }
+  .pos-pay-pill.active { background:#EEF2FF; border-color:#4338CA; color:#2E3192; box-shadow:0 0 0 1.5px #4338CA inset; }
+  .pos-search-hint { font-size:10px; font-weight:700; color:#B8BCD8; background:#F4F5FA; padding:3px 8px;
+    border-radius:6px; letter-spacing:.3px; }
+  .pos-cart-items { flex:1; min-height:0; overflow-y:auto; padding:12px; }
   .pos-cart-item { display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid #F3F4F6; }
   .pos-cart-footer { border-top:1.5px solid #ECEDF8; padding:14px; background:#FAFBFF; }
   .pos-btn { border:none; border-radius:10px; padding:10px 16px; font-size:13px; font-weight:700; cursor:pointer;
@@ -228,7 +253,7 @@ function ModalCerrarCaja({ caja, onClose, onCerrada }) {
   )
 }
 
-// ── Recibo imprimible ───────────────────────────────────────────────────────
+// ── Confirmación de venta procesada (imprime en térmica 80mm aparte) ───────
 function ModalRecibo({ ventaId, onClose, onNuevaVenta }) {
   const [recibo, setRecibo] = useState(null)
 
@@ -237,55 +262,38 @@ function ModalRecibo({ ventaId, onClose, onNuevaVenta }) {
   }, [ventaId])
 
   if (!recibo) return null
+  const pagoEfectivo = recibo.pagos?.find(p => p.metodo_pago === 'efectivo' && +p.monto_recibido > 0)
 
   return (
-    <div className="pos-overlay">
-      <div className="pos-modal" style={{ maxWidth:380 }}>
-        <div className="pos-recibo" style={{ padding:24, fontFamily:'monospace', fontSize:12.5 }}>
-          <div style={{ textAlign:'center', marginBottom:10 }}>
-            <div style={{ fontWeight:800, fontSize:14 }}>{recibo.empresa_razon_social}</div>
-            <div>NIT {recibo.empresa_nit}</div>
-            <div>{recibo.empresa_direccion}</div>
-            <div>{recibo.empresa_telefono}</div>
-          </div>
-          <div style={{ borderTop:'1px dashed #999', borderBottom:'1px dashed #999', padding:'8px 0', margin:'8px 0' }}>
-            <div>Recibo N° POS-{recibo.numero}</div>
-            <div>{fmtDateTime(recibo.creado_en)}</div>
-            <div>Sede: {recibo.sede_nombre} · {recibo.bodega_nombre}</div>
-            <div>Cajero: {recibo.cajero_nombre}</div>
-            <div>Cliente: {recibo.cliente_registrado_nombre || recibo.cliente_nombre || 'Consumidor final'}</div>
-          </div>
-          {recibo.items.map(it => (
-            <div key={it.id} style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-              <span>{it.cantidad}x {it.producto_nombre}</span>
-              <span>{fmt(it.subtotal)}</span>
-            </div>
-          ))}
-          <div style={{ borderTop:'1px dashed #999', marginTop:8, paddingTop:8 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800, fontSize:14 }}><span>TOTAL</span><span>{fmt(recibo.total)}</span></div>
-          </div>
-          <div style={{ borderTop:'1px dashed #999', marginTop:8, paddingTop:8 }}>
-            <div style={{ fontWeight:700, marginBottom:2 }}>Pago{recibo.pagos?.length > 1 ? ' dividido' : ''}:</div>
-            {(recibo.pagos || []).map((p, i) => (
-              <div key={i} style={{ display:'flex', justifyContent:'space-between' }}>
-                <span>
-                  {p.metodo_pago}{p.referencia ? ` (${p.referencia})` : ''}
-                  {p.soporte_url && (
-                    <a href={`http://localhost:3001${p.soporte_url}`} target="_blank" rel="noreferrer" style={{ marginLeft:6, color:'#6366F1' }}>
-                      [ver]
-                    </a>
-                  )}
-                </span>
-                <span>{fmt(p.monto)}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ textAlign:'center', marginTop:14, fontSize:11 }}>¡Gracias por su compra!</div>
+    <div className="pos-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="pos-modal" style={{ maxWidth:340, textAlign:'center', padding:'28px 24px' }}>
+        <div style={{ width:56, height:56, borderRadius:'50%', background:'#16A34A', display:'flex',
+          alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
+          <CheckCircle2 size={28} color="#fff" strokeWidth={2.5}/>
         </div>
-        <div style={{ display:'flex', gap:10, padding:'0 20px 20px' }}>
-          <button className="pos-btn pos-btn-ghost" style={{ flex:1 }} onClick={onClose}>Cerrar</button>
-          <button className="pos-btn pos-btn-ghost" style={{ flex:1 }} onClick={() => window.print()}>
-            <Printer size={14}/> Imprimir
+        <div style={{ fontSize:17, fontWeight:800, color:'#0F1035' }}>Venta procesada</div>
+        <div style={{ fontSize:12, color:'#9CA3AF', marginTop:4 }}>
+          Venta #{recibo.numero} · {recibo.items.length} producto{recibo.items.length !== 1 ? 's' : ''}
+        </div>
+        <div style={{ fontSize:28, fontWeight:900, color:'#4338CA', margin:'12px 0 18px' }}>{fmt(recibo.total)}</div>
+
+        {pagoEfectivo && (
+          <div style={{ background:'#F8F9FF', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12.5 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', color:'#6B7280' }}>
+              <span>Efectivo recibido</span><strong style={{ color:'#0F1035' }}>{fmt(pagoEfectivo.monto_recibido)}</strong>
+            </div>
+            {+pagoEfectivo.cambio > 0 && (
+              <div style={{ display:'flex', justifyContent:'space-between', marginTop:4 }}>
+                <span style={{ color:'#059669', fontWeight:700 }}>Cambio</span>
+                <strong style={{ color:'#059669', fontSize:14 }}>{fmt(pagoEfectivo.cambio)}</strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display:'flex', gap:10 }}>
+          <button className="pos-btn pos-btn-ghost" style={{ flex:1 }} onClick={() => imprimirReciboPOS(recibo)}>
+            <Printer size={14}/> Imprimir recibo
           </button>
           <button className="pos-btn pos-btn-primary" style={{ flex:1 }} onClick={onNuevaVenta}>
             <ShoppingCart size={14}/> Nueva venta
@@ -544,13 +552,13 @@ function ClienteSelector({ clienteId, clienteLabel, onSeleccionar, onLimpiar }) 
 // ── Pantalla principal: vender ──────────────────────────────────────────────
 function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) {
   const { formas } = useFormasPago()
-  const usuario = useAuthStore(s => s.usuario)
-  const puedeFijarPrecio = ['superadmin', 'administrador'].includes(usuario?.rol)
   const [q, setQ] = useState('')
+  const [categoria, setCategoria] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState(8)
   const [productos, setProductos] = useState([])
   const [loadingProds, setLoadingProds] = useState(true)
-  const [carrito, setCarrito] = useState([]) // [{producto, cantidad, precio_unit_nuevo}]
-  const [fijarPrecioProd, setFijarPrecioProd] = useState(null) // producto pendiente de precio
+  const [carrito, setCarrito] = useState([]) // [{producto, cantidad}]
   const [clienteId, setClienteId] = useState('')
   const [clienteLabel, setClienteLabel] = useState('')
   // Pago dividido (multi-tender): una o varias líneas [{metodo_pago, monto, referencia, soporte_url}]
@@ -571,45 +579,77 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
 
   useEffect(() => { const t = setTimeout(cargarCatalogo, 250); return () => clearTimeout(t) }, [cargarCatalogo])
 
-  const agregar = (prod) => {
-    if (!(+prod.precio_venta > 0)) {
-      if (!puedeFijarPrecio) return toast.error('Este producto no tiene precio — pide a un administrador que lo fije.')
-      setFijarPrecioProd(prod)
-      return
-    }
-    agregarAlCarrito(prod)
-  }
+  // Atajo F2: foco inmediato en el buscador — útil para retomar rápido
+  // después de cobrar o de usar un lector de código de barras.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
-  const agregarAlCarrito = (prod, precioNuevo) => {
+  const categorias = [...new Set(productos.map(p => p.categoria_nombre).filter(Boolean))]
+  const productosFiltrados = categoria ? productos.filter(p => p.categoria_nombre === categoria) : productos
+  const totalPaginas = Math.max(1, Math.ceil(productosFiltrados.length / porPagina))
+  const paginaSeg = Math.min(pagina, totalPaginas)
+  const productosVisibles = productosFiltrados.slice((paginaSeg - 1) * porPagina, paginaSeg * porPagina)
+
+  useEffect(() => { setPagina(1) }, [q, categoria, porPagina])
+
+  // Clave única de línea del carrito: mismo producto en distintas
+  // presentaciones (caja / docena / unidad) son líneas separadas.
+  const claveLinea = (productoId, presentacionId) => `${productoId}::${presentacionId || 'base'}`
+
+  // Cuántas unidades de esta presentación (o del producto base) caben en el
+  // stock disponible — el stock siempre está en unidades base.
+  const maxCantidadLinea = (prod, presentacion) =>
+    presentacion ? Math.floor(+prod.stock_disponible / +presentacion.factor_conversion) : +prod.stock_disponible
+
+  const [presentacionModal, setPresentacionModal] = useState(null) // producto pendiente de elegir presentación
+
+  const agregarConPresentacion = (prod, presentacion) => {
+    const precioEfectivo = presentacion ? +presentacion.precio : +prod.precio_venta
+    if (!(precioEfectivo > 0)) {
+      return toast.error('Este producto no tiene precio de venta — configúralo en Inventario antes de venderlo.')
+    }
+    const max = maxCantidadLinea(prod, presentacion)
+    if (max < 1) return toast.error('No hay stock disponible para esta presentación')
+
     setCarrito(prev => {
-      const existe = prev.find(i => i.producto.id === prod.id)
+      const clave = claveLinea(prod.id, presentacion?.id)
+      const existe = prev.find(i => claveLinea(i.producto.id, i.presentacion?.id) === clave)
       if (existe) {
-        if (existe.cantidad >= +prod.stock_disponible) { toast.error('No hay más stock disponible de este producto'); return prev }
-        return prev.map(i => i.producto.id === prod.id ? { ...i, cantidad: i.cantidad + 1 } : i)
+        if (existe.cantidad >= max) { toast.error('No hay más stock disponible de este producto'); return prev }
+        return prev.map(i => claveLinea(i.producto.id, i.presentacion?.id) === clave ? { ...i, cantidad: i.cantidad + 1 } : i)
       }
-      const producto = precioNuevo ? { ...prod, precio_venta: precioNuevo } : prod
-      return [...prev, { producto, cantidad: 1, precio_unit_nuevo: precioNuevo || undefined }]
+      return [...prev, { producto: prod, presentacion: presentacion || null, cantidad: 1 }]
     })
   }
 
-  const confirmarPrecioNuevo = (precio) => {
-    if (!(+precio > 0)) return toast.error('Ingresa un precio válido')
-    agregarAlCarrito(fijarPrecioProd, +precio)
-    setFijarPrecioProd(null)
+  // El precio de venta siempre viene del catálogo (Inventario → costeo y
+  // margen) — el cajero nunca lo escribe en el mostrador. Un producto sin
+  // precio configurado simplemente no se puede vender hasta que un admin
+  // lo fije en Inventario. Si el producto tiene presentaciones (caja,
+  // docena, unidad...), primero hay que elegir cuál — se abre un selector
+  // en vez de agregar directo.
+  const agregar = (prod) => {
+    if (prod.presentaciones?.length > 0) { setPresentacionModal(prod); return }
+    agregarConPresentacion(prod, null)
   }
 
-  const cambiarCantidad = (id, delta) => {
+  const cambiarCantidad = (producto, presentacion, delta) => {
     setCarrito(prev => prev.map(i => {
-      if (i.producto.id !== id) return i
+      if (claveLinea(i.producto.id, i.presentacion?.id) !== claveLinea(producto.id, presentacion?.id)) return i
       const nueva = i.cantidad + delta
-      if (nueva > +i.producto.stock_disponible) { toast.error('No hay más stock disponible'); return i }
+      if (nueva > maxCantidadLinea(producto, presentacion)) { toast.error('No hay más stock disponible'); return i }
       return { ...i, cantidad: nueva }
     }).filter(i => i.cantidad > 0))
   }
 
-  const quitar = (id) => setCarrito(prev => prev.filter(i => i.producto.id !== id))
+  const quitar = (producto, presentacion) =>
+    setCarrito(prev => prev.filter(i => claveLinea(i.producto.id, i.presentacion?.id) !== claveLinea(producto.id, presentacion?.id)))
 
-  const subtotal = carrito.reduce((acc, i) => acc + (+i.producto.precio_venta * i.cantidad), 0)
+  const precioLinea = (i) => i.presentacion ? +i.presentacion.precio : +i.producto.precio_venta
+  const subtotal = carrito.reduce((acc, i) => acc + precioLinea(i) * i.cantidad, 0)
   const total = subtotal
 
   // Mientras haya una sola línea de pago, se mantiene sincronizada con el
@@ -658,8 +698,13 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
     try {
       const res = await api.post('/pos/ventas', {
         caja_id: caja.id,
-        items: carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.cantidad, precio_unit_nuevo: i.precio_unit_nuevo })),
-        pagos: pagos.map(p => ({ metodo_pago: p.metodo_pago, monto: +p.monto, referencia: p.referencia || null, soporte_url: p.soporte_url || null })),
+        items: carrito.map(i => ({ producto_id: i.producto.id, cantidad: i.cantidad, presentacion_id: i.presentacion?.id || null })),
+        pagos: pagos.map((p, i) => ({
+          metodo_pago: p.metodo_pago, monto: +p.monto, referencia: p.referencia || null, soporte_url: p.soporte_url || null,
+          // El vuelto solo tiene sentido en pago único en efectivo — con pago
+          // dividido no hay un campo de "efectivo recibido" por línea todavía.
+          monto_recibido: (i === 0 && !tienePagoDividido && p.metodo_pago === 'efectivo' && +efectivoRecibido > 0) ? +efectivoRecibido : null,
+        })),
         cliente_id: clienteId || null,
       })
       setVentaCreada(res.data.data.id)
@@ -703,68 +748,132 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
           <div className="pos-search">
             <Search size={16} color="#9CA3AF"/>
             <input ref={searchRef} value={q} onChange={e => setQ(e.target.value)}
-              placeholder="Buscar producto por nombre o código…" autoFocus/>
+              placeholder="Buscar o escanear producto por nombre o código…" autoFocus/>
+            <span className="pos-search-hint">F2 · ENTER</span>
           </div>
+
+          {categorias.length > 1 && (
+            <div className="pos-cats">
+              <button className={`pos-cat-pill${!categoria ? ' active' : ''}`} onClick={() => setCategoria('')}>Todos</button>
+              {categorias.map(c => (
+                <button key={c} className={`pos-cat-pill${categoria === c ? ' active' : ''}`}
+                  onClick={() => setCategoria(c)}>{c}</button>
+              ))}
+            </div>
+          )}
+
           <div className="pos-grid">
             {loadingProds ? (
               <div style={{ gridColumn:'1/-1', textAlign:'center', color:'#9CA3AF', padding:40 }}>Cargando…</div>
-            ) : productos.length === 0 ? (
+            ) : productosVisibles.length === 0 ? (
               <div style={{ gridColumn:'1/-1', textAlign:'center', color:'#9CA3AF', padding:40 }}>
                 <Package size={28} style={{ marginBottom:8 }}/><br/>
                 Sin productos con stock disponible en esta bodega
               </div>
-            ) : productos.map(p => {
+            ) : productosVisibles.map(p => {
               const sinPrecio = !(+p.precio_venta > 0)
               return (
-                <div key={p.id} className="pos-prod" onClick={() => agregar(p)}
-                  style={sinPrecio ? { opacity:.75 } : undefined}>
-                  <div style={{ fontSize:18 }}>{p.categoria_icono || '📦'}</div>
+                <div key={p.id} className="pos-prod" onClick={() => !sinPrecio && agregar(p)}
+                  style={sinPrecio ? { opacity: .6, cursor: 'default' } : undefined}>
+                  <div className="pos-prod-img">
+                    {p.imagen_url
+                      ? <img src={p.imagen_url.startsWith('data:') ? p.imagen_url : `http://localhost:3001${p.imagen_url}`} alt={p.nombre}/>
+                      : (p.categoria_icono || '📦')}
+                  </div>
                   <div className="pos-prod-nombre">{p.nombre}</div>
                   {sinPrecio ? (
-                    <div className="pos-prod-precio" style={{ color:'#D97706', fontSize:11.5 }}>
-                      {puedeFijarPrecio ? 'Sin precio — click para fijar' : 'Sin precio'}
+                    <div className="pos-prod-precio" style={{ color: '#D97706', fontSize: 11.5 }}>
+                      Sin precio configurado
+                    </div>
+                  ) : p.presentaciones?.length > 0 ? (
+                    <div className="pos-prod-precio" style={{ fontSize: 12.5 }}>
+                      Desde {fmt(Math.min(+p.precio_venta, ...p.presentaciones.map(pr => +pr.precio)))}
                     </div>
                   ) : (
                     <div className="pos-prod-precio">{fmt(p.precio_venta)}</div>
                   )}
-                  <div className="pos-prod-stock">Stock: {p.stock_disponible}</div>
+                  <div className="pos-prod-stock" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    Stock: {p.stock_disponible}
+                    {p.presentaciones?.length > 0 && (
+                      <span style={{ background: '#EEF2FF', color: '#4338CA', fontSize: 9.5, fontWeight: 800,
+                        padding: '1px 6px', borderRadius: 8 }}>
+                        {p.presentaciones.length + 1} presentaciones
+                      </span>
+                    )}
+                  </div>
+                  <button className="pos-prod-add" onClick={e => { e.stopPropagation(); agregar(p) }} disabled={sinPrecio}
+                    style={sinPrecio ? { background: '#D1D5DB', cursor: 'not-allowed' } : undefined}>
+                    <Plus size={13}/> Agregar
+                  </button>
                 </div>
               )
             })}
           </div>
+
+          {!loadingProds && productosFiltrados.length > 0 && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+              padding:'10px 4px 2px', borderTop:'1px solid #ECEDF8', marginTop:8 }}>
+              <div style={{ fontSize:12.5, color:'#374151' }}>
+                <strong>{(paginaSeg - 1) * porPagina + 1}–{Math.min(paginaSeg * porPagina, productosFiltrados.length)}</strong>{' '}
+                de <strong>{productosFiltrados.length}</strong>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <button className="pos-btn pos-btn-ghost" style={{ padding:'6px 8px' }}
+                  onClick={() => setPagina(p => Math.max(1, p - 1))} disabled={paginaSeg === 1}>
+                  <ChevronLeft size={14}/>
+                </button>
+                <span style={{ fontSize:12, color:'#9CA3AF' }}>{paginaSeg} / {totalPaginas}</span>
+                <button className="pos-btn pos-btn-ghost" style={{ padding:'6px 8px' }}
+                  onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))} disabled={paginaSeg === totalPaginas}>
+                  <ChevronRight size={14}/>
+                </button>
+                <select className="select-filter" value={porPagina} onChange={e => setPorPagina(+e.target.value)}
+                  style={{ padding:'7px 10px', border:'1.5px solid #E2E5F0', borderRadius:9, fontSize:12.5 }}>
+                  <option value={8}>8 por página</option>
+                  <option value={10}>10 por página</option>
+                  <option value={16}>16 por página</option>
+                  <option value={24}>24 por página</option>
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="pos-carrito">
           <div style={{ padding:'12px 16px', borderBottom:'1px solid #ECEDF8', display:'flex', alignItems:'center', gap:8 }}>
-            <ShoppingCart size={16} color="#16A34A"/>
-            <span style={{ fontWeight:800, fontSize:13.5 }}>Carrito ({carrito.length})</span>
+            <ShoppingCart size={16} color="#4338CA"/>
+            <span style={{ fontWeight:800, fontSize:13.5 }}>Venta · Carrito ({carrito.length})</span>
           </div>
           <div className="pos-cart-items">
             {carrito.length === 0 ? (
-              <div style={{ textAlign:'center', color:'#9CA3AF', fontSize:12.5, padding:30 }}>
-                Haz clic en un producto para agregarlo
+              <div className="pos-cart-empty">
+                <div className="pos-cart-empty-icon"><ShoppingCart size={26}/></div>
+                <div style={{ fontWeight:700, color:'#374151', fontSize:13 }}>Carrito vacío</div>
+                <div style={{ fontSize:12 }}>Selecciona productos o escanea un código de barras</div>
               </div>
             ) : carrito.map(i => (
-              <div key={i.producto.id} className="pos-cart-item">
+              <div key={claveLinea(i.producto.id, i.presentacion?.id)} className="pos-cart-item">
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:12.5, fontWeight:700, color:'#0F1035', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                     {i.producto.nombre}
                   </div>
-                  <div style={{ fontSize:11.5, color:'#9CA3AF' }}>{fmt(i.producto.precio_venta)} c/u</div>
+                  <div style={{ fontSize:11.5, color:'#9CA3AF' }}>
+                    {fmt(precioLinea(i))} {i.presentacion ? `· ${i.presentacion.nombre}` : 'c/u'}
+                  </div>
                 </div>
-                <button onClick={() => cambiarCantidad(i.producto.id, -1)}
+                <button onClick={() => cambiarCantidad(i.producto, i.presentacion, -1)}
                   style={{ width:22, height:22, borderRadius:6, border:'1px solid #E2E5F0', background:'#fff', cursor:'pointer' }}>
                   <Minus size={11}/>
                 </button>
                 <span style={{ fontSize:12.5, fontWeight:700, minWidth:18, textAlign:'center' }}>{i.cantidad}</span>
-                <button onClick={() => cambiarCantidad(i.producto.id, 1)}
+                <button onClick={() => cambiarCantidad(i.producto, i.presentacion, 1)}
                   style={{ width:22, height:22, borderRadius:6, border:'1px solid #E2E5F0', background:'#fff', cursor:'pointer' }}>
                   <Plus size={11}/>
                 </button>
                 <div style={{ fontSize:12.5, fontWeight:800, minWidth:70, textAlign:'right' }}>
-                  {fmt(i.producto.precio_venta * i.cantidad)}
+                  {fmt(precioLinea(i) * i.cantidad)}
                 </div>
-                <button onClick={() => quitar(i.producto.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'#EF4444' }}>
+                <button onClick={() => quitar(i.producto, i.presentacion)} style={{ background:'none', border:'none', cursor:'pointer', color:'#EF4444' }}>
                   <Trash2 size={13}/>
                 </button>
               </div>
@@ -776,22 +885,35 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
               onSeleccionar={(t) => { setClienteId(t.id); setClienteLabel(`${t.nombres} ${t.apellidos || ''}`.trim() + (t.numero_documento ? ` · ${t.numero_documento}` : '')) }}
               onLimpiar={() => { setClienteId(''); setClienteLabel('') }}/>
 
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:17, fontWeight:800, marginBottom:10 }}>
-              <span>Total</span><span style={{ color:'#16A34A' }}>{fmt(total)}</span>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:12.5, color:'#9CA3AF', marginBottom:4 }}>
+              <span>Subtotal</span><span>{fmt(subtotal)}</span>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:19, fontWeight:900, marginBottom:12,
+              paddingTop:8, borderTop:'1.5px dashed #ECEDF8' }}>
+              <span>TOTAL</span><span style={{ color:'#2E3192' }}>{fmt(total)}</span>
             </div>
 
             <div style={{ fontSize:11.5, fontWeight:700, color:'#6B7280', marginBottom:6, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span>MEDIO(S) DE PAGO</span>
+              <span>FORMA DE PAGO</span>
               {restante > 1 && (
-                <button onClick={agregarLineaPago} style={{ background:'none', border:'none', color:'#16A34A', cursor:'pointer',
+                <button onClick={agregarLineaPago} style={{ background:'none', border:'none', color:'#4338CA', cursor:'pointer',
                   fontSize:11.5, fontWeight:700, display:'flex', alignItems:'center', gap:3 }}>
                   <Plus size={11}/> Dividir pago
                 </button>
               )}
             </div>
 
-            {pagos.map((p, idx) => {
-              const forma = formas.find(f => f.codigo === p.metodo_pago)
+            {!tienePagoDividido ? (
+              <div className="pos-pay-pills">
+                {formas.map(f => (
+                  <button key={f.codigo}
+                    className={`pos-pay-pill${pagos[0].metodo_pago === f.codigo ? ' active' : ''}`}
+                    onClick={() => actualizarPago(0, 'metodo_pago', f.codigo)}>
+                    {f.icono_url ? <img src={f.icono_url} alt="" style={{ width:16, height:16, objectFit:'contain' }}/> : <span>{f.icono}</span>} {f.nombre}
+                  </button>
+                ))}
+              </div>
+            ) : pagos.map((p, idx) => {
               const noEfectivo = p.metodo_pago !== 'efectivo'
               const soportado = !!(p.referencia?.trim() || p.soporte_url)
               return (
@@ -804,7 +926,7 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
                     </select>
                     <CurrencyInput value={p.monto}
                       onChange={v => actualizarPago(idx, 'monto', v)}
-                      placeholder="Monto"
+                      placeholder="Monto" ayuda={false}
                       style={{ width:90 }}/>
                     {noEfectivo && (
                       <button onClick={() => setShowSoporteIdx(idx)} title={soportado ? 'Soporte adjunto ✓' : 'Adjuntar soporte'}
@@ -814,12 +936,10 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
                         {soportado ? <CheckCircle2 size={14}/> : <Receipt size={14}/>}
                       </button>
                     )}
-                    {tienePagoDividido && (
-                      <button onClick={() => quitarLineaPago(idx)}
-                        style={{ background:'none', border:'none', cursor:'pointer', color:'#EF4444' }}>
-                        <Trash2 size={13}/>
-                      </button>
-                    )}
+                    <button onClick={() => quitarLineaPago(idx)}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:'#EF4444' }}>
+                      <Trash2 size={13}/>
+                    </button>
                   </div>
                 </div>
               )
@@ -846,13 +966,37 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
             )}
 
             {!tienePagoDividido && pagos[0].metodo_pago === 'efectivo' && (
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                <input type="number" min="0" value={efectivoRecibido} onChange={e => setEfectivoRecibido(e.target.value)}
-                  placeholder="Efectivo recibido (opcional)…"
-                  style={{ flex:1, padding:'7px 8px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12 }}/>
-                {vuelto !== null && (
-                  <div style={{ fontSize:12, fontWeight:800, color:'#16A34A', whiteSpace:'nowrap' }}>Vuelto: {fmt(vuelto)}</div>
-                )}
+              <div style={{ marginBottom:10 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                  <input type="number" min="0" value={efectivoRecibido} onChange={e => setEfectivoRecibido(e.target.value)}
+                    placeholder="Efectivo recibido (opcional)…"
+                    style={{ flex:1, padding:'7px 8px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12 }}/>
+                  {vuelto !== null && (
+                    <div style={{ fontSize:12, fontWeight:800, color:'#16A34A', whiteSpace:'nowrap' }}>Vuelto: {fmt(vuelto)}</div>
+                  )}
+                </div>
+                {/* Billetes rápidos — igual que un POS de almacén: un tap suma la
+                    denominación en vez de escribirla a mano */}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                  {[2000, 5000, 10000, 20000, 50000, 100000].map(billete => (
+                    <button key={billete} type="button"
+                      onClick={() => setEfectivoRecibido(String((+efectivoRecibido || 0) + billete))}
+                      style={{ padding:'4px 9px', border:'1.5px solid #E2E5F0', borderRadius:7,
+                        background:'#FAFBFF', color:'#374151', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                      +{fmt(billete).replace('$', '').trim()}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => setEfectivoRecibido(String(total))}
+                    style={{ padding:'4px 9px', border:'1.5px solid #BBF7D0', borderRadius:7,
+                      background:'#F0FDF4', color:'#059669', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                    Exacto
+                  </button>
+                  <button type="button" onClick={() => setEfectivoRecibido('')}
+                    style={{ padding:'4px 9px', border:'1.5px solid #FECACA', borderRadius:7,
+                      background:'#FEF2F2', color:'#DC2626', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                    Limpiar
+                  </button>
+                </div>
               </div>
             )}
 
@@ -869,38 +1013,55 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
         <ModalRecibo ventaId={ventaCreada} onClose={() => setVentaCreada(null)}
           onNuevaVenta={() => { setVentaCreada(null); searchRef.current?.focus() }}/>
       )}
-      {fijarPrecioProd && (
-        <ModalFijarPrecio producto={fijarPrecioProd} onClose={() => setFijarPrecioProd(null)} onConfirmar={confirmarPrecioNuevo}/>
+
+      {presentacionModal && (
+        <ModalPresentacion producto={presentacionModal} onClose={() => setPresentacionModal(null)}
+          onElegir={(presentacion) => { agregarConPresentacion(presentacionModal, presentacion); setPresentacionModal(null) }}/>
       )}
     </div>
   )
 }
 
-// ── Fijar precio a un producto que no lo tiene (solo admin/superadmin) ──────
-function ModalFijarPrecio({ producto, onClose, onConfirmar }) {
-  const [precio, setPrecio] = useState('')
+// ── Elegir presentación (caja, docena, unidad...) al agregar al carrito ───
+function ModalPresentacion({ producto, onClose, onElegir }) {
+  const opciones = [
+    ...(+producto.precio_venta > 0 ? [{ id: null, nombre: `Por ${producto.unidad_medida || 'unidad'}`, precio: producto.precio_venta, factor_conversion: 1 }] : []),
+    ...producto.presentaciones,
+  ]
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(15,16,53,.45)', zIndex:1000,
-      display:'flex', alignItems:'center', justifyContent:'center' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background:'#fff', borderRadius:16, width:380, maxWidth:'92vw', padding:22 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+    <div className="pos-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="pos-modal" style={{ maxWidth: 380 }}>
+        <div className="pos-mhead">
           <div>
-            <div style={{ fontSize:15, fontWeight:900, color:'#0F1035' }}>Fijar precio de venta</div>
-            <div style={{ fontSize:12, color:'#9CA3AF' }}>{producto.nombre}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0F1035' }}>{producto.nombre}</div>
+            <div style={{ fontSize: 11.5, color: '#9CA3AF' }}>Elige la presentación de venta</div>
           </div>
-          <button onClick={onClose} style={{ border:'none', background:'none', cursor:'pointer' }}><X size={16}/></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}><X size={17}/></button>
         </div>
-        <label style={{ fontSize:11.5, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Precio de venta</label>
-        <CurrencyInput value={precio} onChange={setPrecio} placeholder="0" autoFocus/>
-        <div style={{ fontSize:10.5, color:'#9CA3AF', marginTop:6 }}>
-          Este precio queda guardado — la próxima vez cualquier cajero podrá venderlo sin que se lo vuelvan a pedir.
+        <div className="pos-mbody" style={{ display: 'grid', gap: 8 }}>
+          {opciones.map((op, idx) => {
+            const max = op.id ? Math.floor(+producto.stock_disponible / +op.factor_conversion) : +producto.stock_disponible
+            return (
+              <button key={op.id || 'base'} disabled={max < 1}
+                onClick={() => onElegir(op.id ? op : null)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 14px', border: '1.5px solid #E2E5F0', borderRadius: 12,
+                  background: max < 1 ? '#F9FAFB' : '#fff', cursor: max < 1 ? 'not-allowed' : 'pointer',
+                  opacity: max < 1 ? .5 : 1, textAlign: 'left',
+                }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0F1035' }}>{op.nombre}</div>
+                  <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                    {op.id ? `${op.factor_conversion} ${producto.unidad_medida || 'unidades'} · ` : ''}
+                    {max < 1 ? 'Sin stock' : `Disponible: ${max}`}
+                  </div>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#2E3192' }}>{fmt(op.precio)}</div>
+              </button>
+            )
+          })}
         </div>
-        <button onClick={() => onConfirmar(precio)}
-          style={{ width:'100%', marginTop:16, padding:'11px 0', background:'linear-gradient(135deg,#16A34A,#15803D)',
-            color:'#fff', border:'none', borderRadius:12, fontWeight:800, fontSize:14, cursor:'pointer' }}>
-          Fijar precio y agregar al carrito
-        </button>
       </div>
     </div>
   )

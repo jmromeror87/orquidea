@@ -1,0 +1,22 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Módulo          : Inventario — Foto de producto                       ║
+-- ║  Archivo         : 082_inv_productos_imagen_text.sql                    ║
+-- ║  Versión         : v1.0.0                                               ║
+-- ║  Fecha           : 2026-09-10                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ║  Software propietario. Prohibida su reproducción, distribución o       ║
+-- ║  comercialización sin autorización escrita del titular.                ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- imagen_url pasa de VARCHAR(300) a TEXT: la foto se sube como data URL
+-- base64 (igual que el logo de formas de pago, migración 078), y un
+-- VARCHAR(300) no alcanza ni para una imagen pequeña codificada en base64.
+
+ALTER TABLE inv_productos ALTER COLUMN imagen_url TYPE TEXT;

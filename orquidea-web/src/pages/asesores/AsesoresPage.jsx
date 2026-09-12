@@ -65,7 +65,7 @@ const CSS = `
 .as-kpi-val { font-size:24px; font-weight:900; color:#0F1035; line-height:1; letter-spacing:-.5px; }
 .as-kpi-label { font-size:11px; color:#9CA3AF; font-weight:600; margin-top:4px; }
 
-.as-body { flex:1; overflow:auto; padding:20px 24px; }
+.as-body { flex:1; min-height:0; overflow:auto; padding:20px 24px; }
 .as-toolbar { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
 .as-search { position:relative; flex:1; max-width:320px; }
 .as-search input { width:100%; padding:9px 12px 9px 36px; border:1.5px solid #E2E5F0;

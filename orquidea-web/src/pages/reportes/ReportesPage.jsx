@@ -72,7 +72,7 @@ const CSS = `
   font-size:12.5px; font-weight:700; cursor:pointer; border:1.5px solid #E2E5F0; background:#fff; color:#374151; transition:all .15s; }
 .rp-btn-exp:hover { border-color:#0369A1; color:#0369A1; background:#EFF6FF; }
 
-.rp-body { flex:1; overflow:auto; padding:20px 24px; }
+.rp-body { flex:1; min-height:0; overflow:auto; padding:20px 24px; }
 .rp-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:20px; }
 .rp-kpi { background:#fff; border-radius:16px; overflow:hidden; border:1.5px solid #ECEDF8; transition:all .2s; }
 .rp-kpi:hover { transform:translateY(-2px); box-shadow:0 8px 22px rgba(0,0,0,.08); }

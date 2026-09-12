@@ -91,7 +91,7 @@ const CSS = `
   .utab.active .utab-badge { background:#4338CA; color:#fff; }
 
   /* Body */
-  .upage-body { flex:1; overflow-y:auto; padding:24px 28px; display:flex; flex-direction:column; gap:20px; }
+  .upage-body { flex:1; min-height:0; overflow-y:auto; padding:24px 28px; display:flex; flex-direction:column; gap:20px; }
   .upage-body::-webkit-scrollbar { width:4px; }
   .upage-body::-webkit-scrollbar-thumb { background:#DDE1F0; border-radius:4px; }
 

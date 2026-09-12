@@ -64,6 +64,10 @@ import publicoRoutes       from './routes/publico.routes.js'
 import memorialesRoutes    from './routes/memoriales.routes.js'
 import leadsRoutes         from './routes/leads.routes.js'
 import notificacionesRoutes from './routes/notificaciones.routes.js'
+import contabilidadRoutes   from './routes/contabilidad.routes.js'
+import tesoreriaRoutes      from './routes/tesoreria.routes.js'
+import auditoriaRoutes      from './routes/auditoria.routes.js'
+import { registrarAuditoria } from './services/auditoria.service.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -96,6 +100,36 @@ await app.register(multipart, {
 await app.register(staticFiles, {
   root: path.join(__dirname, 'uploads'),
   prefix: '/uploads/',
+})
+
+// ── Auditoría automática ────────────────────────────────────────────
+// Registra en auditoria_log toda petición mutante (crear/actualizar/borrar/
+// anular) de un usuario autenticado, en CUALQUIER módulo — sin tener que
+// instrumentar cada controlador a mano. Login/logout se auditan aparte
+// (auth.controller.js) porque no pasan por preHandler verifyToken.
+// Nunca captura clics ni navegación de solo-lectura (GET) — así se
+// registran acciones de negocio reales, no vigilancia de cada movimiento
+// del mouse.
+const ACCION_POR_METODO = { POST: 'CREAR', PUT: 'ACTUALIZAR', PATCH: 'ACTUALIZAR', DELETE: 'ELIMINAR' }
+app.addHook('onResponse', async (request, reply) => {
+  const accionBase = ACCION_POR_METODO[request.method]
+  if (!accionBase) return
+  if (reply.statusCode >= 400) return
+  if (request.url.startsWith('/api/auth/')) return
+  if (request.url.startsWith('/api/auditoria/')) return
+  const user = request.user
+  if (!user) return
+
+  const modulo = request.url.split('/')[2] || null
+  const accion = /\/anular(\b|\/|$)/.test(request.url) ? 'ANULAR' : accionBase
+
+  registrarAuditoria({
+    usuario_id: user.id, usuario_nombre: user.nombre, accion, modulo,
+    metodo: request.method, ruta: request.url,
+    entidad_id: request.params?.id || request.params?.codigo || null,
+    ip: request.ip, navegador: request.headers['user-agent'] || null,
+    sede_id: user.sede_id,
+  })
 })
 
 // ── Health check ──────────────────────────────────────────────────
@@ -142,6 +176,9 @@ app.register(publicoRoutes,       { prefix: '/api/publico' })
 app.register(memorialesRoutes,    { prefix: '/api/memoriales' })
 app.register(leadsRoutes,         { prefix: '/api/leads' })
 app.register(notificacionesRoutes, { prefix: '/api/notificaciones' })
+app.register(contabilidadRoutes,   { prefix: '/api/contabilidad' })
+app.register(tesoreriaRoutes,      { prefix: '/api/tesoreria' })
+app.register(auditoriaRoutes,      { prefix: '/api/auditoria' })
 
 // ── Cron: recalcular mora de pólizas cada noche a las 2:00 AM ────────
 function programarCronMora() {

@@ -39,6 +39,11 @@ export default async function inventarioRoutes(fastify) {
   fastify.put('/productos/:id',                  { preHandler: admins }, ctrl.actualizarProducto)
   fastify.get('/productos/:id',                  { preHandler: auth },   ctrl.detalleProducto)
 
+  fastify.get('/productos/:producto_id/presentaciones',  { preHandler: auth },   ctrl.listarPresentaciones)
+  fastify.post('/productos/:producto_id/presentaciones', { preHandler: admins }, ctrl.crearPresentacion)
+  fastify.put('/presentaciones/:id',                     { preHandler: admins }, ctrl.actualizarPresentacion)
+  fastify.delete('/presentaciones/:id',                  { preHandler: admins }, ctrl.eliminarPresentacion)
+
   // Bodegas
   fastify.get('/bodegas',                        { preHandler: auth },   ctrl.listarBodegas)
   fastify.post('/bodegas',                       { preHandler: admins }, ctrl.crearBodega)

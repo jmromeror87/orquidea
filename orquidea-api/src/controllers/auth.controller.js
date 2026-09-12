@@ -20,6 +20,8 @@ import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import { query } from '../config/database.js'
 import { env } from '../config/env.js'
+import { registrarAuditoria } from '../services/auditoria.service.js'
+import { marcarActividad, quitarPresencia } from '../services/presencia.service.js'
 
 const MAX_INTENTOS = 5
 const BLOQUEO_MINUTOS = 15
@@ -40,8 +42,11 @@ export async function login(request, reply) {
   )
 
   const usuario = rows[0]
+  const ip = request.ip
+  const navegador = request.headers['user-agent'] || null
 
   if (!usuario) {
+    await registrarAuditoria({ accion: 'LOGIN_FALLIDO', modulo: 'auth', descripcion: `Email no registrado: ${email}`, ip, navegador })
     return reply.status(401).send({ error: 'Credenciales inválidas' })
   }
 
@@ -69,6 +74,12 @@ export async function login(request, reply) {
       `UPDATE usuarios SET login_intentos = $1, bloqueado_hasta = $2 WHERE id = $3`,
       [nuevosIntentos, bloqueado, usuario.id]
     )
+
+    await registrarAuditoria({
+      usuario_id: usuario.id, usuario_nombre: usuario.nombre, accion: 'LOGIN_FALLIDO', modulo: 'auth',
+      descripcion: bloqueado ? 'Contraseña incorrecta — cuenta bloqueada' : 'Contraseña incorrecta',
+      ip, navegador, sede_id: usuario.sede_id,
+    })
 
     const restantes = MAX_INTENTOS - nuevosIntentos
     if (bloqueado) {
@@ -106,6 +117,12 @@ export async function login(request, reply) {
 
   const token = jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn })
 
+  await registrarAuditoria({
+    usuario_id: usuario.id, usuario_nombre: usuario.nombre, accion: 'LOGIN', modulo: 'auth',
+    descripcion: `Inicio de sesión — ${usuario.sede_nombre || 'sin sede'}`, ip, navegador, sede_id: usuario.sede_id,
+  })
+  marcarActividad(payload, { ip, navegador })
+
   return reply.send({
     data: {
       token,
@@ -122,6 +139,18 @@ export async function login(request, reply) {
       },
     },
   })
+}
+
+// JWT es stateless (no hay sesión que invalidar en el servidor), pero sí se
+// registra el evento para la bitácora y se limpia la presencia "en línea"
+// de inmediato en vez de esperar a que expire por inactividad.
+export async function logout(request, reply) {
+  await registrarAuditoria({
+    usuario_id: request.user.id, usuario_nombre: request.user.nombre, accion: 'LOGOUT', modulo: 'auth',
+    ip: request.ip, navegador: request.headers['user-agent'] || null, sede_id: request.user.sede_id,
+  })
+  quitarPresencia(request.user.id)
+  return reply.send({ data: { mensaje: 'Sesión cerrada' } })
 }
 
 export async function me(request, reply) {

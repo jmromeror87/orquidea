@@ -42,7 +42,23 @@ const ROLES_META = {
 }
 
 const PARENTESCOS = ['conyuge','hijo','hija','padre','madre','hermano','hermana',
-                     'abuelo','abuela','nieto','nieta','tio','tia','otro']
+                     'abuelo','abuela','nieto','nieta','tio','tia','sobrino','sobrina','otro']
+
+// La edad se calcula siempre en vivo a partir de fecha_nacimiento — nunca se
+// guarda como número aparte (un campo "edad" persistido queda desactualizado
+// al día siguiente del cumpleaños). Se muestra aquí solo como retroalimentación
+// inmediata mientras se digita la fecha.
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null
+  const hoy = new Date()
+  const nac = new Date(fechaNacimiento + 'T12:00:00')
+  if (isNaN(nac)) return null
+  let edad = hoy.getFullYear() - nac.getFullYear()
+  const aunNoCumple = (hoy.getMonth() < nac.getMonth()) ||
+    (hoy.getMonth() === nac.getMonth() && hoy.getDate() < nac.getDate())
+  if (aunNoCumple) edad--
+  return edad >= 0 ? edad : null
+}
 
 const BLANK_FORM = {
   tipo_persona: 'NATURAL',
@@ -122,7 +138,7 @@ const CSS = `
   .tp-icon-btn:hover { background:#2E3192; color:#fff; border-color:#2E3192; }
 
   /* ─ Cuerpo ─ */
-  .tp-body { flex:1; overflow:auto; padding:0 20px 20px; }
+  .tp-body { flex:1; min-height:0; overflow:auto; padding:0 20px 20px; }
 
   /* ─ Tabla ─ */
   .tp-table-wrap { background:#fff; border:1.5px solid #ECEDF8; border-radius:14px; overflow:hidden;
@@ -225,7 +241,7 @@ const CSS = `
   .tp-drawer-stab.active { background:linear-gradient(135deg,#5B6EE8,#4A5DD4); color:#fff;
     font-weight:800; box-shadow:0 3px 10px rgba(91,110,232,.25); }
   .tp-drawer-stab .stab-icon { font-size:16px; line-height:1; flex-shrink:0; }
-  .tp-drawer-content { flex:1; overflow-y:auto; padding:28px 32px; }
+  .tp-drawer-content { flex:1; min-height:0; overflow-y:auto; padding:28px 32px; }
   /* Cards */
   .tpd-card { background:#fff; border:1.5px solid #ECEDF8; border-radius:14px; margin-bottom:16px; overflow:hidden; }
   .tpd-card-head { display:flex; align-items:center; gap:9px; padding:12px 16px;
@@ -247,7 +263,7 @@ const CSS = `
                background:#F8F9FF; display:flex; align-items:center; justify-content:center;
                cursor:pointer; color:#6B7280; transition:all .15s; }
   .tp-mclose:hover { background:#FEE2E2; border-color:#FECACA; color:#EF4444; }
-  .tp-mbody  { flex:1; overflow-y:auto; padding:20px 22px; }
+  .tp-mbody  { flex:1; min-height:0; overflow-y:auto; padding:20px 22px; }
   .tp-mbody::-webkit-scrollbar { width:4px; }
   .tp-mbody::-webkit-scrollbar-thumb { background:#E2E5F0; border-radius:4px; }
   .tp-mfoot  { padding:14px 22px; border-top:1.5px solid #ECEDF8; display:flex; gap:10px; justify-content:flex-end; }
@@ -563,7 +579,11 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
         terceroId = tercero.id
         const rolesActuales = (tercero.roles || []).filter(r => r.activo).map(r => r.rol)
         const nuevos = form.roles.filter(r => !rolesActuales.includes(r))
-        await Promise.all(nuevos.map(r => api.post(`/terceros/${terceroId}/roles`, { rol: r })))
+        const quitados = rolesActuales.filter(r => !form.roles.includes(r))
+        await Promise.all([
+          ...nuevos.map(r => api.post(`/terceros/${terceroId}/roles`, { rol: r })),
+          ...quitados.map(r => api.delete(`/terceros/${terceroId}/roles/${r}`)),
+        ])
       } else {
         const res = await api.post('/terceros', body)
         terceroId = res.data.data.id
@@ -707,6 +727,11 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
                   <input type="date" value={form.fecha_nacimiento}
                     onChange={e => set('fecha_nacimiento', e.target.value)}
                     style={{ borderColor: needs.fecha_nacimiento && !form.fecha_nacimiento ? '#F59E0B' : undefined }}/>
+                  {form.fecha_nacimiento && calcularEdad(form.fecha_nacimiento) != null && (
+                    <div style={{ fontSize:11.5, color:'#6366F1', fontWeight:700, marginTop:4 }}>
+                      🎂 {calcularEdad(form.fecha_nacimiento)} años
+                    </div>
+                  )}
                 </div>
                 <div className="tp-field">
                   <label>Sexo</label>
@@ -953,6 +978,8 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
   const [parentesco, setParentesco] = useState('hijo')
   const [savingVinc, setSavingVinc] = useState(false)
   const [errVinc, setErrVinc]       = useState('')
+  const [editandoParentescoId, setEditandoParentescoId] = useState(null)
+  const [guardandoParentesco, setGuardandoParentesco] = useState(false)
 
   // ── Soportes adjuntos de la defunción (acta / permiso escaneados) ────────
   const [subiendoActaDef,    setSubiendoActaDef]    = useState(false)
@@ -1032,6 +1059,22 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
       toast.error(e.response?.data?.error || 'Error al vincular')
       setErrVinc(e.response?.data?.error || 'Error al vincular')
     } finally { setSavingVinc(false) }
+  }
+
+  // Corrige el parentesco de un familiar ya vinculado — el backend ya
+  // soportaba esto (ON CONFLICT ... DO UPDATE en agregarFamiliar), solo
+  // faltaba la forma de dispararlo desde la ficha sin tener que desvincular
+  // y volver a vincular a mano.
+  const cambiarParentesco = async (beneficiarioId, nuevoParentesco) => {
+    setGuardandoParentesco(true)
+    try {
+      await api.post(`/terceros/${id}/familiares`, { beneficiario_id: beneficiarioId, parentesco: nuevoParentesco })
+      toast.success('Parentesco actualizado')
+      setEditandoParentescoId(null)
+      cargar()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Error al actualizar el parentesco')
+    } finally { setGuardandoParentesco(false) }
   }
 
   const desvincularFamiliar = async (famId) => {
@@ -1182,7 +1225,7 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                   <TpdCard icon="📋" title="Datos personales">
                     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                       <TpdField label="Fecha de nacimiento" value={data.fecha_nacimiento
-                        ? new Date(data.fecha_nacimiento).toLocaleDateString('es-CO',{timeZone:'UTC',day:'2-digit',month:'long',year:'numeric'})
+                        ? `${new Date(data.fecha_nacimiento).toLocaleDateString('es-CO',{timeZone:'UTC',day:'2-digit',month:'long',year:'numeric'})} (${calcularEdad(data.fecha_nacimiento.split('T')[0])} años)`
                         : null}/>
                       <TpdField label="Sexo" value={data.sexo === 'M' ? '♂ Masculino' : data.sexo === 'F' ? '♀ Femenino' : null}/>
                       {data.rh && (
@@ -1304,12 +1347,27 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13.5, fontWeight:800, color:'#0F1035' }}>{f.nombres} {f.apellidos}</div>
-                          <div style={{ fontSize:11.5, color:'#6B7280', marginTop:2, display:'flex', gap:6 }}>
-                            <span style={{ background: f.relacion==='TITULAR'?'#FEF3C7':'#CFFAFE',
-                              color: f.relacion==='TITULAR'?'#B45309':'#0891B2',
-                              fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6 }}>
-                              {f.relacion==='TITULAR' ? '🏠 Titular' : f.parentesco}
-                            </span>
+                          <div style={{ fontSize:11.5, color:'#6B7280', marginTop:2, display:'flex', alignItems:'center', gap:6 }}>
+                            {f.relacion === 'TITULAR' ? (
+                              <span style={{ background:'#FEF3C7', color:'#B45309',
+                                fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6 }}>
+                                🏠 Titular
+                              </span>
+                            ) : editandoParentescoId === f.id ? (
+                              <select autoFocus value={f.parentesco} disabled={guardandoParentesco}
+                                onChange={e => cambiarParentesco(f.id, e.target.value)}
+                                onBlur={() => setEditandoParentescoId(null)}
+                                style={{ fontSize:10.5, fontWeight:700, color:'#0891B2', border:'1.5px solid #A5F3FC',
+                                  borderRadius:6, padding:'1px 4px', background:'#fff' }}>
+                                {PARENTESCOS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                              </select>
+                            ) : (
+                              <span onClick={() => setEditandoParentescoId(f.id)} title="Clic para corregir el parentesco"
+                                style={{ background:'#CFFAFE', color:'#0891B2', cursor:'pointer',
+                                  fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6, display:'inline-flex', alignItems:'center', gap:3 }}>
+                                {f.parentesco} <Edit2 size={9}/>
+                              </span>
+                            )}
                             <span>{f.tipo_doc_sigla} {f.numero_documento}</span>
                           </div>
                         </div>

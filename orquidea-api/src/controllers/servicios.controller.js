@@ -26,6 +26,8 @@ import { anthropic } from '../utils/anthropicClient.js'
 import { computeCobertura } from './convenios.controller.js'
 import { sincronizarCartera } from './carteraTerceros.controller.js'
 import { resolverSede, sedeParaCrear, convenioPermitido } from '../utils/sede.js'
+import { contabilizarEvento, reversarComprobante } from '../services/contabilidad.service.js'
+import { descargarStock, reintegrarStock } from '../utils/inventarioMovimiento.js'
 import { pipeline } from 'node:stream/promises'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -560,6 +562,19 @@ export async function crear(req, reply) {
          ON CONFLICT (tercero_id, rol) DO UPDATE SET activo = TRUE`,
         [contratante_id]
       )
+
+      if (valorPaquete > 0) {
+        await contabilizarEvento(db, {
+          evento_codigo: 'CONTRATO_VENTA',
+          montos: { total: +valorPaquete },
+          concepto: `Venta contrato inmediato (servicio directo)`,
+          tercero_id: contratante_id,
+          sede_id: sedeParaCrear(req),
+          documento_origen_tipo: 'contratos',
+          documento_origen_id: contratoIdFinal,
+          usuario_id: req.user.id,
+        })
+      }
     }
 
     // ── Insertar servicio ─────────────────────────────────────────────────
@@ -595,6 +610,31 @@ export async function crear(req, reply) {
     )
 
     const servicioId = ins.rows[0].id
+    const sedeIdServicio = sedeParaCrear(req)
+
+    // Mejor esfuerzo: si el ítem del catálogo está enlazado a un producto y
+    // la sede tiene UNA sola bodega activa (caso típico), se descuenta solo.
+    // Si es ambigua (0 o 2+ bodegas) o no hay stock suficiente, el ítem se
+    // agrega igual como línea de cobro, pero sin tocar inventario — el
+    // operador lo ajusta luego a mano desde "Servicios incluidos", donde sí
+    // se exige elegir bodega explícitamente.
+    async function intentarConsumoAuto(catalogoId, cantidad, descripcion) {
+      if (!catalogoId) return {}
+      const sc = await db.query(`SELECT producto_id FROM servicios_catalogo WHERE id=$1`, [catalogoId])
+      const productoId = sc.rows[0]?.producto_id
+      if (!productoId) return {}
+      const bodegas = await db.query(`SELECT id FROM inv_bodegas WHERE sede_id=$1 AND activo=TRUE`, [sedeIdServicio])
+      if (bodegas.rows.length !== 1) return {}
+      try {
+        const consumo = await consumirInventarioItem(db, {
+          producto_id: productoId, bodega_id: bodegas.rows[0].id, cantidad,
+          servicio_id: servicioId, sede_id: sedeIdServicio, usuario_id: req.user.id, referencia: descripcion,
+        })
+        return { producto_id: productoId, bodega_id: bodegas.rows[0].id, costo_unitario: consumo.costoUnitario, movimiento_id: consumo.movimientoId, comprobante_id: consumo.comprobanteId }
+      } catch {
+        return {} // sin stock suficiente — se agrega solo como línea de cobro
+      }
+    }
 
     // ── Auto-cargar ítems del plan (si viene de póliza) ──────────────────
     if (poliza_id) {
@@ -604,17 +644,25 @@ export async function crear(req, reply) {
         // items_extras del body (adicionales que el operador agregó)
         const extras = req.body.items_extras || []
         for (const item of planItems) {
+          const inv = await intentarConsumoAuto(item.id, 1, item.nombre)
           await db.query(
-            `INSERT INTO items_servicio (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura)
-             VALUES ($1,$2,$3,1,$4,TRUE)`,
-            [servicioId, item.id, item.nombre, item.precio_base]
+            `INSERT INTO items_servicio
+               (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura,
+                producto_id, bodega_id, costo_unitario, movimiento_id, comprobante_id)
+             VALUES ($1,$2,$3,1,$4,TRUE,$5,$6,$7,$8,$9)`,
+            [servicioId, item.id, item.nombre, item.precio_base,
+             inv.producto_id || null, inv.bodega_id || null, inv.costo_unitario ?? null, inv.movimiento_id || null, inv.comprobante_id || null]
           )
         }
         for (const ex of extras) {
+          const inv = await intentarConsumoAuto(ex.catalogo_id, ex.cantidad || 1, ex.descripcion)
           await db.query(
-            `INSERT INTO items_servicio (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura)
-             VALUES ($1,$2,$3,$4,$5,FALSE)`,
-            [servicioId, ex.catalogo_id || null, ex.descripcion, ex.cantidad || 1, ex.precio_unit || 0]
+            `INSERT INTO items_servicio
+               (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura,
+                producto_id, bodega_id, costo_unitario, movimiento_id, comprobante_id)
+             VALUES ($1,$2,$3,$4,$5,FALSE,$6,$7,$8,$9,$10)`,
+            [servicioId, ex.catalogo_id || null, ex.descripcion, ex.cantidad || 1, ex.precio_unit || 0,
+             inv.producto_id || null, inv.bodega_id || null, inv.costo_unitario ?? null, inv.movimiento_id || null, inv.comprobante_id || null]
           )
         }
       }
@@ -627,10 +675,14 @@ export async function crear(req, reply) {
         [paquete_id]
       )
       for (const it of pkItems.rows) {
+        const inv = await intentarConsumoAuto(it.catalogo_id, 1, it.nombre)
         await db.query(
-          `INSERT INTO items_servicio (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura)
-           VALUES ($1,$2,$3,1,$4,TRUE)`,
-          [servicioId, it.catalogo_id || null, it.nombre, it.precio_unitario || 0]
+          `INSERT INTO items_servicio
+             (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura,
+              producto_id, bodega_id, costo_unitario, movimiento_id, comprobante_id)
+           VALUES ($1,$2,$3,1,$4,TRUE,$5,$6,$7,$8,$9)`,
+          [servicioId, it.catalogo_id || null, it.nombre, it.precio_unitario || 0,
+           inv.producto_id || null, inv.bodega_id || null, inv.costo_unitario ?? null, inv.movimiento_id || null, inv.comprobante_id || null]
         )
       }
     }
@@ -1344,18 +1396,22 @@ export async function ordenImpresion(req, reply) {
 
 export async function buscarCatalogo(req, reply) {
   const { q = '', limit = 10 } = req.query
+  const campos = `sc.id, sc.codigo, sc.nombre, sc.categoria, sc.precio_base, sc.producto_id,
+      p.nombre AS producto_nombre, COALESCE(SUM(st.cantidad), 0) AS stock_disponible`
+  const agrupar = `GROUP BY sc.id, p.nombre`
+  const join = `FROM servicios_catalogo sc
+    LEFT JOIN inv_productos p ON p.id = sc.producto_id
+    LEFT JOIN inv_stock st ON st.producto_id = sc.producto_id`
   if (!q) {
     const r = await pool.query(
-      `SELECT id, codigo, nombre, categoria, precio_base
-       FROM servicios_catalogo WHERE activo ORDER BY categoria, nombre`
+      `SELECT ${campos} ${join} WHERE sc.activo ${agrupar} ORDER BY sc.categoria, sc.nombre`
     )
     return reply.send({ data: r.rows })
   }
   const r = await pool.query(
-    `SELECT id, codigo, nombre, categoria, precio_base
-     FROM servicios_catalogo
-     WHERE activo AND (nombre ILIKE $1 OR codigo ILIKE $1 OR categoria ILIKE $1)
-     ORDER BY nombre LIMIT $2`,
+    `SELECT ${campos} ${join}
+     WHERE sc.activo AND (sc.nombre ILIKE $1 OR sc.codigo ILIKE $1 OR sc.categoria ILIKE $1)
+     ${agrupar} ORDER BY sc.nombre LIMIT $2`,
     [`%${q}%`, Number(limit)]
   )
   return reply.send({ data: r.rows })
@@ -1616,9 +1672,86 @@ async function sincronizarCoberturaConvenio(servicioId) {
   })
 }
 
+// ── Inventario ligado a ítems de servicio ───────────────────────────────────
+// Cuando el ítem viene de una entrada del catálogo enlazada a un producto
+// físico (servicios_catalogo.producto_id), agregarlo a un servicio descuenta
+// stock real y contabiliza el costo — igual filosofía que el POS: nunca se
+// promete mercancía que no existe en la bodega elegida.
+async function consumirInventarioItem(client, { producto_id, bodega_id, cantidad, servicio_id, sede_id, usuario_id, referencia }) {
+  if (!bodega_id) throw Object.assign(new Error('Este ítem está vinculado a inventario — selecciona la bodega de la que sale'), { httpCode: 400 })
+  const { costoUnitario, movimientoId } = await descargarStock(client, {
+    producto_id, bodega_id, cantidad, usuario_id, servicio_id,
+    referencia, motivo: 'Consumo en servicio funerario',
+  })
+  let comprobante = null
+  if (costoUnitario > 0) {
+    comprobante = await contabilizarEvento(client, {
+      evento_codigo: 'CONSUMO_ITEM_SERVICIO',
+      montos: { costo: costoUnitario * cantidad },
+      concepto: `Consumo de inventario — ${referencia}`,
+      sede_id, documento_origen_tipo: 'items_servicio', documento_origen_id: servicio_id,
+      usuario_id,
+    })
+  }
+  return { costoUnitario, movimientoId, comprobanteId: comprobante?.id || null }
+}
+
+// ── Barrido de inventario pendiente al ejecutar un servicio ────────────────
+// Genérico a propósito — lo llama la ejecución de póliza, y cualquier otro
+// disparador futuro (contrato completado, etc.) puede reutilizarlo tal
+// cual: recorre los ítems que YA están vinculados a un producto físico del
+// catálogo pero que, al crearse el servicio, no se pudieron descontar solos
+// (sede con 0 o 2+ bodegas activas, o sin stock en ese momento) y reintenta
+// el descuento ahora que el servicio realmente se está prestando. Si sigue
+// sin poder resolverse automáticamente, lo deja igual como línea de cobro
+// (no bloquea la ejecución) para que el operador lo complete a mano.
+export async function ejecutarInventarioPendiente(client, servicioId, usuarioId) {
+  const { rows: sf } = await client.query(`SELECT sede_id FROM servicios_funerarios WHERE id=$1`, [servicioId])
+  const sedeId = sf[0]?.sede_id
+  if (!sedeId) return { procesados: 0, pendientes: 0 }
+
+  const { rows: pendientes } = await client.query(`
+    SELECT i.id, i.descripcion, i.cantidad, sc.producto_id
+    FROM items_servicio i
+    JOIN servicios_catalogo sc ON sc.id = i.catalogo_id
+    WHERE i.servicio_id = $1 AND i.producto_id IS NULL AND sc.producto_id IS NOT NULL
+  `, [servicioId])
+
+  let procesados = 0
+  for (const item of pendientes) {
+    const bodegas = await client.query(`SELECT id FROM inv_bodegas WHERE sede_id=$1 AND activo=TRUE`, [sedeId])
+    if (bodegas.rows.length !== 1) continue // ambiguo — se deja para completar a mano
+
+    try {
+      const consumo = await consumirInventarioItem(client, {
+        producto_id: item.producto_id, bodega_id: bodegas.rows[0].id, cantidad: +item.cantidad,
+        servicio_id: servicioId, sede_id: sedeId, usuario_id: usuarioId, referencia: item.descripcion,
+      })
+      await client.query(
+        `UPDATE items_servicio SET producto_id=$1, bodega_id=$2, costo_unitario=$3, movimiento_id=$4, comprobante_id=$5 WHERE id=$6`,
+        [item.producto_id, bodegas.rows[0].id, consumo.costoUnitario, consumo.movimientoId, consumo.comprobanteId, item.id]
+      )
+      procesados++
+    } catch { /* sin stock suficiente — se deja pendiente, no bloquea la ejecución */ }
+  }
+  return { procesados, pendientes: pendientes.length - procesados }
+}
+
+async function revertirInventarioItem(client, item, { usuario_id, motivo }) {
+  if (!item.producto_id) return
+  await reintegrarStock(client, {
+    producto_id: item.producto_id, bodega_id: item.bodega_id, cantidad: item.cantidad,
+    costo_unitario: item.costo_unitario || 0, usuario_id, servicio_id: item.servicio_id,
+    referencia: `Reversión ítem servicio`, motivo,
+  })
+  if (item.comprobante_id) {
+    await reversarComprobante(client, item.comprobante_id, { motivo, usuario_id })
+  }
+}
+
 export async function agregarItem(req, reply) {
   const { id } = req.params
-  const { catalogo_id, descripcion, cantidad = 1, precio_unit, es_cobertura = false } = req.body
+  const { catalogo_id, descripcion, cantidad = 1, precio_unit, es_cobertura = false, bodega_id } = req.body
 
   // Si el servicio viene de un convenio con catálogo restringido, validar que el
   // ítem esté autorizado (si el convenio no tiene ítems configurados, no hay restricción)
@@ -1637,13 +1770,14 @@ export async function agregarItem(req, reply) {
     }
   }
 
-  // Si viene catalogo_id, tomar descripcion y precio del catálogo si no se especifican
-  let desc = descripcion, precio = precio_unit
-  if (catalogo_id && (!desc || precio == null)) {
-    const sc = await pool.query('SELECT nombre, precio_base FROM servicios_catalogo WHERE id=$1', [catalogo_id])
+  // Si viene catalogo_id, tomar descripcion, precio y producto vinculado del catálogo
+  let desc = descripcion, precio = precio_unit, producto_id = null
+  if (catalogo_id) {
+    const sc = await pool.query('SELECT nombre, precio_base, producto_id FROM servicios_catalogo WHERE id=$1', [catalogo_id])
     if (sc.rows.length) {
       desc  = desc  || sc.rows[0].nombre
       precio = precio != null ? precio : sc.rows[0].precio_base
+      producto_id = sc.rows[0].producto_id
     }
   }
   if (!desc) return reply.code(400).send({ error: 'Descripción es obligatoria' })
@@ -1652,49 +1786,126 @@ export async function agregarItem(req, reply) {
   const errorPresupuesto = await validarPresupuestoConvenio(id, +cantidad * +(precio || 0))
   if (errorPresupuesto) return reply.code(400).send({ error: errorPresupuesto })
 
-  const r = await pool.query(
-    `INSERT INTO items_servicio (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [id, catalogo_id || null, desc, cantidad, precio || 0, es_cobertura]
-  )
-  await audit(id, req.user?.id, 'items', `Agregó ítem: "${desc}"${es_cobertura ? ' (cobertura póliza)' : ''}`)
-  await sincronizarCoberturaConvenio(id)
-  return reply.code(201).send({ data: r.rows[0] })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    let costo_unitario = null, movimiento_id = null, comprobante_id = null
+
+    if (producto_id) {
+      const sfRes = await client.query(`SELECT sede_id FROM servicios_funerarios WHERE id=$1`, [id])
+      const consumo = await consumirInventarioItem(client, {
+        producto_id, bodega_id, cantidad: +cantidad, servicio_id: id,
+        sede_id: sfRes.rows[0]?.sede_id, usuario_id: req.user?.id, referencia: desc,
+      })
+      costo_unitario = consumo.costoUnitario
+      movimiento_id = consumo.movimientoId
+      comprobante_id = consumo.comprobanteId
+    }
+
+    const r = await client.query(
+      `INSERT INTO items_servicio
+         (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura,
+          producto_id, bodega_id, costo_unitario, movimiento_id, comprobante_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [id, catalogo_id || null, desc, cantidad, precio || 0, es_cobertura,
+       producto_id, producto_id ? bodega_id : null, costo_unitario, movimiento_id, comprobante_id]
+    )
+    await client.query('COMMIT')
+
+    await audit(id, req.user?.id, 'items', `Agregó ítem: "${desc}"${es_cobertura ? ' (cobertura póliza)' : ''}${producto_id ? ' — descontado de inventario' : ''}`)
+    await sincronizarCoberturaConvenio(id)
+    return reply.code(201).send({ data: r.rows[0] })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    return reply.code(e.httpCode || 500).send({ error: e.message })
+  } finally {
+    client.release()
+  }
 }
 
 export async function actualizarItem(req, reply) {
   const { id, itemId } = req.params
-  const { descripcion, cantidad, precio_unit } = req.body
+  const { descripcion, cantidad, precio_unit, bodega_id } = req.body
 
-  const actual = await pool.query(`SELECT cantidad, precio_unit FROM items_servicio WHERE id=$1 AND servicio_id=$2`, [itemId, id])
+  const actual = await pool.query(`SELECT * FROM items_servicio WHERE id=$1 AND servicio_id=$2`, [itemId, id])
   if (!actual.rows.length) return reply.code(404).send({ error: 'Ítem no encontrado' })
-  const nuevaCantidad = cantidad ?? actual.rows[0].cantidad
-  const nuevoPrecio = precio_unit ?? actual.rows[0].precio_unit
+  const item = actual.rows[0]
+  const nuevaCantidad = cantidad ?? item.cantidad
+  const nuevoPrecio = precio_unit ?? item.precio_unit
 
   const errorPresupuesto = await validarPresupuestoConvenio(id, +nuevaCantidad * +nuevoPrecio, itemId)
   if (errorPresupuesto) return reply.code(400).send({ error: errorPresupuesto })
 
-  const r = await pool.query(
-    `UPDATE items_servicio SET
-       descripcion = COALESCE($1, descripcion),
-       cantidad    = COALESCE($2, cantidad),
-       precio_unit = COALESCE($3, precio_unit)
-     WHERE id=$4 AND servicio_id=$5 RETURNING *`,
-    [descripcion || null, cantidad ?? null, precio_unit ?? null, itemId, id]
-  )
-  if (!r.rows.length) return reply.code(404).send({ error: 'Ítem no encontrado' })
-  await audit(id, req.user?.id, 'items', `Editó ítem: "${r.rows[0].descripcion}"`)
-  await sincronizarCoberturaConvenio(id)
-  return reply.send({ data: r.rows[0] })
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    let costo_unitario = item.costo_unitario, movimiento_id = item.movimiento_id, comprobante_id = item.comprobante_id
+    const cantidadCambio = cantidad != null && +cantidad !== +item.cantidad
+    const bodegaCambio = bodega_id && bodega_id !== item.bodega_id
+
+    // Si el ítem está vinculado a inventario y cambia la cantidad o la bodega,
+    // se revierte el consumo anterior y se vuelve a descontar con los datos
+    // nuevos — más simple y confiable que calcular un delta a mano.
+    if (item.producto_id && (cantidadCambio || bodegaCambio)) {
+      await revertirInventarioItem(client, item, { usuario_id: req.user?.id, motivo: 'Edición del ítem del servicio' })
+      const sfRes = await client.query(`SELECT sede_id FROM servicios_funerarios WHERE id=$1`, [id])
+      const consumo = await consumirInventarioItem(client, {
+        producto_id: item.producto_id, bodega_id: bodega_id || item.bodega_id, cantidad: +nuevaCantidad,
+        servicio_id: id, sede_id: sfRes.rows[0]?.sede_id, usuario_id: req.user?.id,
+        referencia: descripcion || item.descripcion,
+      })
+      costo_unitario = consumo.costoUnitario
+      movimiento_id = consumo.movimientoId
+      comprobante_id = consumo.comprobanteId
+    }
+
+    const r = await client.query(
+      `UPDATE items_servicio SET
+         descripcion = COALESCE($1, descripcion),
+         cantidad    = COALESCE($2, cantidad),
+         precio_unit = COALESCE($3, precio_unit),
+         bodega_id = COALESCE($4, bodega_id), costo_unitario = $5, movimiento_id = $6, comprobante_id = $7
+       WHERE id=$8 AND servicio_id=$9 RETURNING *`,
+      [descripcion || null, cantidad ?? null, precio_unit ?? null,
+       bodega_id || null, costo_unitario, movimiento_id, comprobante_id, itemId, id]
+    )
+    await client.query('COMMIT')
+
+    await audit(id, req.user?.id, 'items', `Editó ítem: "${r.rows[0].descripcion}"`)
+    await sincronizarCoberturaConvenio(id)
+    return reply.send({ data: r.rows[0] })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    return reply.code(e.httpCode || 500).send({ error: e.message })
+  } finally {
+    client.release()
+  }
 }
 
 export async function eliminarItem(req, reply) {
   const { id, itemId } = req.params
-  const r = await pool.query('SELECT descripcion FROM items_servicio WHERE id=$1', [itemId])
-  await pool.query('DELETE FROM items_servicio WHERE id=$1 AND servicio_id=$2', [itemId, id])
-  await audit(id, req.user?.id, 'items', `Eliminó ítem: "${r.rows[0]?.descripcion || itemId}"`)
-  await sincronizarCoberturaConvenio(id)
-  return reply.send({ ok: true })
+  const actual = await pool.query('SELECT * FROM items_servicio WHERE id=$1', [itemId])
+  if (!actual.rows.length) return reply.code(404).send({ error: 'Ítem no encontrado' })
+  const item = actual.rows[0]
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    if (item.producto_id) {
+      await revertirInventarioItem(client, item, { usuario_id: req.user?.id, motivo: 'Eliminación del ítem del servicio' })
+    }
+    await client.query('DELETE FROM items_servicio WHERE id=$1 AND servicio_id=$2', [itemId, id])
+    await client.query('COMMIT')
+
+    await audit(id, req.user?.id, 'items', `Eliminó ítem: "${item.descripcion}"${item.producto_id ? ' — se devolvió al inventario' : ''}`)
+    await sincronizarCoberturaConvenio(id)
+    return reply.send({ ok: true })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    return reply.code(e.httpCode || 500).send({ error: e.message })
+  } finally {
+    client.release()
+  }
 }
 
 // ── Personal asignado ────────────────────────────────────────────────────────

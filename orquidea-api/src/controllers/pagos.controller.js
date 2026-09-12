@@ -14,6 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolverSede, polizaPermitida, contratoPermitido } from '../utils/sede.js'
+import { contabilizarEvento, reversarComprobante } from '../services/contabilidad.service.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SOPORTES_DIR = path.join(__dirname, '..', 'uploads', 'soportes')
@@ -409,9 +410,25 @@ export async function registrarPagoPoliza(req, reply) {
       abonoParcial = { ...abonoIns.rows[0], mes: mesAbonoIso, falta: valorCuota - sobrante }
     }
 
+    const montoMeses = valorCuota * mesesCompletos
+    const totalRecibido = montoMeses + sobrante - Number(descuento) + Number(recargo_mora)
+
+    if (totalRecibido > 0 && primerRecibo) {
+      await contabilizarEvento(client, {
+        evento_codigo: 'PAGO_CUOTA_POLIZA',
+        montos: { total: totalRecibido },
+        forma_pago_codigo: metodo_pago,
+        concepto: `Pago póliza ${pol.numero} — ${mesesAPagar.length ? mesesAPagar.join(', ') : 'abono parcial'}`,
+        tercero_id: pol.titular_id,
+        sede_id: pol.sede_id,
+        documento_origen_tipo: 'pagos_poliza',
+        documento_origen_id: primerRecibo.id,
+        usuario_id,
+      })
+    }
+
     await client.query('COMMIT')
 
-    const montoMeses = valorCuota * mesesCompletos
     return reply.status(201).send({
       recibo: primerRecibo,
       numero_recibo: primerRecibo?.numero_recibo || null,
@@ -519,8 +536,8 @@ export async function registrarPagoContrato(req, reply) {
       UPDATE contratos SET
         pago_hasta    = $1,
         valor_pagado  = $2,
-        meses_mora    = $3,
-        saldo_mora    = $3 * valor_cuota,
+        meses_mora    = $3::INT,
+        saldo_mora    = $3::INT * valor_cuota,
         actualizado   = NOW()
       WHERE id = $4
     `, [
@@ -529,6 +546,21 @@ export async function registrarPagoContrato(req, reply) {
       nuevaMora,
       contrato_id,
     ])
+
+    const totalRecibidoContrato = monto - Number(descuento) + Number(recargo_mora)
+    if (totalRecibidoContrato > 0 && primerRecibo) {
+      await contabilizarEvento(client, {
+        evento_codigo: 'CONTRATO_PAGO_CUOTA',
+        montos: { total: totalRecibidoContrato },
+        forma_pago_codigo: metodo_pago,
+        concepto: `Abono contrato ${cont.numero} — ${mesesAPagar.join(', ')}`,
+        tercero_id: cont.contratante_id,
+        sede_id: cont.sede_id,
+        documento_origen_tipo: 'pagos_contrato',
+        documento_origen_id: primerRecibo.id,
+        usuario_id,
+      })
+    }
 
     await client.query('COMMIT')
 
@@ -576,14 +608,28 @@ export async function anularPagoPoliza(req, reply) {
       UPDATE pagos_poliza SET anulado=TRUE, fecha_anulacion=CURRENT_DATE, motivo_anulacion=$1
       WHERE id = $2`, [motivo, id])
 
-    // Revertir pago_hasta a la póliza (restar los meses)
+    const comprobante = await client.query(
+      `SELECT id FROM comprobantes_contables
+       WHERE documento_origen_tipo='pagos_poliza' AND documento_origen_id=$1 AND estado != 'ANULADO'`,
+      [id]
+    )
+    if (comprobante.rows.length) {
+      await reversarComprobante(client, comprobante.rows[0].id, { motivo: motivo || 'Anulación de pago', usuario_id: req.user.id })
+    }
+
+    // Revertir pago_hasta al día anterior al mes de la cuota anulada (nunca lo
+    // adelanta, solo lo regresa) y recalcula el estado real con fn_estado_poliza
+    // — antes esto dejaba el estado intacto, así que una póliza podía quedar
+    // "VIGENTE" con meses_mora > 0 después de anular un pago.
+    const nuevaMora = pg.meses_mora + 1
     await client.query(`
       UPDATE polizas SET
-        pago_hasta  = COALESCE(pago_hasta, fecha_inicio) - INTERVAL '1 month',
-        meses_mora  = meses_mora + 1,
-        saldo_mora  = (meses_mora + 1) * valor_cuota,
+        pago_hasta  = LEAST(COALESCE(pago_hasta, fecha_inicio), ($2::date - INTERVAL '1 day')::date),
+        meses_mora  = $3::int,
+        saldo_mora  = $3::int * valor_cuota,
+        estado      = CASE WHEN estado IN ('CANCELADA','EJECUTADA') THEN estado ELSE fn_estado_poliza($3::int) END,
         actualizado = NOW()
-      WHERE id = $1`, [pg.poliza_id])
+      WHERE id = $1`, [pg.poliza_id, pg.mes_correspondiente, nuevaMora])
 
     await client.query('COMMIT')
     return reply.send({ ok: true })

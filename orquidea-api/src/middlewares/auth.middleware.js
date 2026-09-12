@@ -20,9 +20,17 @@
  * Middleware de autenticación JWT para Fastify
  * Uso: fastify.addHook('preHandler', verifyToken)
  */
+import { marcarActividad } from '../services/presencia.service.js'
+
 export async function verifyToken(request, reply) {
   try {
     await request.jwtVerify()
+    // Marca de presencia "en línea" — barata (solo memoria), se aprovecha
+    // cada petición autenticada en vez de escribir a la base de datos.
+    marcarActividad(request.user, {
+      ip: request.ip,
+      navegador: request.headers['user-agent'] || null,
+    })
   } catch (err) {
     reply.status(401).send({ error: 'Token inválido o expirado' })
   }

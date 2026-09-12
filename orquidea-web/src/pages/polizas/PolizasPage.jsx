@@ -21,7 +21,7 @@ import {
   ChevronLeft, ChevronRight, User, Phone, Mail, Calendar,
   AlertTriangle, CheckCircle2, Clock, Ban, Edit2, Eye,
   CreditCard, Heart, PlusCircle, Trash2, Star, ArrowLeftRight,
-  DollarSign, Users, AlertCircle, Settings, FileText, MessageCircle, Send,
+  DollarSign, Users, AlertCircle, Settings, FileText, MessageCircle, Send, Printer,
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -30,6 +30,7 @@ import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import { imprimirConsentimientoBeneficiario } from '../../utils/consentimientoBeneficiario.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ const TIPO_COLOR = {
 }
 
 
-const PARENTESCOS = ['titular','cónyuge','hijo','hija','padre','madre','hermano','hermana','abuelo','abuela','otro']
+const PARENTESCOS = ['titular','cónyuge','hijo','hija','padre','madre','suegro','suegra','hermano','hermana','abuelo','abuela','tio','tia','sobrino','sobrina','otro']
 
 // ── CSS ─────────────────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ const CSS = `
   .pl-btn-primary:hover { transform:translateY(-1px); box-shadow:0 5px 16px rgba(5,150,105,.4); }
   .pl-btn-ghost { background:#F4F5FA; color:#374151; border:1.5px solid #E2E5F0; }
   .pl-btn-ghost:hover { background:#ECEDF8; }
-  .pl-table-wrap { flex:1; overflow:auto; padding:0 24px; }
+  .pl-table-wrap { flex:1; min-height:0; overflow:auto; padding:0 24px; }
   .pl-table { width:100%; border-collapse:separate; border-spacing:0; }
   .pl-table thead th { padding:10px 14px; text-align:left; font-size:10.5px; font-weight:800;
     color:#9CA3AF; letter-spacing:.6px; text-transform:uppercase; background:#F7F8FC;
@@ -166,7 +167,7 @@ const CSS = `
   .pl-drawer-stab.active { background:linear-gradient(135deg,#059669,#047857); color:#fff;
     font-weight:800; box-shadow:0 3px 10px rgba(5,150,105,.25); }
   .pl-drawer-stab .stab-icon { font-size:16px; line-height:1; flex-shrink:0; }
-  .pl-drawer-content { flex:1; overflow-y:auto; padding:28px 32px; }
+  .pl-drawer-content { flex:1; min-height:0; overflow-y:auto; padding:28px 32px; }
   /* Cards dentro del drawer */
   .pld-card { background:#fff; border:1.5px solid #E5F7EE; border-radius:14px; margin-bottom:16px; overflow:hidden; }
   .pld-card-head { display:flex; align-items:center; gap:9px; padding:12px 16px;
@@ -188,7 +189,7 @@ const CSS = `
     background:#F7F8FC; display:flex; align-items:center; justify-content:center;
     cursor:pointer; color:#6B7280; flex-shrink:0; transition:all .15s; }
   .pl-mclose:hover { background:#FEE2E2; border-color:#FECACA; color:#EF4444; }
-  .pl-mbody { padding:22px 24px; overflow-y:auto; flex:1; }
+  .pl-mbody { padding:22px 24px; overflow-y:auto; flex:1; min-height:0; }
   .pl-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .pl-grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
   .pl-field { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
@@ -260,9 +261,10 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
     dia_cobro:    poliza.dia_cobro    || 1,
     fecha_inicio: poliza.fecha_inicio?.split('T')[0] || new Date().toISOString().split('T')[0],
     observaciones:poliza.observaciones || '',
+    numero_legado: poliza.numero_legado || '',
   } : {
     plan_id:'', valor_cuota:'', dia_cobro:1,
-    fecha_inicio: new Date().toISOString().split('T')[0], observaciones:'',
+    fecha_inicio: new Date().toISOString().split('T')[0], observaciones:'', numero_legado:'',
   })
 
   const [busqTit, setBusqTit]       = useState(poliza?.titular_nombre || '')
@@ -456,6 +458,11 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
 
           <div className="pl-grid3">
             <div className="pl-field" style={{ marginBottom:0 }}>
+              <label>Número de póliza <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opcional)</span></label>
+              <input value={form.numero_legado} placeholder="Ej: 2244"
+                onChange={e => setForm(p => ({...p, numero_legado:e.target.value}))}/>
+            </div>
+            <div className="pl-field" style={{ marginBottom:0 }}>
               <label>Cuota mensual <span className="pl-req">*</span></label>
               <CurrencyInput value={form.valor_cuota}
                 onChange={v => setForm(p => ({...p, valor_cuota:v}))} placeholder="0"/>
@@ -470,6 +477,9 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
               <input type="date" value={form.fecha_inicio}
                 onChange={e => setForm(p => ({...p, fecha_inicio:e.target.value}))}/>
             </div>
+          </div>
+          <div style={{ fontSize:11, color:'#9CA3AF', marginTop:6, marginBottom:14 }}>
+            El número de póliza es el que maneja la funeraria (ej. el de un contrato heredado). Si se deja vacío, se usa el número interno que genera el sistema automáticamente.
           </div>
 
           {/* Beneficiarios (solo en creación) */}
@@ -1214,6 +1224,10 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   const [savingTransf, setSavingTransf] = useState(false)
   const [historialTransf, setHistorialTransf] = useState([])
   const [cobrandoAfiliacion, setCobrandoAfiliacion] = useState(false)
+  const [empresaInfo, setEmpresaInfo] = useState({})
+  const [showImportPagos, setShowImportPagos] = useState(false)
+  const [pagosPage, setPagosPage] = useState(1)
+  const PAGOS_POR_PAGINA = 10
   const { usuario } = useAuthStore()
   const { label: fmtMetodo } = useFormasPago()
   const esEditor = ['superadmin','administrador','operador','asesor_comercial'].includes(usuario?.rol)
@@ -1226,6 +1240,16 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   }, [id])
 
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => { api.get('/empresa').then(r => setEmpresaInfo(r.data.data || {})).catch(() => {}) }, [])
+
+  const imprimirConsentimiento = (b) => {
+    imprimirConsentimientoBeneficiario({
+      poliza: { numero: data.numero, plan_nombre: data.plan_nombre },
+      titular: { nombre: data.titular_nombre, numero_documento: data.titular_doc },
+      beneficiario: { nombre: b.nombre, documento: b.documento, parentesco: b.parentesco, edad: b.edad },
+      empresa: empresaInfo,
+    })
+  }
 
   const [generandoContrato, setGenerandoContrato] = useState(false)
   const [showMensaje, setShowMensaje] = useState(false)
@@ -1268,8 +1292,12 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
 
   const agregarBen = async (t) => {
     try {
-      await api.post(`/polizas/${id}/beneficiarios`, { tercero_id:t.id, parentesco:parBen })
-      toast.success('Beneficiario agregado con éxito')
+      const r = await api.post(`/polizas/${id}/beneficiarios`, { tercero_id:t.id, parentesco:parBen })
+      if (r.data.cobertura_basica) {
+        toast.success(`Beneficiario agregado — por tener ${r.data.edad} años queda con cobertura de servicio funerario básico. Imprime el consentimiento para que el titular lo firme.`)
+      } else {
+        toast.success('Beneficiario agregado con éxito')
+      }
       setBusqBen(''); setCandBen([]); setShowBen(false); cargar()
     } catch (e) {
       toast.error(e.response?.data?.error || 'Error')
@@ -1361,7 +1389,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
           </div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>
-              Póliza #{loading ? '…' : data?.numero}
+              Póliza {loading ? '…' : (data?.numero_legado || `#${data?.numero}`)}
             </div>
             <div style={{ fontSize:20, fontWeight:900, color:'#fff', lineHeight:1.2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
               {loading ? 'Cargando…' : data?.titular_nombre}
@@ -1509,6 +1537,10 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                         </span>
                       </div>
                     </div>
+                    <div className="pld-grid2" style={{ marginTop:10 }}>
+                      <PldField label="Número de póliza" value={data.numero_legado || `#${data.numero} (interno)`}/>
+                      {data.numero_legado && <PldField label="N.° interno del sistema" value={`#${data.numero}`}/>}
+                    </div>
                   </PldCard>
                 </div>
 
@@ -1625,9 +1657,23 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                           <span style={{ background:'#CFFAFE', color:'#0891B2', padding:'2px 7px',
                             borderRadius:6, fontSize:10, fontWeight:700 }}>{b.parentesco}</span>
                           <span>{b.tipo_doc_sigla} {b.documento}</span>
+                          {b.cobertura_basica && (
+                            <span style={{ background:'#FFFBEB', color:'#B45309', padding:'2px 7px',
+                              borderRadius:6, fontSize:10, fontWeight:700 }} title={`${b.edad} años — supera el límite de edad, cubierto solo con servicio funerario básico`}>
+                              ⚠️ Cobertura básica ({b.edad} años){b.consentimiento_firmado ? ' · firmado' : ' · sin firmar'}
+                            </span>
+                          )}
                           {b.ejecutado && <span style={{ color:'#EF4444', fontWeight:700 }}>✓ Ejecutado {fmtDate(b.fecha_ejecucion)}</span>}
                         </div>
                       </div>
+                      {b.cobertura_basica && (
+                        <button onClick={() => imprimirConsentimiento(b)} title="Imprimir consentimiento para firma del titular"
+                          style={{ width:30, height:30, borderRadius:8, border:'1.5px solid #FDE68A',
+                            background:'#FFFBEB', display:'flex', alignItems:'center',
+                            justifyContent:'center', cursor:'pointer', color:'#B45309' }}>
+                          <Printer size={13}/>
+                        </button>
+                      )}
                       {!b.ejecutado && esEditor && (
                         <button onClick={() => quitarBen(b.id)}
                           style={{ width:30, height:30, borderRadius:8, border:'1.5px solid #FECACA',
@@ -1674,7 +1720,14 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                     )}
                   </div>
                 )}
-              <PldCard icon="💳" title="Historial de pagos">
+              <PldCard icon="💳" title="Historial de pagos" headerRight={esAdmin && (
+                <button onClick={() => setShowImportPagos(true)}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
+                    background:'#EEF2FF', border:'1.5px solid #C7D2FE', borderRadius:9,
+                    color:'#4338CA', fontSize:11.5, fontWeight:700, cursor:'pointer' }}>
+                  <FileText size={13}/> Importar pagos históricos
+                </button>
+              )}>
                 {(data.pagos||[]).length === 0 ? (
                   <div className="pl-empty" style={{ padding:40 }}>
                     <CreditCard size={28}/>
@@ -1682,7 +1735,9 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                     <span>Use "Pagar cuota" para registrar el primer pago</span>
                   </div>
                 ) : (
-                  (data.pagos||[]).map(p => (
+                  (data.pagos||[])
+                    .slice((pagosPage-1)*PAGOS_POR_PAGINA, pagosPage*PAGOS_POR_PAGINA)
+                    .map(p => (
                     <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px',
                       background: p.anulado ? '#F8FAFC' : '#F0FDF4',
                       border:`1.5px solid ${p.anulado ? '#E2E8F0' : '#A7F3D0'}`,
@@ -1706,7 +1761,9 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                         </div>
                         <div style={{ fontSize:11.5, color:'#6B7280', marginTop:3, display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
                           <span style={{ background:'#EEF2FF', color:'#4F46E5', fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6 }}>
-                            {mesLabel(p.mes_correspondiente)}
+                            {p.periodo_hasta && (new Date(p.periodo_hasta) - new Date(p.mes_correspondiente)) > 45*86400000
+                              ? `${fmtDate(p.mes_correspondiente)} → ${fmtDate(p.periodo_hasta)}`
+                              : mesLabel(p.mes_correspondiente)}
                           </span>
                           <span>{fmtMetodo(p.metodo_pago)}</span>
                           <span>·</span>
@@ -1725,6 +1782,23 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                       )}
                     </div>
                   ))
+                )}
+                {(data.pagos||[]).length > PAGOS_POR_PAGINA && (
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10 }}>
+                    <span style={{ fontSize:11.5, color:'#6B7280' }}>
+                      {data.pagos.length} pagos · página {pagosPage} de {Math.ceil(data.pagos.length/PAGOS_POR_PAGINA)}
+                    </span>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button className="pl-pag-btn" disabled={pagosPage<=1}
+                        onClick={() => setPagosPage(p => p-1)}>
+                        <ChevronLeft size={14}/>
+                      </button>
+                      <button className="pl-pag-btn" disabled={pagosPage>=Math.ceil(data.pagos.length/PAGOS_POR_PAGINA)}
+                        onClick={() => setPagosPage(p => p+1)}>
+                        <ChevronRight size={14}/>
+                      </button>
+                    </div>
+                  </div>
                 )}
               </PldCard>
               </>
@@ -1867,7 +1941,166 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
         </div>
       </div>
     )}
+    {showImportPagos && (
+      <ModalImportarPagos polizaId={id} onClose={() => setShowImportPagos(false)}
+        onImportado={() => { setShowImportPagos(false); cargar() }}/>
+    )}
     </>
+  )
+}
+
+// ── Importar pagos históricos desde CSV (migración del sistema viejo) ─────
+// Lee un CSV exportado del sistema anterior (o de Excel "Guardar como CSV")
+// y arma la vista previa antes de enviar nada al servidor — el usuario ve
+// exactamente qué se va a cargar y puede corregir el archivo si algo no
+// cuadra, en vez de descubrir un error después de los 100 registros.
+const ENCABEZADOS_PAGO = {
+  mes: 'mes_correspondiente', mes_correspondiente: 'mes_correspondiente', 'mes correspondiente': 'mes_correspondiente',
+  monto: 'monto', valor: 'monto',
+  fecha: 'fecha_pago', fecha_pago: 'fecha_pago', 'fecha pago': 'fecha_pago',
+  metodo_pago: 'metodo_pago', 'metodo de pago': 'metodo_pago', forma_pago: 'metodo_pago',
+  referencia: 'referencia', recibo: 'referencia',
+}
+
+function parsearCSVPagos(texto) {
+  const lineas = texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  if (lineas.length < 2) return { filas: [], error: 'El archivo debe tener una fila de encabezado y al menos una fila de datos.' }
+
+  const sep = lineas[0].includes(';') ? ';' : ','
+  const encabezados = lineas[0].split(sep).map(h => ENCABEZADOS_PAGO[h.trim().toLowerCase()] || null)
+  if (!encabezados.includes('mes_correspondiente') || !encabezados.includes('monto')) {
+    return { filas: [], error: 'El archivo debe tener al menos las columnas "mes_correspondiente" (o "mes") y "monto".' }
+  }
+
+  const filas = lineas.slice(1).map(linea => {
+    const valores = linea.split(sep).map(v => v.trim().replace(/^"|"$/g, ''))
+    const fila = {}
+    encabezados.forEach((campo, i) => { if (campo) fila[campo] = valores[i] })
+    if (fila.monto) fila.monto = fila.monto.replace(/[^\d.,-]/g, '').replace(',', '.')
+    return fila
+  })
+  return { filas, error: null }
+}
+
+function ModalImportarPagos({ polizaId, onClose, onImportado }) {
+  const [filas, setFilas] = useState([])
+  const [errParseo, setErrParseo] = useState('')
+  const [errServidor, setErrServidor] = useState(null)
+  const [importando, setImportando] = useState(false)
+  const fileRef = useRef(null)
+
+  const onFile = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setErrServidor(null)
+    const reader = new FileReader()
+    reader.onload = () => {
+      const { filas: parsed, error } = parsearCSVPagos(String(reader.result))
+      setErrParseo(error || '')
+      setFilas(error ? [] : parsed)
+    }
+    reader.readAsText(f)
+  }
+
+  const descargarPlantilla = () => {
+    const csv = 'mes_correspondiente,monto,fecha_pago,metodo_pago,referencia\n2017-11-06,20000,2017-11-06,efectivo,\n2017-12-06,20000,2017-12-10,efectivo,REC-0002\n'
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'plantilla_pagos_poliza.csv'
+    document.body.appendChild(a); a.click(); a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const importar = async () => {
+    if (!filas.length) return
+    setImportando(true); setErrServidor(null)
+    try {
+      const r = await api.post(`/polizas/${polizaId}/pagos/importar`, { pagos: filas })
+      toast.success(`${r.data.total} pago(s) importado(s) y contabilizado(s) con éxito`)
+      onImportado()
+    } catch (e) {
+      setErrServidor(e.response?.data)
+      toast.error(e.response?.data?.error || 'Error al importar los pagos')
+    } finally { setImportando(false) }
+  }
+
+  return (
+    <div className="pl-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="pl-modal" style={{ maxWidth: 620 }}>
+        <div className="pl-mhead">
+          <div>
+            <div className="pl-mtitle">Importar pagos históricos</div>
+            <div className="pl-msub">Desde un archivo CSV exportado del sistema anterior (o de Excel)</div>
+          </div>
+          <button className="pl-mclose" onClick={onClose}><X size={16}/></button>
+        </div>
+        <div className="pl-mbody">
+          <div style={{ background:'#F8F9FF', border:'1.5px solid #ECEDF8', borderRadius:10, padding:'12px 14px', marginBottom:14, fontSize:12, color:'#6B7280' }}>
+            Columnas esperadas: <strong>mes_correspondiente</strong> (AAAA-MM-DD), <strong>monto</strong>, y opcionalmente
+            fecha_pago, metodo_pago y referencia. Cada fila se contabiliza igual que un pago manual — nada queda invisible en Contabilidad.
+            {' '}<button onClick={descargarPlantilla} style={{ background:'none', border:'none', color:'#4338CA', fontWeight:700, cursor:'pointer', padding:0 }}>Descargar plantilla</button>
+          </div>
+
+          <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display:'none' }} onChange={onFile}/>
+          <button onClick={() => fileRef.current?.click()}
+            style={{ width:'100%', padding:'16px', border:'2px dashed #C7D2FE', borderRadius:12,
+              background:'#EEF2FF', color:'#4338CA', fontWeight:700, fontSize:13, cursor:'pointer', marginBottom:14 }}>
+            📄 Elegir archivo CSV…
+          </button>
+
+          {errParseo && <div className="pl-alert err" style={{ marginBottom:14 }}><AlertTriangle size={13}/>{errParseo}</div>}
+
+          {errServidor && (
+            <div className="pl-alert err" style={{ marginBottom:14 }}>
+              <AlertTriangle size={13}/>{errServidor.error}
+              {errServidor.detalle && (
+                <ul style={{ margin:'6px 0 0 18px', fontSize:11.5 }}>
+                  {errServidor.detalle.slice(0, 10).map((d, i) => <li key={i}>{d}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {filas.length > 0 && (
+            <>
+              <div style={{ fontSize:12.5, fontWeight:700, color:'#374151', marginBottom:8 }}>
+                Vista previa — {filas.length} fila(s)
+              </div>
+              <div style={{ maxHeight:260, overflowY:'auto', border:'1.5px solid #E2E5F0', borderRadius:10, marginBottom:16 }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ background:'#F8F9FF', textAlign:'left' }}>
+                      <th style={{ padding:'8px 10px' }}>Mes</th><th style={{ padding:'8px 10px' }}>Monto</th>
+                      <th style={{ padding:'8px 10px' }}>Fecha pago</th><th style={{ padding:'8px 10px' }}>Método</th><th style={{ padding:'8px 10px' }}>Referencia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filas.map((f, i) => (
+                      <tr key={i} style={{ borderTop:'1px solid #F3F4F6' }}>
+                        <td style={{ padding:'6px 10px' }}>{f.mes_correspondiente}</td>
+                        <td style={{ padding:'6px 10px' }}>{fmt(f.monto)}</td>
+                        <td style={{ padding:'6px 10px' }}>{f.fecha_pago || f.mes_correspondiente}</td>
+                        <td style={{ padding:'6px 10px' }}>{f.metodo_pago || 'efectivo'}</td>
+                        <td style={{ padding:'6px 10px' }}>{f.referencia || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <div style={{ display:'flex', gap:10 }}>
+            <button className="pl-btn pl-btn-ghost" style={{ flex:1 }} onClick={onClose}>Cancelar</button>
+            <button className="pl-btn pl-btn-primary" style={{ flex:1 }} onClick={importar} disabled={!filas.length || importando}>
+              {importando ? <Loader2 size={14} className="pl-spin"/> : <FileText size={14}/>}
+              Importar {filas.length || ''} pago(s)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -2002,7 +2235,7 @@ export default function PolizasPage() {
             <div className="pl-search">
               <Search size={14} className="pl-search-icon"/>
               <input value={q} onChange={e => setQ(e.target.value)}
-                placeholder="Buscar por número, titular, documento, teléfono…"/>
+                placeholder="Buscar por número, N.° sistema anterior, titular, documento, teléfono…"/>
             </div>
             <select className="pl-select" value={estado} onChange={e => setEstado(e.target.value)}>
               <option value="">Todos los estados</option>
@@ -2035,13 +2268,12 @@ export default function PolizasPage() {
             <table className="pl-table">
               <thead>
                 <tr>
-                  <th>#</th>
+                  <th>N.° póliza</th>
                   <th>Titular</th>
                   <th>Plan</th>
                   <th>Beneficiarios</th>
                   <th>Cuota</th>
                   <th>Día cobro</th>
-                  <th>Carencia</th>
                   <th>Último pago</th>
                   <th>Estado</th>
                   <th></th>
@@ -2050,7 +2282,12 @@ export default function PolizasPage() {
               <tbody>
                 {rows.map(p => (
                   <tr key={p.id} onClick={() => { setSelected(p); setModal('ficha') }}>
-                    <td><span style={{ fontWeight:900, color:'#0F1035' }}>#{p.numero}</span></td>
+                    <td>
+                      <div style={{ fontWeight:900, color:'#0F1035' }}>{p.numero_legado || `#${p.numero}`}</div>
+                      {p.numero_legado && (
+                        <div style={{ fontSize:10.5, color:'#9CA3AF' }}>Interno #{p.numero}</div>
+                      )}
+                    </td>
                     <td>
                       <div style={{ fontSize:13, fontWeight:800, color:'#0F1035' }}>{p.titular_nombre}</div>
                       <div style={{ fontSize:11, color:'#9CA3AF' }}>
@@ -2072,9 +2309,6 @@ export default function PolizasPage() {
                     </td>
                     <td><span style={{ fontWeight:800, color:'#059669' }}>{fmt(p.valor_cuota)}</span></td>
                     <td style={{ fontSize:12.5, color:'#374151' }}>Día {p.dia_cobro}</td>
-                    <td style={{ fontSize:12, color: new Date() < new Date(p.fecha_fin_carencia) ? '#F59E0B' : '#9CA3AF' }}>
-                      {new Date() < new Date(p.fecha_fin_carencia) ? '⏳ ' : ''}{fmtDate(p.fecha_fin_carencia)}
-                    </td>
                     <td style={{ fontSize:12, color: p.meses_mora > 0 ? '#EF4444' : '#374151', fontWeight: p.meses_mora > 0 ? 700 : 400 }}>
                       {fmtDate(p.ultimo_pago)}
                       {p.meses_mora > 0 && ` (${p.meses_mora}m)`}

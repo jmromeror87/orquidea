@@ -13,6 +13,8 @@ import { generarComision } from '../utils/comisiones.js'
 import { resolverSede, sedeParaCrear } from '../utils/sede.js'
 import { enviarWhatsApp } from '../utils/whatsapp.js'
 import { enviarSMS } from '../utils/sms.js'
+import { contabilizarEvento } from '../services/contabilidad.service.js'
+import { ejecutarInventarioPendiente } from './servicios.controller.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -26,7 +28,7 @@ const JOINS = `
 
 const SELECT_LIST = `
   SELECT
-    p.id, p.numero, p.estado, p.valor_cuota, p.dia_cobro,
+    p.id, p.numero, p.numero_legado, p.estado, p.valor_cuota, p.dia_cobro,
     p.meses_mora, p.ultimo_pago, p.fecha_inicio, p.fecha_fin_carencia,
     p.fecha_cancelacion, p.motivo_cancelacion, p.observaciones, p.creado_en,
     p.pago_hasta,
@@ -64,7 +66,7 @@ export async function buscar(req, reply) {
 
   const res = await pool.query(`
     SELECT
-      p.id, p.numero, p.estado, p.valor_cuota, p.meses_mora,
+      p.id, p.numero, p.numero_legado, p.estado, p.valor_cuota, p.meses_mora,
       p.fecha_fin_carencia, p.pago_hasta,
       t.id AS titular_id,
       COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS titular_nombre,
@@ -80,6 +82,7 @@ export async function buscar(req, reply) {
       COALESCE(t.nombres||' '||t.apellidos,'') ILIKE $1
       OR t.numero_documento ILIKE $1
       OR CAST(p.numero AS TEXT) ILIKE $1
+      OR p.numero_legado ILIKE $1
     )
     ORDER BY p.estado = 'VIGENTE' DESC, p.creado_en DESC
     LIMIT 10`, [`%${q}%`]
@@ -143,6 +146,7 @@ export async function listar(req, reply) {
   if (q) {
     conds.push(`(
       CAST(p.numero AS TEXT) ILIKE $${i}
+      OR p.numero_legado ILIKE $${i}
       OR COALESCE(t.nombres||' '||t.apellidos,'') ILIKE $${i}
       OR t.numero_documento ILIKE $${i}
       OR t.telefono ILIKE $${i}
@@ -181,7 +185,8 @@ export async function obtener(req, reply) {
         COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre,
         t.numero_documento AS documento, t.telefono,
         td.sigla AS tipo_doc_sigla,
-        t.fecha_nacimiento, t.rh
+        t.fecha_nacimiento, t.rh,
+        DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad
       FROM poliza_beneficiarios pb
       JOIN terceros t ON t.id = pb.tercero_id
       LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
@@ -289,7 +294,7 @@ export async function contratoImpresion(req, reply) {
 export async function crear(req, reply) {
   const {
     titular_id, plan_id, valor_cuota, dia_cobro = 1,
-    fecha_inicio, observaciones, beneficiarios = [],
+    fecha_inicio, observaciones, beneficiarios = [], numero_legado,
   } = req.body
 
   if (!titular_id) return reply.code(400).send({ error: 'titular_id es obligatorio' })
@@ -327,14 +332,14 @@ export async function crear(req, reply) {
       INSERT INTO polizas (
         titular_id, plan_id, valor_cuota, dia_cobro,
         fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion,
-        servicios_incluidos
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+        servicios_incluidos, numero_legado
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)
       RETURNING id, numero, costo_afiliacion, fecha_fin_carencia`,
       [
         titular_id, plan_id, valor_cuota, dia_cobro,
         fecha_inicio || new Date().toISOString().split('T')[0],
         observaciones || null, req.user.id, sedeParaCrear(req), costoAfiliacion,
-        JSON.stringify(serviciosPlanRes.rows),
+        JSON.stringify(serviciosPlanRes.rows), numero_legado || null,
       ]
     )
 
@@ -424,7 +429,7 @@ export async function cobrarAfiliacion(req, reply) {
 
 export async function actualizar(req, reply) {
   const { id } = req.params
-  const { plan_id, valor_cuota, dia_cobro, observaciones } = req.body
+  const { plan_id, valor_cuota, dia_cobro, observaciones, numero_legado } = req.body
 
   const actual = await pool.query(
     `SELECT plan_id, fecha_fin_carencia FROM polizas WHERE id=$1 AND estado NOT IN ('CANCELADA','EJECUTADA')`, [id]
@@ -479,6 +484,7 @@ export async function actualizar(req, reply) {
       valor_excedente         = COALESCE($15, valor_excedente),
       coberturas_extra        = COALESCE($16::jsonb, coberturas_extra),
       servicios_incluidos     = COALESCE($17::jsonb, servicios_incluidos),
+      numero_legado           = COALESCE($18, numero_legado),
       fecha_fin_carencia      = ${nuevaCarencia || 'fecha_fin_carencia'},
       actualizado             = NOW()
     WHERE id = $5 AND estado NOT IN ('CANCELADA','EJECUTADA')
@@ -497,6 +503,7 @@ export async function actualizar(req, reply) {
       camposPlan?.valor_excedente ?? null,
       camposPlan ? JSON.stringify(camposPlan.coberturas_extra || []) : null,
       camposPlan ? JSON.stringify(camposPlan.servicios_incluidos || []) : null,
+      numero_legado || null,
     ]
   )
   if (!res.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada o no editable' })
@@ -696,6 +703,73 @@ export async function historialCancelaciones(req, reply) {
 
 // ── Registrar pago de cuota ───────────────────────────────────────────────
 
+// Núcleo compartido por el pago individual (UI "Pagar cuota") y la carga
+// masiva de pagos históricos — antes SOLO insertaba en pagos_poliza y
+// nunca contabilizaba (bug real: el dinero quedaba registrado en Cartera
+// pero invisible en Contabilidad). Ahora ambos caminos pasan por aquí y
+// ambos generan su comprobante PAGO_CUOTA_POLIZA, igual que ya hacía el
+// módulo de Recaudo (pagos.controller.js) para sus propios pagos.
+async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id }) {
+  const fechaPagoDate = fecha_pago || new Date().toISOString().split('T')[0]
+
+  const pagoRes = await client.query(`
+    INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    ON CONFLICT (poliza_id, mes_correspondiente) DO UPDATE SET
+      monto = EXCLUDED.monto, metodo_pago = EXCLUDED.metodo_pago,
+      referencia = EXCLUDED.referencia, fecha_pago = EXCLUDED.fecha_pago
+    RETURNING id, numero_recibo`,
+    [poliza.id, mes_correspondiente, monto, metodo_pago, referencia || null, fechaPagoDate, usuario_id]
+  )
+
+  // Releído con FOR UPDATE porque en la carga masiva esta función se llama
+  // muchas veces seguidas en la misma transacción: cada pago debe ver el
+  // resultado del pago anterior del lote, no el valor de la póliza al
+  // arrancar el lote completo.
+  const actual = await client.query(
+    `SELECT pago_hasta, fecha_inicio, meses_mora FROM polizas WHERE id=$1 FOR UPDATE`, [poliza.id]
+  )
+  const pol = actual.rows[0]
+
+  // El pago cubre hasta el último día del mes de la cuota — nunca retrocede
+  // pago_hasta si ya estaba más adelante (pago adelantado o filas fuera de orden).
+  const [anio, mesNum] = mes_correspondiente.split('-').map(Number)
+  const finMesCubierto = new Date(Date.UTC(anio, mesNum, 0)).toISOString().slice(0, 10)
+  const pagoHastaActual = pol.pago_hasta || pol.fecha_inicio
+  const nuevaMora = Math.max(0, pol.meses_mora - 1)
+
+  // Bug real: antes esto ponía la póliza en VIGENTE con solo recibir un pago,
+  // aunque quedaran meses anteriores sin cubrir. Ahora el estado sale de la
+  // mora que realmente queda (fn_estado_poliza), igual que hace el módulo de
+  // Recaudo — y pago_hasta por fin avanza (antes esta función ni lo tocaba).
+  await client.query(`
+    UPDATE polizas SET
+      ultimo_pago = GREATEST(COALESCE(ultimo_pago, '1970-01-01'::date), $2::date),
+      pago_hasta  = GREATEST($3::date, $4::date),
+      meses_mora  = $5::int,
+      saldo_mora  = $5::int * valor_cuota,
+      estado      = CASE WHEN estado IN ('CANCELADA','EJECUTADA') THEN estado ELSE fn_estado_poliza($5::int) END,
+      actualizado = NOW()
+    WHERE id = $1`, [poliza.id, fechaPagoDate, pagoHastaActual, finMesCubierto, nuevaMora]
+  )
+
+  await contabilizarEvento(client, {
+    evento_codigo: 'PAGO_CUOTA_POLIZA',
+    montos: { total: +monto },
+    forma_pago_codigo: metodo_pago,
+    concepto: `Pago póliza N.° ${poliza.numero} — cuota ${mes_correspondiente}`,
+    tercero_id: poliza.titular_id,
+    sede_id: poliza.sede_id,
+    fecha: fechaPagoDate,
+    fecha_contable: fechaPagoDate,
+    documento_origen_tipo: 'pagos_poliza',
+    documento_origen_id: pagoRes.rows[0].id,
+    usuario_id,
+  })
+
+  return pagoRes.rows[0]
+}
+
 export async function registrarPago(req, reply) {
   const { id } = req.params
   const { mes_correspondiente, monto, metodo_pago = 'efectivo', referencia, fecha_pago } = req.body
@@ -703,38 +777,19 @@ export async function registrarPago(req, reply) {
   if (!mes_correspondiente) return reply.code(400).send({ error: 'mes_correspondiente es obligatorio (YYYY-MM-DD)' })
   if (!monto || +monto <= 0) return reply.code(400).send({ error: 'monto debe ser mayor a 0' })
 
-  const pol = await pool.query('SELECT id, estado FROM polizas WHERE id=$1', [id])
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id FROM polizas WHERE id=$1', [id])
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
 
   const db = await pool.connect()
   try {
     await db.query('BEGIN')
-
-    const pagoRes = await db.query(`
-      INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
-      ON CONFLICT (poliza_id, mes_correspondiente) DO UPDATE SET
-        monto = EXCLUDED.monto, metodo_pago = EXCLUDED.metodo_pago,
-        referencia = EXCLUDED.referencia, fecha_pago = EXCLUDED.fecha_pago
-      RETURNING id, numero_recibo`,
-      [id, mes_correspondiente, monto, metodo_pago, referencia||null,
-       fecha_pago || new Date().toISOString().split('T')[0], req.user.id]
-    )
-
-    // Actualizar último pago: solo avanzar, nunca retroceder (pago retroactivo no mueve ultimo_pago)
-    const fechaPagoDate = fecha_pago || new Date().toISOString().split('T')[0]
-    await db.query(`
-      UPDATE polizas SET
-        ultimo_pago = GREATEST(COALESCE(ultimo_pago, '1970-01-01'::date), $2::date),
-        meses_mora  = GREATEST(0, meses_mora - 1),
-        estado      = CASE WHEN estado IN ('SUSPENDIDA','VENCIDA') THEN 'VIGENTE' ELSE estado END,
-        actualizado = NOW()
-      WHERE id = $1`, [id, fechaPagoDate]
-    )
-
+    const pago = await procesarPagoPoliza(db, {
+      poliza: pol.rows[0], mes_correspondiente, monto, metodo_pago,
+      referencia, fecha_pago, usuario_id: req.user.id,
+    })
     await db.query('COMMIT')
-    return reply.code(201).send({ ok: true, pago: pagoRes.rows[0] })
+    return reply.code(201).send({ ok: true, pago })
   } catch (e) {
     await db.query('ROLLBACK')
     if (e.code === '23505') return reply.code(409).send({ error: 'Ya existe un pago para ese mes' })
@@ -742,7 +797,71 @@ export async function registrarPago(req, reply) {
   } finally { db.release() }
 }
 
+// ── Carga masiva de pagos históricos (migración desde sistema viejo) ───────
+// El usuario exporta del sistema anterior una tabla con los pagos reales de
+// la póliza (fecha, monto, referencia) y la sube aquí de una sola vez, en
+// vez de dar clic 100+ veces en "Pagar cuota". Cada fila se valida y se
+// contabiliza individualmente (mismo comprobante PAGO_CUOTA_POLIZA que un
+// pago manual) — la exactitud contable no se sacrifica por ser masivo.
+export async function importarPagos(req, reply) {
+  const { id } = req.params
+  const { pagos } = req.body
+  if (!Array.isArray(pagos) || !pagos.length)
+    return reply.code(400).send({ error: 'Se requiere un arreglo "pagos" con al menos una fila' })
+  if (pagos.length > 500)
+    return reply.code(400).send({ error: 'Máximo 500 filas por carga — divide el archivo en lotes más pequeños' })
+
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id FROM polizas WHERE id=$1', [id])
+  if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
+  if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
+
+  // Validación de forma antes de tocar la base de datos — un solo error de
+  // formato en la fila 80 no debe hacer perder el trabajo de las otras 79.
+  const errores = []
+  pagos.forEach((p, i) => {
+    const fila = i + 2 // +1 por índice base 1, +1 por la fila de encabezado del archivo
+    if (!p.mes_correspondiente || !/^\d{4}-\d{2}-\d{2}$/.test(p.mes_correspondiente))
+      errores.push(`Fila ${fila}: mes_correspondiente debe tener formato AAAA-MM-DD`)
+    if (!(+p.monto > 0))
+      errores.push(`Fila ${fila}: monto debe ser mayor a 0`)
+    if (p.fecha_pago && !/^\d{4}-\d{2}-\d{2}$/.test(p.fecha_pago))
+      errores.push(`Fila ${fila}: fecha_pago debe tener formato AAAA-MM-DD`)
+  })
+  if (errores.length) return reply.code(400).send({ error: 'El archivo tiene errores de formato', detalle: errores })
+
+  const db = await pool.connect()
+  try {
+    await db.query('BEGIN')
+    const procesados = []
+    for (const p of pagos) {
+      const pago = await procesarPagoPoliza(db, {
+        poliza: pol.rows[0],
+        mes_correspondiente: p.mes_correspondiente,
+        monto: +p.monto,
+        metodo_pago: p.metodo_pago || 'efectivo',
+        referencia: p.referencia || null,
+        fecha_pago: p.fecha_pago || p.mes_correspondiente,
+        usuario_id: req.user.id,
+      })
+      procesados.push(pago)
+    }
+    await db.query('COMMIT')
+    return reply.code(201).send({ ok: true, total: procesados.length })
+  } catch (e) {
+    await db.query('ROLLBACK')
+    if (e.code === '23505') return reply.code(409).send({ error: 'Alguna fila corresponde a un mes que ya tenía pago registrado — revisa el archivo y quita las filas duplicadas' })
+    throw e
+  } finally { db.release() }
+}
+
 // ── Agregar beneficiario ──────────────────────────────────────────────────
+
+// Regla de negocio confirmada con el cliente: padres/suegros del titular
+// se aceptan sin límite de edad, pero mayores de 75 quedan cubiertos SOLO
+// por el servicio funerario básico (sin importar el plan). Cualquier otro
+// parentesco no se acepta si el beneficiario tiene más de 75 años.
+const EDAD_LIMITE_BENEFICIARIO = 75
+const PARENTESCOS_SIN_LIMITE_EDAD = ['padre', 'madre', 'suegro', 'suegra']
 
 export async function agregarBeneficiario(req, reply) {
   const { id } = req.params
@@ -759,24 +878,51 @@ export async function agregarBeneficiario(req, reply) {
   if (+pol.rows[0].current_count >= +pol.rows[0].max_beneficiarios)
     return reply.code(400).send({ error: `El plan solo permite ${pol.rows[0].max_beneficiarios} beneficiarios` })
 
+  const terceroRes = await pool.query(
+    `SELECT DATE_PART('year', AGE(CURRENT_DATE, fecha_nacimiento))::INT AS edad FROM terceros WHERE id=$1`,
+    [tercero_id]
+  )
+  if (!terceroRes.rows.length) return reply.code(404).send({ error: 'El tercero no existe' })
+  const edad = terceroRes.rows[0].edad
+  const esParentescoSinLimite = PARENTESCOS_SIN_LIMITE_EDAD.includes(parentesco.toLowerCase())
+
+  if (edad != null && edad > EDAD_LIMITE_BENEFICIARIO && !esParentescoSinLimite) {
+    return reply.code(400).send({
+      error: `Este beneficiario tiene ${edad} años. Con parentesco "${parentesco}" la edad máxima aceptada es ${EDAD_LIMITE_BENEFICIARIO} años — solo padres o suegros del titular pueden incluirse sin límite de edad (quedando cubiertos únicamente por el servicio funerario básico).`,
+    })
+  }
+  const coberturaBasica = edad != null && edad > EDAD_LIMITE_BENEFICIARIO && esParentescoSinLimite
+
   const db = await pool.connect()
   try {
     await db.query('BEGIN')
     await db.query(`
-      INSERT INTO poliza_beneficiarios (poliza_id, tercero_id, parentesco)
-      VALUES ($1,$2,$3)
-      ON CONFLICT (poliza_id, tercero_id) DO UPDATE SET activo=TRUE, parentesco=$3`,
-      [id, tercero_id, parentesco]
+      INSERT INTO poliza_beneficiarios (poliza_id, tercero_id, parentesco, cobertura_basica)
+      VALUES ($1,$2,$3,$4)
+      ON CONFLICT (poliza_id, tercero_id) DO UPDATE SET activo=TRUE, parentesco=$3, cobertura_basica=$4`,
+      [id, tercero_id, parentesco, coberturaBasica]
     )
     await db.query(`
       INSERT INTO tercero_roles (tercero_id, rol) VALUES ($1,'BENEFICIARIO')
       ON CONFLICT (tercero_id, rol) DO UPDATE SET activo=TRUE`, [tercero_id]
     )
     await db.query('COMMIT')
-    return reply.code(201).send({ ok: true })
+    return reply.code(201).send({ ok: true, cobertura_basica: coberturaBasica, edad })
   } catch (e) {
     await db.query('ROLLBACK'); throw e
   } finally { db.release() }
+}
+
+// ── Registrar firma del consentimiento de cobertura básica (>75 años) ──────
+export async function firmarConsentimientoBeneficiario(req, reply) {
+  const { benId } = req.params
+  const { rows } = await pool.query(
+    `UPDATE poliza_beneficiarios SET consentimiento_firmado=TRUE, consentimiento_fecha=CURRENT_DATE
+     WHERE id=$1 AND cobertura_basica=TRUE RETURNING *`,
+    [benId]
+  )
+  if (!rows.length) return reply.code(404).send({ error: 'Beneficiario no encontrado o no requiere consentimiento' })
+  return reply.send({ data: rows[0] })
 }
 
 export async function quitarBeneficiario(req, reply) {
@@ -897,8 +1043,34 @@ export async function ejecutar(req, reply) {
       await db.query(`UPDATE polizas SET estado='EJECUTADA', actualizado=NOW() WHERE id=$1`, [id])
     }
 
+    // ── Cierre contable de la ejecución (NIIF 15: el ingreso nace aquí,
+    // no cuando se cobró la cuota) + descarga de inventario pendiente ──────
+    const polData = await db.query(
+      `SELECT numero, titular_id, sede_id, servicios_incluidos FROM polizas WHERE id=$1`, [id]
+    )
+    const pol = polData.rows[0]
+    const valorCubierto = (pol.servicios_incluidos || []).reduce((acc, it) => acc + (+it.precio_base || 0), 0)
+
+    if (valorCubierto > 0) {
+      await contabilizarEvento(db, {
+        evento_codigo: 'SERVICIO_EJECUTADO_POLIZA',
+        montos: { total: valorCubierto },
+        concepto: `Ejecución de póliza N.° ${pol.numero}`,
+        tercero_id: pol.titular_id,
+        sede_id: pol.sede_id,
+        documento_origen_tipo: 'servicios_funerarios',
+        documento_origen_id: servicio_id || null,
+        usuario_id: req.user.id,
+      })
+    }
+
+    let inventario = { procesados: 0, pendientes: 0 }
+    if (servicio_id) {
+      inventario = await ejecutarInventarioPendiente(db, servicio_id, req.user.id)
+    }
+
     await db.query('COMMIT')
-    return reply.send({ ok: true, beneficiarios_restantes: +restantes.rows[0].count })
+    return reply.send({ ok: true, beneficiarios_restantes: +restantes.rows[0].count, ingreso_reconocido: valorCubierto, inventario })
   } catch (e) {
     await db.query('ROLLBACK'); throw e
   } finally { db.release() }

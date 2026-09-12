@@ -46,6 +46,9 @@ import CarteraConveniosPage from './pages/convenios/CarteraConveniosPage.jsx'
 import POSPage          from './pages/pos/POSPage.jsx'
 import MemorialesPage   from './pages/memoriales/MemorialesPage.jsx'
 import SolicitudesPage  from './pages/solicitudes/SolicitudesPage.jsx'
+import ContabilidadPage from './pages/contabilidad/ContabilidadPage.jsx'
+import TesoreriaPage    from './pages/tesoreria/TesoreriaPage.jsx'
+import AuditoriaPage    from './pages/auditoria/AuditoriaPage.jsx'
 
 function PrivateRoute({ children }) {
   const token = useAuthStore(s => s.token)
@@ -84,6 +87,9 @@ export default function App() {
         <Route path="/pos"          element={<POSPage />} />
         <Route path="/memoriales"   element={<MemorialesPage />} />
         <Route path="/solicitudes"  element={<SolicitudesPage />} />
+        <Route path="/contabilidad" element={<ContabilidadPage />} />
+        <Route path="/tesoreria" element={<TesoreriaPage />} />
+        <Route path="/auditoria" element={<AuditoriaPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

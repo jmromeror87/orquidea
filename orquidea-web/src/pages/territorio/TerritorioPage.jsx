@@ -96,7 +96,7 @@ const CSS = `
   }
   .panel-search input:focus { border-color:#6366F1; }
 
-  .panel-body { flex:1; overflow-y:auto; }
+  .panel-body { flex:1; min-height:0; overflow-y:auto; }
   .panel-body::-webkit-scrollbar { width:3px; }
   .panel-body::-webkit-scrollbar-thumb { background:#DDE1F0; border-radius:3px; }
 
@@ -1362,7 +1362,7 @@ export default function TerritorioPage() {
 
         {/* ══ TAB: Gestión de Recaudo ══ */}
         {paginaTab === 'recaudo' && (
-        <div style={{flex:1, overflowY:'auto'}}>
+        <div style={{flex:1, minHeight:0, overflowY:'auto'}}>
           {/* Cabecera de sección */}
           <div className="zr-section-head">
             <div className="zr-section-title">

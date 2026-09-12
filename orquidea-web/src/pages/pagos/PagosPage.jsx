@@ -51,7 +51,7 @@ const CSS = `
 .pg-tab:not(.active):hover { background:#F4F5FA; color:#2E3192; border-color:#ECEDF8; }
 
 /* Body */
-.pg-body { flex:1; overflow:auto; padding:16px 20px 20px; }
+.pg-body { flex:1; min-height:0; overflow:auto; padding:16px 20px 20px; }
 
 /* Filtros */
 .pg-filtros {

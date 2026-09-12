@@ -431,7 +431,7 @@ const CSS = `
   .sv-btn-primary:hover { transform:translateY(-1px); box-shadow:0 5px 16px rgba(139,92,246,.4); }
   .sv-btn-ghost { background:#F4F5FA; color:#374151; border:1.5px solid #E2E5F0; }
   .sv-btn-ghost:hover { background:#ECEDF8; }
-  .sv-table-wrap { flex:1; overflow:auto; padding:0 24px; }
+  .sv-table-wrap { flex:1; min-height:0; overflow:auto; padding:0 24px; }
   .sv-table { width:100%; border-collapse:separate; border-spacing:0; }
   .sv-table thead th { padding:10px 14px; text-align:left; font-size:10.5px; font-weight:800;
     color:#9CA3AF; letter-spacing:.6px; text-transform:uppercase; background:#F7F8FC;
@@ -474,7 +474,7 @@ const CSS = `
     animation:sv-slide-in .22s ease; border-top-left-radius:18px; border-bottom-left-radius:18px;
     overflow:hidden; }
   @keyframes sv-slide-in { from{transform:translateX(100%)} to{transform:translateX(0)} }
-  .sv-drawer-body { flex:1; overflow-y:auto; padding:24px 28px; }
+  .sv-drawer-body { flex:1; min-height:0; overflow-y:auto; padding:24px 28px; }
   .sv-mhead { padding:22px 24px 18px; border-bottom:1.5px solid #ECEDF8;
     display:flex; align-items:center; justify-content:space-between; }
   .sv-mtitle { font-size:17px; font-weight:900; color:#0F1035; }
@@ -483,7 +483,7 @@ const CSS = `
     background:#F7F8FC; display:flex; align-items:center; justify-content:center;
     cursor:pointer; color:#6B7280; flex-shrink:0; transition:all .15s; }
   .sv-mclose:hover { background:#FEE2E2; border-color:#FECACA; color:#EF4444; }
-  .sv-mbody { padding:22px 24px; overflow-y:auto; overflow-x:hidden; flex:1; }
+  .sv-mbody { padding:22px 24px; overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; }
   .sv-grid2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
   .sv-field { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; min-width:0; }
   .sv-field label { font-size:11.5px; font-weight:700; color:#374151; }
@@ -1831,6 +1831,18 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                         placeholder="N° registro…"/>
                     </div>
                   </div>
+
+                  {/* Repetido aquí abajo (además del que ya está arriba, junto a la
+                      elegibilidad) — después de llenar los datos del fallecimiento
+                      el usuario no debería tener que volver a subir a buscar el
+                      botón para continuar. */}
+                  {paso === 1 && beneficiarioId && elegibilidad?.elegible && (
+                    <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16 }}>
+                      <button className="sv-btn sv-btn-primary" onClick={avanzarPaso2}>
+                        Ver cobertura del plan →
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -3290,6 +3302,8 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
   const [catalogo,  setCatalogo]  = useState([])
   const [busqueda,  setBusqueda]  = useState('')
   const [catSel,    setCatSel]    = useState(null)
+  const [bodegas,   setBodegas]   = useState([])
+  const [bodegaSel, setBodegaSel] = useState('')
   const [savingAdd, setSavingAdd] = useState(false)
   const [editId,    setEditId]    = useState(null)
   const [editVals,  setEditVals]  = useState({})
@@ -3309,6 +3323,20 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
     setCatalogo(r.data.data || [])
   }
 
+  // Solo se piden las bodegas si el ítem elegido está enlazado a un producto
+  // físico — la mayoría de ítems del catálogo (traslados, documentos...) no
+  // tocan inventario y no necesitan este selector.
+  useEffect(() => {
+    if (catSel?.producto_id && !bodegas.length) {
+      api.get('/inventario/bodegas').then(r => {
+        const lista = r.data.data || []
+        setBodegas(lista)
+        if (lista.length === 1) setBodegaSel(lista[0].id)
+      }).catch(() => {})
+    }
+    if (!catSel?.producto_id) setBodegaSel('')
+  }, [catSel])
+
   const yaAgregados = new Set(items.map(i => i.catalogo_id).filter(Boolean))
   const catalogoFiltrado = catalogo.filter(c =>
     !yaAgregados.has(c.id) &&
@@ -3320,12 +3348,17 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
 
   const agregar = async () => {
     if (!catSel) return
+    if (catSel.producto_id && !bodegaSel) {
+      setMsg('Selecciona de qué bodega sale este ítem'); return
+    }
     setSavingAdd(true); setMsg('')
     try {
-      await api.post(`/servicios/${servicioId}/items`, { catalogo_id: catSel.id })
-      toast.success('Ítem agregado')
+      await api.post(`/servicios/${servicioId}/items`, {
+        catalogo_id: catSel.id, bodega_id: catSel.producto_id ? bodegaSel : undefined,
+      })
+      toast.success(catSel.producto_id ? 'Ítem agregado y descontado de inventario' : 'Ítem agregado')
       await onSaved()
-      setCatSel(null); setBusqueda('')
+      setCatSel(null); setBusqueda(''); setBodegaSel('')
     } catch (e) { setMsg(e.response?.data?.error || 'Error al agregar'); toast.error(e.response?.data?.error || 'Error al agregar') }
     finally { setSavingAdd(false) }
   }
@@ -3378,6 +3411,7 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
                   {it.catalogo_codigo && <span style={{ marginRight:5 }}>{it.catalogo_codigo} ·</span>}
                   {it.categoria || '—'}
                   {it.es_cobertura && <span style={{ color:'#059669', marginLeft:5 }}>· Cobertura póliza</span>}
+                  {it.producto_id && <span style={{ color:'#0891B2', marginLeft:5 }}>· 📦 Descontado de inventario</span>}
                 </div>
               </>
           }
@@ -3568,15 +3602,30 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
             </div>
           )}
 
-          <button onClick={agregar} disabled={!catSel || savingAdd}
+          {catSel?.producto_id && (
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10, fontWeight:800, color:'#0891B2', textTransform:'uppercase', letterSpacing:.5, marginBottom:5 }}>
+                📦 Bien físico — se descuenta de inventario ({catSel.producto_nombre}, stock {catSel.stock_disponible ?? 0})
+              </div>
+              <select value={bodegaSel} onChange={e => setBodegaSel(e.target.value)}
+                style={{ width:'100%', padding:'8px 12px', border:'1.5px solid #E2E5F0', borderRadius:10, fontSize:12.5 }}>
+                <option value="">Selecciona la bodega…</option>
+                {bodegas.map(b => <option key={b.id} value={b.id}>{b.nombre} — {b.sede_nombre}</option>)}
+              </select>
+            </div>
+          )}
+
+          {(() => { const listo = catSel && (!catSel.producto_id || bodegaSel); return (
+          <button onClick={agregar} disabled={!listo || savingAdd}
             style={{ padding:'8px 18px',
-              background: catSel ? 'linear-gradient(135deg,#7C3AED,#6D28D9)' : '#E4E6F0',
-              color: catSel ? '#fff' : '#9CA3AF', border:'none', borderRadius:10,
-              fontSize:12, fontWeight:700, cursor: catSel ? 'pointer' : 'default',
+              background: listo ? 'linear-gradient(135deg,#7C3AED,#6D28D9)' : '#E4E6F0',
+              color: listo ? '#fff' : '#9CA3AF', border:'none', borderRadius:10,
+              fontSize:12, fontWeight:700, cursor: listo ? 'pointer' : 'default',
               display:'flex', alignItems:'center', gap:6 }}>
             {savingAdd ? <Loader2 size={13} style={{ animation:'spin .7s linear infinite' }}/> : <Plus size={13}/>}
             {savingAdd ? 'Agregando…' : 'Agregar al servicio'}
           </button>
+          )})()}
         </div>
       )}
 

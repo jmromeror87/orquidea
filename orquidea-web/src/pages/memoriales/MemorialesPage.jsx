@@ -50,7 +50,7 @@ const CSS = `
   .mm-btn:hover { filter:brightness(1.06); }
   .mm-spin { animation: mm-spin .8s linear infinite; }
   @keyframes mm-spin { to { transform:rotate(360deg); } }
-  .mm-list { flex:1; overflow-y:auto; padding:22px 24px; display:grid; gap:16px;
+  .mm-list { flex:1; min-height:0; overflow-y:auto; padding:22px 24px; display:grid; gap:16px;
     grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); align-content:start; }
   .mm-empty { grid-column:1/-1; display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:10px; padding:60px 20px; color:#9CA3AF; font-size:13px; text-align:center; }

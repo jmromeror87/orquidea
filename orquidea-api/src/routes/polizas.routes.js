@@ -12,7 +12,7 @@ import { verifyToken } from '../middlewares/auth.middleware.js'
 import { requireRole } from '../middlewares/role.middleware.js'
 import {
   stats, listar, obtener, crear, actualizar, cancelar, reactivar, historialCancelaciones,
-  registrarPago, agregarBeneficiario, quitarBeneficiario, cobrarAfiliacion,
+  registrarPago, importarPagos, agregarBeneficiario, quitarBeneficiario, cobrarAfiliacion, firmarConsentimientoBeneficiario,
   verificarElegibilidad, ejecutar, planes, crearPlan, actualizarPlan, desactivarPlan,
   buscar, beneficiarios, transferirTitular, historialTransferencias, contratoImpresion,
 } from '../controllers/polizas.controller.js'
@@ -41,10 +41,12 @@ export default async function polizasRoutes(fastify) {
   fastify.patch('/:id/reactivar',              { preHandler: admins },   reactivar)
   fastify.get('/:id/cancelaciones',            { preHandler: auth },     historialCancelaciones)
   fastify.post('/:id/pagos',                   { preHandler: editores }, registrarPago)
+  fastify.post('/:id/pagos/importar',          { preHandler: admins },   importarPagos)
   fastify.post('/:id/cobrar-afiliacion',       { preHandler: editores }, cobrarAfiliacion)
   fastify.get('/:id/beneficiarios',            { preHandler: auth },     beneficiarios)
   fastify.post('/:id/beneficiarios',           { preHandler: editores }, agregarBeneficiario)
   fastify.delete('/:id/beneficiarios/:benId',  { preHandler: editores }, quitarBeneficiario)
+  fastify.post('/beneficiarios/:benId/firmar-consentimiento', { preHandler: editores }, firmarConsentimientoBeneficiario)
   fastify.post('/:id/ejecutar',                { preHandler: editores }, ejecutar)
   fastify.patch('/:id/titular',                { preHandler: admins },   transferirTitular)
   fastify.get('/:id/transferencias',           { preHandler: auth },     historialTransferencias)

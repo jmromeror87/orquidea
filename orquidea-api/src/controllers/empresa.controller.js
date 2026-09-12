@@ -253,8 +253,10 @@ export async function actualizarSede(req, reply) {
 export async function listarServicios(req, reply) {
   const { categoria } = req.query
   const { rows } = await query(`
-    SELECT s.* FROM servicios_catalogo s
+    SELECT s.*, p.nombre AS producto_nombre
+    FROM servicios_catalogo s
     INNER JOIN empresa e ON e.id = s.empresa_id AND e.activo = TRUE
+    LEFT JOIN inv_productos p ON p.id = s.producto_id
     WHERE s.activo = TRUE
       AND ($1::text IS NULL OR s.categoria = $1)
     ORDER BY s.categoria ASC, s.orden_display ASC, s.nombre ASC
@@ -299,7 +301,7 @@ export async function crearServicio(req, reply) {
   const {
     nombre, descripcion, categoria,
     costo, margen_tipo, margen_valor, aplica_iva,
-    codigo_producto_dian, unidad_medida, orden_display,
+    codigo_producto_dian, unidad_medida, orden_display, producto_id,
   } = req.body
 
   if (!nombre || !categoria) return reply.status(400).send({ error: 'Nombre y categoría son requeridos' })
@@ -316,14 +318,14 @@ export async function crearServicio(req, reply) {
       empresa_id, nombre, codigo, descripcion, categoria,
       costo, margen_tipo, margen_valor,
       precio_base, precio_iva, aplica_iva, porcentaje_iva,
-      codigo_producto_dian, unidad_medida, orden_display
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      codigo_producto_dian, unidad_medida, orden_display, producto_id
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     RETURNING *
   `, [
     empresa_id, nombre, codigo, descripcion, categoria,
     costo || 0, margenTipo, margen_valor || 0,
     precio_base, iva, aplica_iva || false, porcentaje_iva || 0,
-    codigo_producto_dian || '99', unidad_medida || 'UNIDAD', orden_display || 0,
+    codigo_producto_dian || '99', unidad_medida || 'UNIDAD', orden_display || 0, producto_id || null,
   ])
   return reply.status(201).send({ data: rows[0], mensaje: 'Servicio creado correctamente' })
 }
@@ -371,7 +373,8 @@ export async function actualizarServicio(req, reply) {
       codigo_producto_dian = COALESCE($13, codigo_producto_dian),
       unidad_medida = COALESCE($14, unidad_medida),
       activo = COALESCE($15, activo),
-      orden_display = COALESCE($16, orden_display)
+      orden_display = COALESCE($16, orden_display),
+      producto_id = CASE WHEN $17 THEN $18 ELSE producto_id END
     WHERE id = $1
     RETURNING *
   `, [
@@ -379,6 +382,7 @@ export async function actualizarServicio(req, reply) {
     body.costo, body.margen_tipo, body.margen_valor,
     precio_base, iva, body.aplica_iva, body.porcentaje_iva,
     body.codigo_producto_dian, body.unidad_medida, body.activo, body.orden_display,
+    Object.prototype.hasOwnProperty.call(body, 'producto_id'), body.producto_id || null,
   ])
   if (!rows.length) return reply.status(404).send({ error: 'Servicio no encontrado' })
 

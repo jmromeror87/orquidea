@@ -50,7 +50,7 @@ const CSS = `
   .sl-tab { padding:7px 14px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer;
     border:1.5px solid #E5E7EB; background:#fff; color:#6B7280; white-space:nowrap; transition:all .15s; }
   .sl-tab.active { border-color:transparent; }
-  .sl-list { flex:1; overflow-y:auto; padding:16px 24px 24px; display:flex; flex-direction:column; gap:10px; }
+  .sl-list { flex:1; min-height:0; overflow-y:auto; padding:16px 24px 24px; display:flex; flex-direction:column; gap:10px; }
   .sl-empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:10px; padding:60px 20px; color:#9CA3AF; font-size:13px; text-align:center; }
   .sl-card { background:#fff; border-radius:14px; border:1.5px solid #ECEDF8; padding:16px 18px;

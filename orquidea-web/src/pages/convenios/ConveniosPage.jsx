@@ -73,7 +73,7 @@ const CSS = `
   .cv-btn-primary:hover { transform:translateY(-1px); box-shadow:0 5px 16px rgba(8,145,178,.4); }
   .cv-btn-ghost { background:#F4F5FA; color:#374151; border:1.5px solid #E2E5F0; }
   .cv-btn-ghost:hover { background:#ECEDF8; }
-  .cv-list { flex:1; overflow-y:auto; padding:20px 24px; }
+  .cv-list { flex:1; min-height:0; overflow-y:auto; padding:20px 24px; }
   .cv-card { background:#fff; border:1.5px solid #ECEDF8; border-radius:16px; margin-bottom:14px; overflow:hidden; }
   .cv-card-head { display:flex; align-items:center; gap:12px; padding:16px 18px; cursor:pointer; }
   .cv-card-head:hover { background:#FAFBFF; }
@@ -92,7 +92,7 @@ const CSS = `
     background:#F7F8FC; display:flex; align-items:center; justify-content:center;
     cursor:pointer; color:#6B7280; flex-shrink:0; transition:all .15s; }
   .cv-mclose:hover { background:#FEE2E2; border-color:#FECACA; color:#EF4444; }
-  .cv-mbody { padding:22px 24px; overflow-y:auto; overflow-x:hidden; flex:1; }
+  .cv-mbody { padding:22px 24px; overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; }
   .cv-grid2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
   .cv-field { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; min-width:0; }
   .cv-field label { font-size:11.5px; font-weight:700; color:#374151; }

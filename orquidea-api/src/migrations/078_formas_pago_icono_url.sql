@@ -1,0 +1,22 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Módulo          : Configuración — Formas de Pago (logo real)           ║
+-- ║  Archivo         : 078_formas_pago_icono_url.sql                        ║
+-- ║  Versión         : v1.0.0                                               ║
+-- ║  Fecha           : 2026-09-10                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ║  Software propietario. Prohibida su reproducción, distribución o       ║
+-- ║  comercialización sin autorización escrita del titular.                ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- Permite subir un logo real (PNG/SVG/JPG) para una forma de pago, además
+-- del emoji por defecto. Cuando icono_url tiene valor, la UI lo usa en vez
+-- del emoji en todo el sistema (POS, cartera, pólizas, contratos, recibos).
+
+ALTER TABLE formas_pago ADD COLUMN IF NOT EXISTS icono_url TEXT;

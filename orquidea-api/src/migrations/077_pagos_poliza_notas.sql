@@ -1,0 +1,24 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Módulo          : Cartera y Pagos — corrección de esquema              ║
+-- ║  Archivo         : 077_pagos_poliza_notas.sql                           ║
+-- ║  Versión         : v1.0.0                                               ║
+-- ║  Fecha           : 2026-09-10                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ║  Software propietario. Prohibida su reproducción, distribución o       ║
+-- ║  comercialización sin autorización escrita del titular.                ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- pagos.controller.js (registrarPagoPoliza) inserta en una columna "notas"
+-- que ninguna migración anterior creó en pagos_poliza (sí existe en la
+-- tabla hermana pagos_contrato desde 021_pago_unificado.sql). El bug nunca
+-- se manifestó en producción porque aún no hay pagos de póliza reales
+-- registrados. Se corrige agregando la columna faltante.
+
+ALTER TABLE pagos_poliza ADD COLUMN IF NOT EXISTS notas TEXT;

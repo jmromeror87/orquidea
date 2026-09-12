@@ -14,7 +14,7 @@ import {
   LayoutDashboard, Users, Package, FileText,
   CreditCard, BarChart2, Settings, UserCog,
   ChevronLeft, ChevronRight, MapPin, ShieldCheck, Warehouse, ShoppingCart, Wallet,
-  Percent, Handshake, Store, Flower2, UserPlus,
+  Percent, Handshake, Store, Flower2, UserPlus, BookOpen, Landmark, ShieldAlert,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/auth.store.js'
 import api from '../../services/api.js'
@@ -39,13 +39,23 @@ const GRUPOS = [
       { to: '/contratos',  label: 'Contratos',  Icon: FileText,     grad: 'linear-gradient(135deg,#F59E0B,#D97706)', roles: OPS },
       { to: '/servicios',  label: 'Servicios',  Icon: Package,      grad: 'linear-gradient(135deg,#8B5CF6,#6D28D9)', roles: OPS },
       { to: '/polizas',    label: 'Pólizas',    Icon: ShieldCheck,  grad: 'linear-gradient(135deg,#059669,#047857)', roles: [...OPS,'asesor_comercial'] },
-      { to: '/pagos',      label: 'Cartera',    Icon: CreditCard,   grad: 'linear-gradient(135deg,#EF4444,#DC2626)', roles: [...OPS,'contador'] },
       { to: '/inventario', label: 'Inventario', Icon: Warehouse,    grad: 'linear-gradient(135deg,#0EA5E9,#0369A1)', roles: OPS },
       { to: '/compras',    label: 'Compras',    Icon: ShoppingCart, grad: 'linear-gradient(135deg,#F59E0B,#D97706)', roles: OPS },
       { to: '/convenios',  label: 'Convenios',  Icon: Handshake,    grad: 'linear-gradient(135deg,#0891B2,#0E7490)', roles: ADMIN },
-      { to: '/cartera-convenios', label: 'Cartera Convenios', Icon: Wallet, grad: 'linear-gradient(135deg,#0891B2,#0E7490)', roles: [...ADMIN,'contador'] },
       { to: '/pos',        label: 'Punto de Venta', Icon: Store,    grad: 'linear-gradient(135deg,#16A34A,#15803D)', roles: OPS },
       { to: '/memoriales', label: 'Memoriales', Icon: Flower2,      grad: 'linear-gradient(135deg,#312E81,#4C1D95)', roles: OPS },
+    ],
+  },
+  {
+    label: 'FINANCIERA',
+    color: '#0D9488',
+    items: [
+      { to: '/pagos',             label: 'Cartera',           Icon: CreditCard, grad: 'linear-gradient(135deg,#EF4444,#DC2626)', roles: [...OPS,'contador'] },
+      { to: '/cartera-convenios', label: 'Cartera Convenios', Icon: Wallet,     grad: 'linear-gradient(135deg,#0891B2,#0E7490)', roles: [...ADMIN,'contador'] },
+      { to: '/recaudo',           label: 'Recaudo',           Icon: Wallet,     grad: 'linear-gradient(135deg,#6366F1,#4338CA)', roles: [...OPS,'asesor_comercial'] },
+      { to: '/tesoreria',         label: 'Tesorería',         Icon: Landmark,   grad: 'linear-gradient(135deg,#0D9488,#0F766E)', roles: [...ADMIN,'contador'] },
+      { to: '/contabilidad',      label: 'Contabilidad',      Icon: BookOpen,   grad: 'linear-gradient(135deg,#4338CA,#312E81)', roles: [...ADMIN,'contador'] },
+      { to: '/reportes',          label: 'Reportes',          Icon: BarChart2,  grad: 'linear-gradient(135deg,#0EA5E9,#0284C7)', roles: [...ADMIN,'contador'] },
     ],
   },
   {
@@ -53,12 +63,11 @@ const GRUPOS = [
     color: '#C9A020',
     items: [
       { to: '/solicitudes',   label: 'Solicitudes',   Icon: UserPlus,  grad: 'linear-gradient(135deg,#DB2777,#BE185D)',  roles: [...OPS,'asesor_comercial'] },
-      { to: '/recaudo',       label: 'Recaudo',       Icon: Wallet,    grad: 'linear-gradient(135deg,#6366F1,#4338CA)',  roles: [...OPS,'asesor_comercial'] },
       { to: '/asesores',      label: 'Asesores',      Icon: Percent,   grad: 'linear-gradient(135deg,#EC4899,#BE185D)',  roles: [...ADMIN,'asesor_comercial','contador'] },
-      { to: '/reportes',      label: 'Reportes',      Icon: BarChart2, grad: 'linear-gradient(135deg,#0EA5E9,#0284C7)', roles: [...ADMIN,'contador'] },
       { to: '/usuarios',      label: 'Usuarios',      Icon: UserCog,   grad: 'linear-gradient(135deg,#64748B,#475569)', roles: ADMIN },
       { to: '/territorio',    label: 'Territorio',    Icon: MapPin,    grad: 'linear-gradient(135deg,#059669,#047857)',  roles: ADMIN },
       { to: '/configuracion', label: 'Configuración', Icon: Settings,  grad: 'linear-gradient(135deg,#C9A020,#A37A10)', roles: ADMIN },
+      { to: '/auditoria',     label: 'Auditoría',     Icon: ShieldAlert, grad: 'linear-gradient(135deg,#7E22CE,#6B21A8)', roles: ADMIN },
     ],
   },
 ]
@@ -97,7 +106,7 @@ const CSS = `
   .sb-toggle:hover { background:var(--color-primary); color:#fff; border-color:var(--color-primary); }
 
   /* Nav */
-  .sb-nav { flex:1; overflow-y:auto; overflow-x:hidden; padding:8px 0; }
+  .sb-nav { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:8px 0; }
   .sb-nav::-webkit-scrollbar { width:3px; }
   .sb-nav::-webkit-scrollbar-thumb { background:#E2E5F0; border-radius:4px; }
 
@@ -176,6 +185,9 @@ const RUTA_MODULO = {
   '/usuarios':     'usuarios',
   '/territorio':   'territorio',
   '/configuracion':'configuracion',
+  '/contabilidad': 'contabilidad',
+  '/tesoreria':    'tesoreria',
+  '/auditoria':    'auditoria',
 }
 
 export default function Sidebar() {

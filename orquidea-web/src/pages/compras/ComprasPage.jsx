@@ -62,7 +62,7 @@ const CSS = `
 .cmp-tab:not(.active):hover { background:#FFF7ED; color:#D97706; border-color:#FED7AA; }
 
 /* Body */
-.cmp-body { flex:1; overflow:auto; padding:16px 20px 20px; }
+.cmp-body { flex:1; min-height:0; overflow:auto; padding:16px 20px 20px; }
 
 /* Filters */
 .cmp-filters { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
