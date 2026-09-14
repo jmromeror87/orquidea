@@ -1048,7 +1048,56 @@ function TabEmpresa({ data, saving, setSaving, onOk, onErr }) {
     catch { onErr() } finally { setSaving(false) }
   }
 
+  const [subiendoLogo, setSubiendoLogo] = useState(false)
+  const subirLogo = async (file) => {
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) return onErr()
+    setSubiendoLogo(true)
+    try {
+      const fd = new FormData()
+      fd.append('archivo', file)
+      const r = await api.post('/empresa/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      onOk(r.data.data)
+    } catch { onErr() }
+    finally { setSubiendoLogo(false) }
+  }
+  const quitarLogo = async () => {
+    setSubiendoLogo(true)
+    try { await api.delete('/empresa/logo'); onOk({ logo_url: null }) }
+    catch { onErr() } finally { setSubiendoLogo(false) }
+  }
+
   return (
+    <>
+    <SecCard titulo="Logo de la Empresa" sub="Se usa en todos los PDF e informes generados por el sistema" Icon={Building2} color="#6366F1">
+      <div style={{ display:'flex', alignItems:'center', gap:20 }}>
+        <div style={{ width:100, height:100, borderRadius:16, background:'#F8F9FC',
+          border:'2px dashed #E2E5F0', display:'flex', alignItems:'center', justifyContent:'center',
+          overflow:'hidden', flexShrink:0 }}>
+          {f.logo_url
+            ? <img src={`http://localhost:3001${f.logo_url}`} alt="Logo" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+            : <span style={{ fontSize:11, color:'#9CA3AF', textAlign:'center' }}>Sin logo</span>}
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <label style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'9px 16px',
+            background:'#EEF2FF', border:'1.5px solid #C7D2FE', borderRadius:9, color:'#4338CA',
+            fontSize:12.5, fontWeight:700, cursor:'pointer', width:'fit-content' }}>
+            {subiendoLogo ? 'Subiendo…' : (f.logo_url ? 'Cambiar logo' : 'Subir logo')}
+            <input type="file" accept=".png,.jpg,.jpeg,.webp,.svg" hidden disabled={subiendoLogo}
+              onChange={e => subirLogo(e.target.files[0])}/>
+          </label>
+          {f.logo_url && (
+            <button onClick={quitarLogo} disabled={subiendoLogo}
+              style={{ fontSize:11.5, color:'#EF4444', background:'none', border:'none',
+                cursor:'pointer', textAlign:'left', padding:0 }}>
+              Quitar logo
+            </button>
+          )}
+          <span style={{ fontSize:11, color:'#9CA3AF' }}>PNG, JPG, WEBP o SVG — máximo 5 MB</span>
+        </div>
+      </div>
+    </SecCard>
+
     <SecCard titulo="Datos de la Empresa" sub="Información legal registrada ante la DIAN" Icon={Building2} color="#6366F1">
       <div className="g3">
         <div className="campo span2"><label>Razón Social *</label><input value={f.razon_social} onChange={e=>set('razon_social')(e.target.value)} /></div>
@@ -1105,6 +1154,7 @@ function TabEmpresa({ data, saving, setSaving, onOk, onErr }) {
 
       <BtnBar saving={saving} onGuardar={guardar} />
     </SecCard>
+    </>
   )
 }
 
@@ -2489,6 +2539,7 @@ const LISTAS_TIPOS = [
   { tipo:'ESTADO_CIVIL', label:'Estado civil' },
   { tipo:'OCUPACION',    label:'Ocupación' },
   { tipo:'PARENTESCO',   label:'Parentesco' },
+  { tipo:'DOCUMENTO_SERVICIO', label:'Tipos de documento (servicios)' },
 ]
 
 function TabListasValores() {
@@ -3290,9 +3341,21 @@ function TabFormasPago() {
   const [saving, setSaving]     = useState(false)
   const [msg, setMsg]           = useState('')
 
-  const BLANK_FORMA = { codigo:'', nombre:'', icono:'💳', icono_url:'', requiere_referencia:false, requiere_soporte:false, orden:99 }
+  const BLANK_FORMA = { codigo:'', nombre:'', icono:'💳', icono_url:'', requiere_referencia:false, requiere_soporte:false, orden:99, cuenta_contable_codigo:'' }
   const [form, setForm] = useState(BLANK_FORMA)
   const logoInputRef = useRef(null)
+  const [busqCuenta, setBusqCuenta] = useState('')
+  const [candCuentas, setCandCuentas] = useState([])
+  const [cuentaSel, setCuentaSel] = useState(null)
+
+  useEffect(() => {
+    if (busqCuenta.trim().length < 2) return setCandCuentas([])
+    const t = setTimeout(async () => {
+      const r = await api.get('/contabilidad/puc/select', { params: { q: busqCuenta } })
+      setCandCuentas(r.data.data || [])
+    }, 300)
+    return () => clearTimeout(t)
+  }, [busqCuenta])
 
   const subirLogo = (e) => {
     const f = e.target.files?.[0]
@@ -3313,11 +3376,17 @@ function TabFormasPago() {
 
   useEffect(() => { cargar() }, [])
 
-  const abrirNueva = () => { setEditando(null); setForm(BLANK_FORMA); setModal(true) }
+  const abrirNueva = () => {
+    setEditando(null); setForm(BLANK_FORMA); setCuentaSel(null); setBusqCuenta(''); setCandCuentas([]); setModal(true)
+  }
   const abrirEditar = (f) => {
     setEditando(f)
     setForm({ codigo:f.codigo, nombre:f.nombre, icono:f.icono, icono_url:f.icono_url || '',
-              requiere_referencia:f.requiere_referencia, requiere_soporte:f.requiere_soporte, orden:f.orden })
+              requiere_referencia:f.requiere_referencia, requiere_soporte:f.requiere_soporte, orden:f.orden,
+              cuenta_contable_codigo: f.cuenta_contable_codigo || '' })
+    setCuentaSel(f.cuenta_contable_codigo ? { codigo: f.cuenta_contable_codigo, nombre: f.cuenta_contable_nombre } : null)
+    setBusqCuenta(f.cuenta_contable_codigo ? `${f.cuenta_contable_codigo} — ${f.cuenta_contable_nombre || ''}` : '')
+    setCandCuentas([])
     setModal(true)
   }
 
@@ -3387,6 +3456,9 @@ function TabFormasPago() {
                     <span>Código: <code style={{ background:'#F3F4F6', padding:'1px 5px', borderRadius:4 }}>{f.codigo}</code></span>
                     {f.requiere_referencia && <span style={{ color:'#F59E0B', fontWeight:600 }}>⚠ Req. referencia</span>}
                     {f.requiere_soporte    && <span style={{ color:'#6366F1', fontWeight:600 }}>📎 Req. soporte</span>}
+                    {f.cuenta_contable_codigo
+                      ? <span style={{ color:'#059669', fontWeight:600 }}>🏦 {f.cuenta_contable_codigo}</span>
+                      : <span style={{ color:'#EF4444', fontWeight:600 }}>⛔ Sin cuenta contable</span>}
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
@@ -3503,6 +3575,33 @@ function TabFormasPago() {
                   </div>
                 </label>
               </div>
+
+              <div>
+                <label style={{ fontSize:12, fontWeight:700, color:'#374151', display:'block', marginBottom:4 }}>
+                  Cuenta contable <span style={{ fontWeight:400, color:'#9CA3AF' }}>(a dónde va la plata — caja/bancos del PUC)</span>
+                </label>
+                <input value={busqCuenta}
+                  onChange={e => { setBusqCuenta(e.target.value); setCuentaSel(null); setForm(p=>({...p, cuenta_contable_codigo:''})) }}
+                  placeholder="Buscar cuenta del PUC (código o nombre)…"
+                  style={{ width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0', borderRadius:10, fontSize:13, boxSizing:'border-box' }}/>
+                {cuentaSel && (
+                  <div style={{ marginTop:6, fontSize:11.5, color:'#059669', fontWeight:700 }}>
+                    ✓ {cuentaSel.codigo} — {cuentaSel.nombre}
+                  </div>
+                )}
+                {candCuentas.length > 0 && !cuentaSel && (
+                  <div style={{ marginTop:6, border:'1.5px solid #E2E5F0', borderRadius:10, overflow:'hidden', maxHeight:180, overflowY:'auto' }}>
+                    {candCuentas.map(c => (
+                      <div key={c.codigo}
+                        onClick={() => { setCuentaSel(c); setForm(p=>({...p, cuenta_contable_codigo:c.codigo})); setBusqCuenta(`${c.codigo} — ${c.nombre}`); setCandCuentas([]) }}
+                        style={{ padding:'8px 12px', cursor:'pointer', fontSize:12.5, borderBottom:'1px solid #F4F5FA' }}>
+                        <strong>{c.codigo}</strong> — {c.nombre}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label style={{ fontSize:12, fontWeight:700, color:'#374151', display:'block', marginBottom:4 }}>Orden de aparición</label>
                 <input type="number" min="1" max="99" value={form.orden}

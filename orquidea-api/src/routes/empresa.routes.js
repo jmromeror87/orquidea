@@ -12,6 +12,7 @@ import { verifyToken }     from '../middlewares/auth.middleware.js'
 import { requireRole }     from '../middlewares/role.middleware.js'
 import {
   obtenerEmpresa, actualizarEmpresa, actualizarParametros,
+  subirLogoEmpresa, eliminarLogoEmpresa,
   listarSedes, crearSede, actualizarSede,
   listarServicios, crearServicio, actualizarServicio, eliminarServicio,
 } from '../controllers/empresa.controller.js'
@@ -23,6 +24,8 @@ export default async function empresaRoutes(fastify) {
   fastify.get ('/',            { preHandler: [verifyToken] }, obtenerEmpresa)
   fastify.put ('/',            { preHandler: soloAdmins    }, actualizarEmpresa)
   fastify.put ('/parametros',  { preHandler: soloAdmins    }, actualizarParametros)
+  fastify.post('/logo',        { preHandler: soloAdmins    }, subirLogoEmpresa)
+  fastify.delete('/logo',      { preHandler: soloAdmins    }, eliminarLogoEmpresa)
 
   // ── Sedes ─────────────────────────────────────────────
   fastify.get ('/sedes',       { preHandler: [verifyToken] }, listarSedes)

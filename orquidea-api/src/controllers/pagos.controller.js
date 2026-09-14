@@ -790,13 +790,14 @@ export async function detalleRecibo(req, reply) {
       t.nombres || ' ' || COALESCE(t.apellidos,'') AS titular,
       t.numero_documento AS cedula, t.telefono, t.direccion,
       u.nombre AS cajero,
-      e.nombre_empresa, e.nit, e.direccion AS empresa_direccion, e.telefono AS empresa_telefono
+      e.razon_social AS nombre_empresa, e.nit, e.direccion AS empresa_direccion,
+      e.telefono_1 AS empresa_telefono, e.logo_url AS empresa_logo_url
     FROM pagos_poliza pp
     JOIN polizas p       ON p.id = pp.poliza_id
     JOIN planes_poliza pl ON pl.id = p.plan_id
     JOIN terceros t      ON t.id = p.titular_id
     JOIN usuarios u      ON u.id = pp.usuario_id
-    CROSS JOIN (SELECT nombre_empresa, nit, direccion, telefono FROM empresa_configuracion LIMIT 1) e
+    CROSS JOIN (SELECT razon_social, nit, direccion, telefono_1, logo_url FROM empresa LIMIT 1) e
     WHERE pp.numero_recibo = $1
   `, [numero])
 

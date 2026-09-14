@@ -31,6 +31,9 @@ import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import { imprimirConsentimientoBeneficiario } from '../../utils/consentimientoBeneficiario.js'
+import { imprimirAvisoCesionPoliza, imprimirAutorizacionCambioTitular } from '../../utils/avisoCesionPoliza.js'
+import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
+import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -926,7 +929,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
 
 // ── Generación PDF: Contrato de Previsión Exequial ─────────────────────────
 
-function generarContratoPDF(data) {
+function generarContratoPDF(data, logoDataUrl) {
   const { poliza: p, beneficiarios = [], empresa = {} } = data
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
 
@@ -940,9 +943,18 @@ function generarContratoPDF(data) {
   doc.setDrawColor(...BLACK); doc.setLineWidth(1.2); doc.line(PL, y, W-PR, y)
   y += 5
 
-  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...BLACK)
-  doc.text((empresa.nombre_empresa || 'Funeraria San José de Ábrego').toUpperCase(), PL, y)
-  y += 5
+  // Logo (si hay) a la izquierda; el nombre queda a su lado, centrado frente
+  // a su altura, pero los datos de contacto bajan a todo el ancho de la
+  // página (no al lado del logo) para que nunca se salgan del margen.
+  const yBloqueInicio = y
+  const logo = dibujarLogoPDF(doc, logoDataUrl, PL, y, 18, 18)
+  const xTexto = logo ? PL + logo.w + 5 : PL
+  if (logo && logo.h > 5) y += (logo.h - 5) / 2
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(...BLACK)
+  doc.text((empresa.nombre_empresa || 'Funeraria San José de Ábrego').toUpperCase(), xTexto, y + 3)
+
+  y = Math.max(yBloqueInicio + 6, logo ? yBloqueInicio + logo.h - 6 : 0) + 4
 
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...GRAY)
   const infoEmp = [
@@ -950,18 +962,21 @@ function generarContratoPDF(data) {
     empresa.direccion, empresa.municipio,
     empresa.telefono && `Tel: ${empresa.telefono}`, empresa.email,
   ].filter(Boolean).join('   |   ')
-  doc.text(infoEmp, PL, y)
-  y += 3
+  const infoLineas = doc.splitTextToSize(infoEmp, CW)
+  doc.text(infoLineas, PL, y)
+  const yTrasInfo = y + infoLineas.length * 3.2
+
+  y = Math.max(yTrasInfo, yBloqueInicio + (logo ? logo.h : 0) + 3)
 
   doc.setLineWidth(0.3); doc.setDrawColor(...LGRAY); doc.line(PL, y, W-PR, y)
   y += 4
 
   doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...BLACK)
-  doc.text('CONTRATO DE PREVISIÓN EXEQUIAL', W/2, y, { align:'center' })
+  doc.text('CERTIFICADO DE PREVISIÓN EXEQUIAL', W/2, y, { align:'center' })
   y += 5
 
   doc.setFont('helvetica','bold'); doc.setFontSize(9)
-  doc.text(`Póliza N° ${p.numero}`, PL, y)
+  doc.text(`Póliza N° ${p.numero_legado || p.numero}`, PL, y)
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...GRAY)
   doc.text(`Fecha de emisión: ${fmtD(new Date().toISOString())}`, W-PR, y, { align:'right' })
   doc.text(`Plan: ${p.plan_nombre}`, PL + 55, y)
@@ -1257,7 +1272,8 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
     setGenerandoContrato(true)
     try {
       const r = await api.get(`/polizas/${id}/contrato-impresion`)
-      generarContratoPDF(r.data.data)
+      const logoDataUrl = await getLogoDataUrl(r.data.data?.empresa?.logo_url)
+      generarContratoPDF(r.data.data, logoDataUrl)
     } catch (e) {
       toast.error('Error al generar el contrato: ' + (e.response?.data?.error || e.message))
     } finally {
@@ -1340,6 +1356,9 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
         motivo: motivoTransf || undefined,
       })
       toast.success('Titular transferido con éxito')
+      imprimirAutorizacionCambioTitular({
+        poliza: data, nuevoTitular, motivo: motivoTransf, empresa: empresaInfo,
+      })
       setShowTransf(false); setNuevoTitular(null); setBusqTransf(''); setMotivoTransf('')
       cargar(); cargarHistorialTransferencias()
     } catch (e) {
@@ -1414,7 +1433,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                 style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 14px',
                   background:'rgba(255,255,255,.12)', border:'1.5px solid rgba(255,255,255,.25)',
                   borderRadius:10, color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer' }}>
-                {generandoContrato ? <Loader2 size={13} className="pl-spin"/> : <FileText size={13}/>} Generar contrato
+                {generandoContrato ? <Loader2 size={13} className="pl-spin"/> : <FileText size={13}/>} Generar certificado
               </button>
             )}
             {!loading && (
@@ -1477,6 +1496,29 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
 
             ) : tab === 'info' ? (
               <>
+                {data.titular_fallecido_en && (
+                  <div style={{ display:'flex', alignItems:'center', gap:12, background:'#FFFBEB',
+                    border:'1.5px solid #FDE68A', borderRadius:12, padding:'12px 16px', marginBottom:16 }}>
+                    <span style={{ fontSize:22 }}>⚠️</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:800, color:'#92400E' }}>
+                        El titular falleció el {fmtDate(data.titular_fallecido_en)} — falta ceder la póliza a un nuevo titular
+                      </div>
+                      <div style={{ fontSize:11.5, color:'#92400E', marginTop:2 }}>
+                        La póliza sigue vigente para el resto del grupo familiar. Usa "Transferir" para asignar el nuevo titular.
+                      </div>
+                    </div>
+                    <button onClick={() => imprimirAvisoCesionPoliza({
+                        poliza: data, titularFallecido: { nombre: data.titular_nombre, numero_documento: data.titular_doc },
+                        beneficiarios: data.beneficiarios, empresa: empresaInfo,
+                      })}
+                      style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', flexShrink:0,
+                        background:'#fff', border:'1.5px solid #FDE68A', borderRadius:9,
+                        color:'#92400E', fontSize:11.5, fontWeight:700, cursor:'pointer' }}>
+                      <FileText size={13}/> Imprimir aviso
+                    </button>
+                  </div>
+                )}
                 <div className="pld-grid2" style={{ marginBottom:16 }}>
                   <PldCard icon="👤" title="Titular" headerRight={
                     esAdmin && !['CANCELADA','EJECUTADA'].includes(data.estado) && (
@@ -1576,7 +1618,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
               <PldCard icon="👨‍👩‍👧" title="Beneficiarios"
                 headerRight={
                   esEditor && !['CANCELADA','EJECUTADA'].includes(data.estado) &&
-                  (data.beneficiarios||[]).filter(b=>b.activo).length < data.max_beneficiarios ? (
+                  (data.beneficiarios||[]).filter(b=>b.activo && !b.ejecutado && !b.es_titular_historico).length < data.max_beneficiarios ? (
                     <button onClick={() => setShowBen(v => !v)}
                       style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 12px',
                         background:'#059669', border:'none', borderRadius:8,
@@ -1586,7 +1628,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                   ) : null
                 }>
                 <div style={{ fontSize:12, color:'#6B7280', fontWeight:600, marginBottom:12 }}>
-                  {(data.beneficiarios||[]).filter(b=>b.activo).length} de {data.max_beneficiarios} beneficiarios usados
+                  {(data.beneficiarios||[]).filter(b=>b.activo && !b.ejecutado && !b.es_titular_historico).length} de {data.max_beneficiarios} beneficiarios usados
                 </div>
 
                 {showBen && (
@@ -1641,7 +1683,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                   </div>
                 ) : (
                   (data.beneficiarios||[]).filter(b=>b.activo).map(b => (
-                    <div key={b.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px',
+                    <div key={b.id || b.documento} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px',
                       background: b.ejecutado ? '#F8FAFC' : '#F0FDF4',
                       border:`1.5px solid ${b.ejecutado ? '#E2E8F0' : '#A7F3D0'}`,
                       borderRadius:12, marginBottom:8 }}>
@@ -1772,6 +1814,15 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                           {p.referencia && <span style={{ background:'#F3F4F6', padding:'1px 6px', borderRadius:5, fontSize:10.5, color:'#374151', fontWeight:600 }}>Ref: {p.referencia}</span>}
                         </div>
                       </div>
+                      {!p.anulado && (
+                        <button onClick={() => imprimirReciboPagoPoliza({ pago: p, poliza: data, empresa: empresaInfo })}
+                          title="Imprimir recibo"
+                          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
+                            color:'#059669', background:'#ECFDF5', border:'1.5px solid #A7F3D0',
+                            borderRadius:8, padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
+                          <Printer size={12}/> Recibo
+                        </button>
+                      )}
                       {p.soporte_url && (
                         <a href={`http://localhost:3001${p.soporte_url}`} target="_blank" rel="noreferrer"
                           style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,

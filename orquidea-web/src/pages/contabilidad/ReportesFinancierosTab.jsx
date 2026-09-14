@@ -27,6 +27,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
+import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtPct = (n) => n == null ? '—' : `${n.toFixed(1)}%`
@@ -39,22 +40,6 @@ const REPORTES = [
   { key: 'resultados', label: 'Estado de Resultados' },
   { key: 'situacion',  label: 'Estado de Situación Financiera' },
 ]
-
-let _logoDataUrl = null
-async function obtenerLogoBase64() {
-  if (_logoDataUrl) return _logoDataUrl
-  try {
-    const res = await fetch('/logo.jpg')
-    const blob = await res.blob()
-    _logoDataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-  } catch { _logoDataUrl = null }
-  return _logoDataUrl
-}
 
 // ── Estado de Resultados en cascada — igual a como lo presentan los
 // sistemas contables actuales (Siigo, World Office, TNS): renglones de
@@ -177,10 +162,10 @@ export default function ReportesFinancierosTab() {
 
   const exportarPDF = async () => {
     const doc = new jsPDF()
-    const logo = await obtenerLogoBase64()
+    const logoDataUrl = await getLogoDataUrl(empresa?.logo_url)
     const titulo = REPORTES.find(r => r.key === reporte)?.label
 
-    if (logo) { try { doc.addImage(logo, 'JPEG', 14, 10, 16, 16) } catch { /* logo opcional */ } }
+    const logo = dibujarLogoPDF(doc, logoDataUrl, 14, 8, 16, 16)
     doc.setFontSize(13); doc.setTextColor(46, 49, 146)
     doc.text(empresa?.razon_social || 'Funeraria San José de Abrego S.A.S', logo ? 34 : 14, 16)
     doc.setFontSize(9); doc.setTextColor(120)

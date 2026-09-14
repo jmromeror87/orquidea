@@ -31,7 +31,7 @@ const SELECT_LIST = `
     p.id, p.numero, p.numero_legado, p.estado, p.valor_cuota, p.dia_cobro,
     p.meses_mora, p.ultimo_pago, p.fecha_inicio, p.fecha_fin_carencia,
     p.fecha_cancelacion, p.motivo_cancelacion, p.observaciones, p.creado_en,
-    p.pago_hasta,
+    p.pago_hasta, p.titular_fallecido_en,
     p.costo_afiliacion, p.afiliacion_pagada, p.afiliacion_fecha_pago, p.afiliacion_metodo_pago,
     -- Titular
     t.id   AS titular_id,
@@ -95,6 +95,26 @@ export async function buscar(req, reply) {
 export async function beneficiarios(req, reply) {
   const { id } = req.params
   const res = await pool.query(`
+    -- El titular también puede ser quien fallece, no solo los beneficiarios
+    -- del grupo familiar — se antepone como una opción más "seleccionable"
+    -- (ver migración 092: la póliza sigue VIGENTE si es el titular, pendiente
+    -- de cesión a un nuevo titular, en vez de cerrarse).
+    SELECT
+      NULL::uuid AS beneficiario_id, 'Titular de la póliza' AS parentesco,
+      (p.titular_fallecido_en IS NOT NULL) AS ejecutado,
+      t.id AS tercero_id,
+      COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre,
+      t.numero_documento, t.direccion,
+      td.sigla AS tipo_doc_sigla,
+      t.fecha_nacimiento,
+      DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad
+    FROM polizas p
+    JOIN terceros t ON t.id = p.titular_id
+    LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
+    WHERE p.id = $1
+
+    UNION ALL
+
     SELECT
       pb.id AS beneficiario_id, pb.parentesco, pb.ejecutado,
       t.id AS tercero_id,
@@ -107,7 +127,7 @@ export async function beneficiarios(req, reply) {
     JOIN terceros t ON t.id = pb.tercero_id
     LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
     WHERE pb.poliza_id = $1 AND pb.activo
-    ORDER BY pb.ejecutado ASC, t.nombres ASC`, [id]
+    ORDER BY ejecutado ASC, nombre ASC`, [id]
   )
   return reply.send({ data: res.rows })
 }
@@ -181,7 +201,9 @@ export async function obtener(req, reply) {
   const [pRes, benRes, pagosRes] = await Promise.all([
     pool.query(`${SELECT_LIST} ${JOINS} WHERE p.id = $1`, [id]),
     pool.query(`
-      SELECT pb.*,
+      -- Beneficiarios normales del grupo familiar
+      SELECT pb.id, pb.parentesco, pb.activo, pb.ejecutado, pb.fecha_ejecucion, pb.creado_en,
+        FALSE AS es_titular_historico,
         COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre,
         t.numero_documento AS documento, t.telefono,
         td.sigla AS tipo_doc_sigla,
@@ -191,7 +213,28 @@ export async function obtener(req, reply) {
       JOIN terceros t ON t.id = pb.tercero_id
       LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
       WHERE pb.poliza_id = $1
-      ORDER BY pb.creado_en`, [id]),
+
+      UNION ALL
+
+      -- Titulares anteriores fallecidos (su servicio quedó ligado a esta
+      -- póliza, pero nunca fueron un "beneficiario" — no tienen fila en
+      -- poliza_beneficiarios). Se muestran igual, con el mismo angelito,
+      -- para no perder ese rastro en el historial de la póliza.
+      SELECT NULL::uuid AS id, 'Titular (anterior)' AS parentesco, TRUE AS activo,
+        TRUE AS ejecutado, sf.creado_en::date AS fecha_ejecucion, sf.creado_en,
+        TRUE AS es_titular_historico,
+        COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre,
+        t.numero_documento AS documento, t.telefono,
+        td.sigla AS tipo_doc_sigla,
+        t.fecha_nacimiento, t.rh,
+        DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad
+      FROM servicios_funerarios sf
+      JOIN terceros t ON t.id = sf.difunto_id
+      LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
+      WHERE sf.poliza_id = $1
+        AND NOT EXISTS (SELECT 1 FROM poliza_beneficiarios pb WHERE pb.poliza_id = sf.poliza_id AND pb.tercero_id = sf.difunto_id)
+
+      ORDER BY creado_en`, [id]),
     pool.query(`
       SELECT pp.*, u.nombre AS cajero
       FROM pagos_poliza pp
@@ -274,7 +317,7 @@ export async function contratoImpresion(req, reply) {
       ORDER BY pb.creado_en`, [id]),
     pool.query(`
       SELECT razon_social AS nombre_empresa, COALESCE(nombre_comercial, razon_social) AS nombre_comercial,
-        nit, direccion, telefono_1 AS telefono, email, municipio, representante_legal
+        nit, direccion, telefono_1 AS telefono, email, municipio, representante_legal, logo_url
       FROM empresa LIMIT 1`),
   ])
 
@@ -444,8 +487,11 @@ export async function actualizar(req, reply) {
     if (!planRes.rows.length) return reply.code(400).send({ error: 'Plan no encontrado o inactivo' })
     const plan = planRes.rows[0]
 
+    // No cuenta a quienes ya fallecieron y usaron su cobertura (ejecutado) —
+    // ese cupo queda libre para un reemplazo, aunque el registro se conserve
+    // en el historial.
     const activos = await pool.query(
-      `SELECT COUNT(*) FROM poliza_beneficiarios WHERE poliza_id=$1 AND activo`, [id]
+      `SELECT COUNT(*) FROM poliza_beneficiarios WHERE poliza_id=$1 AND activo AND NOT ejecutado`, [id]
     )
     if (+activos.rows[0].count > plan.max_beneficiarios) {
       return reply.code(400).send({
@@ -539,8 +585,11 @@ export async function transferirTitular(req, reply) {
   try {
     await db.query('BEGIN')
 
+    // titular_fallecido_en se limpia aquí: una vez se cede la póliza a un
+    // nuevo titular, el aviso de "falta ceder" ya no aplica — solo vuelve a
+    // aparecer si el titular ACTUAL llegara a fallecer más adelante.
     await db.query(
-      `UPDATE polizas SET titular_id=$1, actualizado=NOW() WHERE id=$2`,
+      `UPDATE polizas SET titular_id=$1, titular_fallecido_en=NULL, actualizado=NOW() WHERE id=$2`,
       [nuevo_titular_id, id]
     )
 
@@ -868,10 +917,12 @@ export async function agregarBeneficiario(req, reply) {
   const { tercero_id, parentesco } = req.body
   if (!tercero_id || !parentesco) return reply.code(400).send({ error: 'tercero_id y parentesco son obligatorios' })
 
-  // Verificar límite del plan (congelado en la póliza al momento de la venta)
+  // Verificar límite del plan (congelado en la póliza al momento de la venta).
+  // Un beneficiario ejecutado (falleció y ya usó su cobertura) no ocupa cupo
+  // — libera el puesto para que la familia pueda registrar un reemplazo.
   const pol = await pool.query(`
     SELECT p.max_beneficiarios,
-      (SELECT COUNT(*) FROM poliza_beneficiarios pb WHERE pb.poliza_id=$1 AND pb.activo) AS current_count
+      (SELECT COUNT(*) FROM poliza_beneficiarios pb WHERE pb.poliza_id=$1 AND pb.activo AND NOT pb.ejecutado) AS current_count
     FROM polizas p WHERE p.id=$1`, [id]
   )
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
@@ -939,6 +990,7 @@ export async function verificarElegibilidad(req, reply) {
 
   const pol = await pool.query(`
     SELECT p.*, pl.nombre AS plan_nombre, pl.meses_carencia,
+      (p.titular_id = $2) AS es_titular,
       EXISTS(
         SELECT 1 FROM poliza_beneficiarios pb
         WHERE pb.poliza_id=p.id AND pb.tercero_id=$2 AND pb.activo AND NOT pb.ejecutado
@@ -959,7 +1011,7 @@ export async function verificarElegibilidad(req, reply) {
   const checks = {
     poliza_vigente:   p.estado === 'VIGENTE',
     fuera_carencia:   !enCarencia,
-    es_beneficiario:  p.es_beneficiario === true,
+    es_beneficiario:  p.es_titular ? !p.titular_fallecido_en : p.es_beneficiario === true,
     sin_mora:         +p.meses_mora === 0,
   }
 

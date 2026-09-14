@@ -15,7 +15,7 @@
  */
 import pool from '../config/database.js'
 
-export const TIPOS_VALIDOS = ['SEXO', 'ESTADO_CIVIL', 'OCUPACION', 'PARENTESCO']
+export const TIPOS_VALIDOS = ['SEXO', 'ESTADO_CIVIL', 'OCUPACION', 'PARENTESCO', 'DOCUMENTO_SERVICIO']
 
 export async function listar(req, reply) {
   const { tipo, activo } = req.query

@@ -51,6 +51,7 @@ export function imprimirReciboPOS(recibo) {
   </style>
   </head><body>
 
+  ${recibo.empresa_logo_url ? `<div class="c" style="margin-bottom:4px"><img src="http://localhost:3001${recibo.empresa_logo_url}" style="max-width:45mm;max-height:20mm;object-fit:contain"></div>` : ''}
   <div class="c b" style="font-size:14px;letter-spacing:.5px;text-transform:uppercase">${recibo.empresa_razon_social || ''}</div>
   ${recibo.empresa_nit ? `<div class="c s">NIT: ${recibo.empresa_nit}</div>` : ''}
   ${recibo.empresa_direccion ? `<div class="c xs">${recibo.empresa_direccion}</div>` : ''}

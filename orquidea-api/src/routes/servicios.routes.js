@@ -25,10 +25,11 @@ import {
   guardarTanatopraxia, agregarMaterialTanatopraxia, eliminarMaterialTanatopraxia,
   duracionEstimadaTanatopraxia, sugerenciaTanatopraxiaIA,
   actualizarChecklist, ordenImpresion,
-  actualizarFallecido, actualizarContratante, recalcularConvenioCobertura,
+  actualizarFallecido, actualizarContratante, asignarResponsable, recalcularConvenioCobertura,
   agregarItem, actualizarItem, eliminarItem,
   listarPersonal, asignarPersonal, quitarPersonal, listarOperadores, historialServicio,
   subirSoporteDocumento,
+  listarDocumentos, subirDocumento, eliminarDocumento,
 } from '../controllers/servicios.controller.js'
 
 const auth     = [verifyToken]
@@ -63,7 +64,11 @@ export default async function serviciosRoutes(fastify) {
   fastify.patch('/:id/checklist',                { preHandler: editores }, actualizarChecklist)
   fastify.put('/:id/fallecido',                  { preHandler: editores }, actualizarFallecido)
   fastify.post('/:id/documentos/soporte',        { preHandler: editores }, subirSoporteDocumento)
+  fastify.get('/:id/documentos',                 { preHandler: auth },     listarDocumentos)
+  fastify.post('/:id/documentos',                { preHandler: editores }, subirDocumento)
+  fastify.delete('/:id/documentos/:docId',       { preHandler: editores }, eliminarDocumento)
   fastify.put('/:id/contratante',                { preHandler: editores }, actualizarContratante)
+  fastify.put('/:id/responsable',                { preHandler: editores }, asignarResponsable)
   fastify.patch('/:id/convenio/recalcular',      { preHandler: editores }, recalcularConvenioCobertura)
   fastify.post('/:id/items',                     { preHandler: editores }, agregarItem)
   fastify.put('/:id/items/:itemId',              { preHandler: editores }, actualizarItem)

@@ -26,6 +26,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
+import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtNum = (n) => new Intl.NumberFormat('es-CO').format(n || 0)
@@ -383,14 +384,20 @@ export default function ReportesPage() {
     try {
       const params = { fecha_inicio: desde, fecha_fin: hasta }
       if (sede) params.sede_id = sede
-      const r = await api.get(`/reportes/${tab}`, { params })
+      const [r, empRes] = await Promise.all([
+        api.get(`/reportes/${tab}`, { params }),
+        api.get('/empresa').catch(() => null),
+      ])
       const data = r.data.data
+      const logoDataUrl = await getLogoDataUrl(empRes?.data?.data?.logo_url)
       const doc = new jsPDF()
       const tabLabel = TABS.find(t => t.key === tab)?.label || tab
+      const logo = dibujarLogoPDF(doc, logoDataUrl, 14, 8, 16, 16)
+      const xTexto = logo ? 14 + logo.w + 4 : 14
       doc.setFontSize(14)
-      doc.text(`Orquídea ERP — Reporte ${tabLabel}`, 14, 16)
+      doc.text(`Orquídea ERP — Reporte ${tabLabel}`, xTexto, 16)
       doc.setFontSize(9)
-      doc.text(`Período: ${desde} a ${hasta}`, 14, 22)
+      doc.text(`Período: ${desde} a ${hasta}`, xTexto, 22)
 
       let rows = []
       let head = []

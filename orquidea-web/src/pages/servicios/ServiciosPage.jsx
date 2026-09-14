@@ -37,6 +37,7 @@ import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
+import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 
 // ── Carroza fúnebre SVG ───────────────────────────────────────────────────────
 const HearseIcon = ({ size = 22, color = '#374151' }) => (
@@ -103,7 +104,7 @@ function origenServicio(s) {
 function OrigenChip({ servicio }) {
   const tipo = origenServicio(servicio)
   const m = ORIGEN_META[tipo]
-  const detalle = tipo === 'POLIZA'   && servicio?.poliza_numero   ? `#${servicio.poliza_numero}`
+  const detalle = tipo === 'POLIZA'   && servicio?.poliza_numero   ? (servicio.poliza_numero_legado || `#${servicio.poliza_numero}`)
     : tipo === 'CONTRATO' && servicio?.contrato_numero ? `#${servicio.contrato_numero}`
     : tipo === 'CONVENIO' && servicio?.convenio_nombre ? servicio.convenio_nombre
     : ''
@@ -613,6 +614,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
   const [paso,              setPaso]              = useState(1)   // wizard: 1=buscar, 2=confirmar
   const [previewItems,      setPreviewItems]      = useState([])
   const [extrasItems,       setExtrasItems]       = useState([]) // ítems adicionales del operador
+  const [excluidosCobertura, setExcluidosCobertura] = useState(new Set()) // ítems del plan que la familia no va a usar
+  const [motivoAjusteCobertura, setMotivoAjusteCobertura] = useState('')
   const [catalogoBusq,      setCatalogoBusq]      = useState('')
   const [catalogoCands,     setCatalogoCands]     = useState([])
 
@@ -818,6 +821,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
       const r = await api.get(`/servicios/poliza/${polizaId}/preview-plan`)
       setPreviewItems(r.data.data?.items || [])
     } catch { setPreviewItems([]) }
+    setExcluidosCobertura(new Set())
+    setMotivoAjusteCobertura('')
     setPaso(2)
   }
 
@@ -903,6 +908,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
           poliza_id:       vinculoTipo === 'POLIZA'   ? polizaId             : null,
           beneficiario_id: vinculoTipo === 'POLIZA'   ? beneficiarioId       : null,
           items_extras:    vinculoTipo === 'POLIZA'   ? extrasItems          : undefined,
+          items_excluidos: vinculoTipo === 'POLIZA'   ? [...excluidosCobertura] : undefined,
+          motivo_ajuste_cobertura: vinculoTipo === 'POLIZA' && excluidosCobertura.size > 0 ? motivoAjusteCobertura : undefined,
           convenio_id:                  vinculoTipo === 'CONVENIO' ? convenioId : null,
           convenio_autorizacion_id:     vinculoTipo === 'CONVENIO' ? (convenioAutorizacionId || null) : null,
           convenio_numero_autorizacion: vinculoTipo === 'CONVENIO' ? (convenioNumeroAut || null) : null,
@@ -1476,7 +1483,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                                 const sel = beneficiarioId === b.tercero_id
                                 const usado = b.ejecutado
                                 return (
-                                  <div key={b.beneficiario_id}
+                                  <div key={b.beneficiario_id || b.tercero_id}
                                     onClick={() => !usado && seleccionarBeneficiario(b)}
                                     style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 14px',
                                       cursor: usado ? 'not-allowed' : 'pointer',
@@ -1593,30 +1600,58 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                           <span>Ítem de cobertura</span>
                           <span>Valor</span>
                         </div>
-                        {previewItems.map(item => (
-                          <div key={item.id} style={{ display:'grid', gridTemplateColumns:'1fr auto',
-                            padding:'9px 14px', borderTop:'1px solid #EDE9FE',
-                            background:'#FDFCFF', alignItems:'center' }}>
-                            <div>
-                              <span style={{ fontSize:11, fontWeight:800, color:'#2E1065',
-                                background:'#EDE9FE', padding:'2px 7px', borderRadius:6, marginRight:8 }}>
-                                {item.codigo}
+                        {previewItems.map(item => {
+                          const excluido = excluidosCobertura.has(item.id)
+                          return (
+                            <div key={item.id} style={{ display:'grid', gridTemplateColumns:'auto 1fr auto',
+                              gap:10, padding:'9px 14px', borderTop:'1px solid #EDE9FE',
+                              background: excluido ? '#FAFAFA' : '#FDFCFF', alignItems:'center' }}>
+                              <input type="checkbox" checked={!excluido} title="Incluir este ítem en el servicio"
+                                onChange={() => setExcluidosCobertura(prev => {
+                                  const next = new Set(prev)
+                                  next.has(item.id) ? next.delete(item.id) : next.add(item.id)
+                                  return next
+                                })}
+                                style={{ width:16, height:16, cursor:'pointer' }}/>
+                              <div style={{ opacity: excluido ? .5 : 1 }}>
+                                <span style={{ fontSize:11, fontWeight:800, color:'#2E1065',
+                                  background:'#EDE9FE', padding:'2px 7px', borderRadius:6, marginRight:8 }}>
+                                  {item.codigo}
+                                </span>
+                                <span style={{ fontSize:13, color:'#374151',
+                                  textDecoration: excluido ? 'line-through' : 'none' }}>{item.nombre}</span>
+                              </div>
+                              <span style={{ fontSize:12.5, fontWeight:700,
+                                color: excluido ? '#9CA3AF' : '#059669',
+                                textDecoration: excluido ? 'line-through' : 'none' }}>
+                                {fmtCOP(item.precio_base)}
                               </span>
-                              <span style={{ fontSize:13, color:'#374151' }}>{item.nombre}</span>
                             </div>
-                            <span style={{ fontSize:12.5, fontWeight:700, color:'#059669' }}>
-                              {fmtCOP(item.precio_base)}
-                            </span>
-                          </div>
-                        ))}
+                          )
+                        })}
                         <div style={{ padding:'10px 14px', borderTop:'2px solid #C4B5FD',
                           background:'#F5F3FF', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                           <span style={{ fontSize:11, fontWeight:800, color:'#7C3AED' }}>TOTAL COBERTURA</span>
                           <span style={{ fontSize:15, fontWeight:900, color:'#6D28D9' }}>
-                            {fmtCOP(previewItems.reduce((s,i) => s + Number(i.precio_base), 0))}
+                            {fmtCOP(previewItems.filter(i => !excluidosCobertura.has(i.id)).reduce((s,i) => s + Number(i.precio_base), 0))}
                           </span>
                         </div>
                       </div>
+
+                      {excluidosCobertura.size > 0 && (
+                        <div style={{ marginBottom:14 }}>
+                          <label style={{ fontSize:11.5, fontWeight:700, color:'#92400E' }}>
+                            Motivo de excluir {excluidosCobertura.size} ítem(s) de la cobertura <span style={{fontWeight:400}}>(queda registrado en auditoría)</span>
+                          </label>
+                          <input value={motivoAjusteCobertura} onChange={e => setMotivoAjusteCobertura(e.target.value)}
+                            placeholder="Ej: la familia prefiere otro ataúd, ya lo tienen resuelto, etc."
+                            style={{ width:'100%', marginTop:4, padding:'8px 12px', border:'1.5px solid #FDE68A',
+                              borderRadius:9, fontSize:12.5, outline:'none', background:'#FFFBEB', boxSizing:'border-box' }}/>
+                          <div style={{ fontSize:11, color:'#6B7280', marginTop:4 }}>
+                            Si la familia quiere reemplazarlo por otro servicio o producto, agrégalo abajo en "Servicios adicionales".
+                          </div>
+                        </div>
+                      )}
 
                       {/* Extras adicionales */}
                       <div className="sv-section">Servicios adicionales (opcional)</div>
@@ -3713,7 +3748,7 @@ function TabPoliza({ data }) {
               Póliza Exequial · {data.poliza_plan_tipo}
             </div>
             <div style={{ fontSize:24, fontWeight:900, letterSpacing:-.5 }}>
-              #{data.poliza_numero} — {data.poliza_plan}
+              {data.poliza_numero_legado || `#${data.poliza_numero}`} — {data.poliza_plan}
             </div>
             <div style={{ fontSize:12, opacity:.8, marginTop:4 }}>
               Titular: <strong>{data.poliza_titular}</strong>
@@ -3890,6 +3925,141 @@ function ConvenioCoberturaBox({ data, servicioId, onSaved }) {
   )
 }
 
+// Cuando el servicio no tiene contrato ni convenio (típico: viene de una
+// póliza cuyo titular falleció y la cesión aún no se formaliza), permite
+// dejar registrado de una vez a alguien que responda por el trámite —
+// buscando un tercero existente o creando uno nuevo al vuelo.
+function AsignarResponsable({ servicioId, onSaved }) {
+  const [busq, setBusq] = useState('')
+  const [cands, setCands] = useState([])
+  const [parentesco, setParentesco] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [quickCrear, setQuickCrear] = useState(false)
+  const [tiposDocs, setTiposDocs] = useState([])
+  const [qForm, setQForm] = useState({ tipo_documento_id:'', numero_documento:'', nombres:'', apellidos:'', telefono:'' })
+
+  useEffect(() => {
+    if (busq.trim().length < 2) return setCands([])
+    const t = setTimeout(async () => {
+      const r = await api.get(`/terceros/select?q=${encodeURIComponent(busq)}`)
+      setCands(r.data.data || [])
+    }, 300)
+    return () => clearTimeout(t)
+  }, [busq])
+
+  useEffect(() => {
+    if (quickCrear) api.get('/tipos-documento/select').then(r => setTiposDocs(r.data.data || [])).catch(() => {})
+  }, [quickCrear])
+
+  const asignar = async (tercero_id) => {
+    setSaving(true)
+    try {
+      await api.put(`/servicios/${servicioId}/responsable`, { tercero_id, parentesco: parentesco || undefined })
+      toast.success('Responsable asignado con éxito')
+      onSaved()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Error al asignar el responsable')
+    } finally { setSaving(false) }
+  }
+
+  const abrirQuickCrear = () => {
+    const partes = busq.trim().split(/\s+/)
+    setQForm({ tipo_documento_id:'', numero_documento:'',
+      nombres: partes.slice(0, Math.ceil(partes.length/2)).join(' '),
+      apellidos: partes.slice(Math.ceil(partes.length/2)).join(' '), telefono:'' })
+    setQuickCrear(true)
+  }
+
+  const crearYAsignar = async () => {
+    if (!qForm.tipo_documento_id || !qForm.numero_documento) return toast.error('Tipo y número de documento son requeridos')
+    if (!qForm.nombres || !qForm.apellidos) return toast.error('Nombres y apellidos son requeridos')
+    setSaving(true)
+    try {
+      const r = await api.post('/terceros', { ...qForm, telefono: qForm.telefono || undefined })
+      await asignar(r.data.data.id)
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Error al crear el tercero')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ padding:'20px 4px' }}>
+      <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:12,
+        padding:'12px 16px', marginBottom:18, fontSize:12.5, color:'#92400E' }}>
+        Este servicio no tiene contratante registrado (se registra al crear el servicio directo o vinculando un contrato).
+        Si viene de una póliza y aún no se ha hecho la cesión de titularidad, puedes asignar aquí a quien esté
+        respondiendo por el trámite mientras tanto.
+      </div>
+
+      {!quickCrear ? (
+        <>
+          <div className="sv-field">
+            <label>Buscar persona</label>
+            <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Nombre o documento…"/>
+          </div>
+          <div className="sv-field">
+            <label>Parentesco / relación <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opcional)</span></label>
+            <input value={parentesco} onChange={e => setParentesco(e.target.value)} placeholder="Ej: hermano, hijo…"/>
+          </div>
+
+          {cands.length > 0 && (
+            <div style={{ border:'1.5px solid #E2E5F0', borderRadius:10, overflow:'hidden', marginBottom:12 }}>
+              {cands.map((c,i) => (
+                <div key={c.id} onClick={() => !saving && asignar(c.id)}
+                  style={{ padding:'10px 14px', cursor:'pointer',
+                    borderBottom:i<cands.length-1?'1px solid #F4F5FA':'none' }}>
+                  <div style={{ fontSize:13, fontWeight:700 }}>{c.nombres} {c.apellidos}</div>
+                  <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}{c.telefono ? ' · ' + c.telefono : ''}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {busq.trim().length >= 2 && (
+            <button onClick={abrirQuickCrear} className="sv-btn" style={{ fontSize:12 }}>
+              + Crear persona nueva "{busq}"
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="sv-grid2">
+            <div className="sv-field">
+              <label>Tipo documento <span className="sv-req">*</span></label>
+              <select value={qForm.tipo_documento_id} onChange={e => setQForm(p=>({...p, tipo_documento_id:e.target.value}))}>
+                <option value="">— Seleccione —</option>
+                {tiposDocs.map(t => <option key={t.id} value={t.id}>{t.sigla}</option>)}
+              </select>
+            </div>
+            <div className="sv-field">
+              <label>Número documento <span className="sv-req">*</span></label>
+              <input value={qForm.numero_documento} onChange={e => setQForm(p=>({...p, numero_documento:e.target.value}))}/>
+            </div>
+            <div className="sv-field">
+              <label>Nombres <span className="sv-req">*</span></label>
+              <input value={qForm.nombres} onChange={e => setQForm(p=>({...p, nombres:e.target.value}))}/>
+            </div>
+            <div className="sv-field">
+              <label>Apellidos <span className="sv-req">*</span></label>
+              <input value={qForm.apellidos} onChange={e => setQForm(p=>({...p, apellidos:e.target.value}))}/>
+            </div>
+            <div className="sv-field">
+              <label>Teléfono</label>
+              <input value={qForm.telefono} onChange={e => setQForm(p=>({...p, telefono:e.target.value}))}/>
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, marginTop:10 }}>
+            <button className="sv-btn" onClick={() => setQuickCrear(false)}>← Volver a buscar</button>
+            <button className="sv-btn sv-btn-primary" onClick={crearYAsignar} disabled={saving}>
+              {saving ? <Loader2 size={14} className="sv-spin"/> : null} Crear y asignar
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function TabContratante({ data, servicioId, onSaved }) {
   const [editMode, setEditMode] = useState(false)
   const [parentesco, setParentesco] = useState(data?.contratante_parentesco || '')
@@ -4005,12 +4175,9 @@ function TabContratante({ data, servicioId, onSaved }) {
     </div>
   )
 
-  if (!data?.contratante_id) return (
-    <div style={{ padding:32, textAlign:'center', color:'#9CA3AF', fontSize:13 }}>
-      Este servicio no tiene contratante registrado.<br/>
-      <span style={{ fontSize:12 }}>Se registra al crear el servicio directo o vinculando un contrato.</span>
-    </div>
-  )
+  if (!data?.contratante_id) return <AsignarResponsable servicioId={servicioId} onSaved={onSaved}/>
+
+  const esResponsableManual = data.contratante_es_responsable
 
   const fmtFecha = f => f ? new Date(f).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' }) : '—'
   const calcEdadC = fn => {
@@ -4031,6 +4198,14 @@ function TabContratante({ data, servicioId, onSaved }) {
           border:'1px solid #A5F3FC', color:'#0E7490', borderRadius:10, padding:'9px 14px',
           fontSize:12.5, fontWeight:600, marginBottom:14 }}>
           🤝 Este responsable se registró desde el convenio del servicio (no hay contrato de por medio).
+        </div>
+      )}
+
+      {esResponsableManual && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'#FFFBEB',
+          border:'1px solid #FDE68A', color:'#92400E', borderRadius:10, padding:'9px 14px',
+          fontSize:12.5, fontWeight:600, marginBottom:14 }}>
+          ⚠️ Responsable temporal asignado a mano (no hay contrato ni póliza a su nombre todavía) — útil mientras se formaliza el trámite, ej. la cesión de una póliza.
         </div>
       )}
 
@@ -4238,6 +4413,11 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const [savingCheck, setSavingCheck] = useState(false)
   // Imprimir
   const [showPrint, setShowPrint] = useState(false)
+  // Documentos
+  const [documentos, setDocumentos] = useState([])
+  const [tiposDocumento, setTiposDocumento] = useState([])
+  const [docForm, setDocForm] = useState({ tipo_codigo:'', nombre:'', archivo:null })
+  const [subiendoDoc, setSubiendoDoc] = useState(false)
   const [printData, setPrintData] = useState(null)
 
   const { usuario } = useAuthStore()
@@ -4268,6 +4448,47 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   }, [id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  const cargarDocumentos = useCallback(async () => {
+    try {
+      const r = await api.get(`/servicios/${id}/documentos`)
+      setDocumentos(r.data.data || [])
+    } catch { /* silencioso */ }
+  }, [id])
+  useEffect(() => { cargarDocumentos() }, [cargarDocumentos])
+  useEffect(() => {
+    api.get('/listas-valores/select', { params: { tipo: 'DOCUMENTO_SERVICIO' } })
+      .then(r => setTiposDocumento(r.data.data || []))
+      .catch(() => {})
+  }, [])
+
+  const subirDocumentoServicio = async () => {
+    if (!docForm.archivo) return toast.error('Seleccione un archivo')
+    setSubiendoDoc(true)
+    try {
+      const fd = new FormData()
+      fd.append('nombre', docForm.nombre.trim())
+      fd.append('tipo_codigo', docForm.tipo_codigo || '')
+      fd.append('archivo', docForm.archivo)
+      await api.post(`/servicios/${id}/documentos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      toast.success('Documento subido con éxito')
+      setDocForm({ tipo_codigo:'', nombre:'', archivo:null })
+      cargarDocumentos()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Error al subir el documento')
+    } finally { setSubiendoDoc(false) }
+  }
+
+  const eliminarDocumentoServicio = async (docId, nombre) => {
+    if (!window.confirm(`¿Eliminar el documento "${nombre}"? Esta acción no se puede deshacer.`)) return
+    try {
+      await api.delete(`/servicios/${id}/documentos/${docId}`)
+      toast.success('Documento eliminado con éxito')
+      cargarDocumentos()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Error al eliminar el documento')
+    }
+  }
 
   useEffect(() => {
     api.get(`/servicios/${id}/personal`).then(r => setPersonalAsignado(r.data.data || [])).catch(() => {})
@@ -4417,7 +4638,8 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const abrirImprimir = async () => {
     try {
       const r = await api.get(`/servicios/${id}/orden-impresion`)
-      generarPDF(r.data)
+      const logoDataUrl = await getLogoDataUrl(r.data.empresa?.logo_url)
+      generarPDF(r.data, logoDataUrl)
     } catch(e) {
       toast.error('Error al generar PDF: ' + (e.response?.data?.error || e.message))
     }
@@ -4435,6 +4657,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
     { key:'historial',    icon:'🕒', label:'Historial' },
     { key:'tramites',     icon: checklist.length > 0 && checklist.every(i=>i.done) ? '✅' : '📝',
       label: checklist.length > 0 ? `Trámites (${checklist.filter(i=>i.done).length}/${checklist.length})` : 'Trámites' },
+    { key:'documentos',   icon:'🗂️', label:`Documentos (${documentos.length})` },
   ]
 
   const disp = data ? DISPOSICION_META[data.tipo_disposicion] : {}
@@ -4469,7 +4692,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                 {!loading && (
                   <div style={{ display:'flex', gap:5, marginTop:5, flexWrap:'wrap' }}>
                     {(() => { const tipo = origenServicio(data); const om = ORIGEN_META[tipo]
-                      const detalle = tipo === 'POLIZA'   && data?.poliza_numero   ? `#${data.poliza_numero}`
+                      const detalle = tipo === 'POLIZA'   && data?.poliza_numero   ? (data.poliza_numero_legado || `#${data.poliza_numero}`)
                         : tipo === 'CONTRATO' && data?.contrato_numero ? `#${data.contrato_numero}`
                         : tipo === 'CONVENIO' && data?.convenio_nombre ? data.convenio_nombre
                         : ''
@@ -4954,7 +5177,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
               )}
             </div>
 
-          ) : (
+          ) : tab === 'tramites' ? (
             /* ── Tab Trámites ── */
             <div>
               {/* Resumen estado */}
@@ -5029,6 +5252,85 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                 </div>
               )}
             </div>
+          ) : (
+            /* ── Tab Documentos ── */
+            <div>
+              {esEditor && (
+                <div style={{ background:'#F8F9FC', border:'1.5px solid #ECEDF8', borderRadius:12, padding:14, marginBottom:16 }}>
+                  <div style={{ fontSize:10, fontWeight:800, color:'#6B7280', textTransform:'uppercase', letterSpacing:.5, marginBottom:12 }}>
+                    Subir documento
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:10 }}>
+                    <div className="sv-field" style={{ marginBottom:0 }}>
+                      <label>Tipo de documento</label>
+                      <select value={docForm.tipo_codigo} onChange={e => setDocForm(p => ({...p, tipo_codigo:e.target.value}))}>
+                        <option value="">— Sin clasificar —</option>
+                        {tiposDocumento.map(t => <option key={t.id} value={t.codigo}>{t.etiqueta}</option>)}
+                      </select>
+                    </div>
+                    <div className="sv-field" style={{ marginBottom:0 }}>
+                      <label>Nombre del documento <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opcional)</span></label>
+                      <input value={docForm.nombre} placeholder="Ej: Acta de defunción firmada"
+                        onChange={e => setDocForm(p => ({...p, nombre:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff"
+                      onChange={e => setDocForm(p => ({...p, archivo:e.target.files[0] || null}))}
+                      style={{ flex:1, fontSize:12.5 }}/>
+                    <button className="sv-btn sv-btn-primary" onClick={subirDocumentoServicio} disabled={subiendoDoc}>
+                      {subiendoDoc ? <Loader2 size={14} className="sv-spin"/> : <FileText size={14}/>}
+                      Subir
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {documentos.length === 0 ? (
+                <div className="sv-empty" style={{ padding:30 }}>
+                  <FileText size={26}/>
+                  <p>Sin documentos cargados</p>
+                  <span>Sube actas, certificados, autorizaciones, recibos u otros papeles del servicio</span>
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {documentos.map(doc => {
+                    const tipoLabel = tiposDocumento.find(t => t.codigo === doc.tipo_codigo)?.etiqueta
+                    const esImagen = doc.mime_type?.startsWith('image/')
+                    return (
+                      <div key={doc.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 14px',
+                        background:'#fff', border:'1.5px solid #ECEDF8', borderRadius:10 }}>
+                        <div style={{ width:38, height:38, borderRadius:9, flexShrink:0, overflow:'hidden',
+                          background:'#EEF2FF', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          {esImagen
+                            ? <img src={`http://localhost:3001${doc.url}`} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                            : <FileText size={17} color="#4F46E5"/>}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:'#111827',
+                            whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{doc.nombre}</div>
+                          <div style={{ fontSize:11, color:'#9CA3AF', marginTop:1 }}>
+                            {tipoLabel ? tipoLabel + ' · ' : ''}{fmtDate(doc.creado_en)}{doc.usuario_nombre ? ' · ' + doc.usuario_nombre : ''}
+                          </div>
+                        </div>
+                        <a href={`http://localhost:3001${doc.url}`} target="_blank" rel="noreferrer"
+                          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
+                            color:'#4F46E5', background:'#EEF2FF', border:'1.5px solid #C7D2FE',
+                            borderRadius:8, padding:'6px 10px', textDecoration:'none', flexShrink:0 }}>
+                          <Eye size={12}/> Ver
+                        </a>
+                        {esEditor && (
+                          <button onClick={() => eliminarDocumentoServicio(doc.id, doc.nombre)}
+                            style={{ border:'none', background:'none', cursor:'pointer', color:'#EF4444', padding:6, flexShrink:0 }}>
+                            <Trash2 size={15}/>
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )}
           </div>
         </div>
@@ -5040,7 +5342,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
 
 // ── Generación PDF profesional (jsPDF) ───────────────────────────────────
 
-function generarPDF(data) {
+function generarPDF(data, logoDataUrl) {
   const { servicio: s, traslados = [], tanatopraxia, empresa = {}, items = [], defuncion } = data
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
 
@@ -5062,12 +5364,21 @@ function generarPDF(data) {
   doc.line(PL, y, W-PR, y)
   y += 5
 
+  // Logo (si hay) a la izquierda; el nombre queda a su lado, centrado frente
+  // a su altura, pero los datos de contacto bajan a todo el ancho de la
+  // página (no al lado del logo) para que nunca se salgan del margen.
+  const yBloqueInicio = y
+  const logo = dibujarLogoPDF(doc, logoDataUrl, PL, y, 18, 18)
+  const xTexto = logo ? PL + logo.w + 5 : PL
+  if (logo && logo.h > 5) y += (logo.h - 5) / 2
+
   // Nombre empresa — grande y bold
   doc.setFont('helvetica','bold')
-  doc.setFontSize(16)
+  doc.setFontSize(14)
   doc.setTextColor(...BLACK)
-  doc.text((empresa.nombre_empresa || 'Funeraria San José de Ábrego').toUpperCase(), PL, y)
-  y += 5
+  doc.text((empresa.nombre_empresa || 'Funeraria San José de Ábrego').toUpperCase(), xTexto, y + 3)
+
+  y = Math.max(yBloqueInicio + 6, logo ? yBloqueInicio + logo.h - 6 : 0) + 4
 
   // Datos empresa — pequeño normal
   doc.setFont('helvetica','normal')
@@ -5080,8 +5391,11 @@ function generarPDF(data) {
     empresa.telefono && `Tel: ${empresa.telefono}`,
     empresa.email,
   ].filter(Boolean).join('   |   ')
-  doc.text(infoEmp, PL, y)
-  y += 3
+  const infoLineas = doc.splitTextToSize(infoEmp, CW)
+  doc.text(infoLineas, PL, y)
+  const yTrasInfo = y + infoLineas.length * 3.2
+
+  y = Math.max(yTrasInfo, yBloqueInicio + (logo ? logo.h : 0) + 3)
 
   // Línea divisora
   doc.setLineWidth(0.3)
@@ -5190,7 +5504,7 @@ function generarPDF(data) {
   if (s.poliza_numero) {
     titulo('3. Póliza de Previsión')
     grid([
-      [['N° de póliza', `#${s.poliza_numero}`], ['Plan', s.poliza_plan||'—']],
+      [['N° de póliza', s.poliza_numero_legado || `#${s.poliza_numero}`], ['Plan', s.poliza_plan||'—']],
       [['Titular de la póliza', s.poliza_titular||'—'], ['Cuota mensual', fmtCOP(s.poliza_cuota)]],
     ])
     sep()

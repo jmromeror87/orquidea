@@ -406,7 +406,7 @@ export async function registrarVisitaDetalle(req, reply) {
   // Datos de la empresa emisora
   const empQ = await pool.query(`
     SELECT razon_social, nit, digito_verificador, direccion,
-           municipio, departamento, telefono_1, email, pie_pagina
+           municipio, departamento, telefono_1, email, pie_pagina, logo_url
     FROM empresa LIMIT 1
   `)
   const emp = empQ.rows[0] || {}

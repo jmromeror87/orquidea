@@ -14,6 +14,15 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import { query } from '../config/database.js'
+import { pipeline } from 'node:stream/promises'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const LOGO_DIR = path.join(__dirname, '..', 'uploads', 'empresa')
+fs.mkdirSync(LOGO_DIR, { recursive: true })
+const EXT_LOGO_PERMITIDAS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg'])
 
 /* ════════════════════════════════════════════════
    EMPRESA
@@ -90,6 +99,62 @@ export async function actualizarEmpresa(req, reply) {
   ])
   if (!rows.length) return reply.status(404).send({ error: 'Empresa no encontrada' })
   return reply.send({ data: rows[0], mensaje: 'Empresa actualizada correctamente' })
+}
+
+// El logo se sube aparte del formulario de datos legales (es un archivo, no
+// texto) y queda disponible como URL pública — todos los PDF/documentos que
+// lo necesiten lo leen de empresa.logo_url, sin duplicar el archivo.
+export async function subirLogoEmpresa(req, reply) {
+  const data = await req.file({ limits: { fileSize: 5 * 1024 * 1024 } })
+  if (!data) return reply.code(400).send({ error: 'No se recibió ningún archivo' })
+
+  const ext = path.extname(data.filename).toLowerCase()
+  if (!EXT_LOGO_PERMITIDAS.has(ext))
+    return reply.code(400).send({ error: `Formato no permitido. Use: ${[...EXT_LOGO_PERMITIDAS].join(', ')}` })
+
+  const nombreArchivo = `logo_${Date.now()}${ext}`
+  const rutaLocal = path.join(LOGO_DIR, nombreArchivo)
+  const urlPublica = `/uploads/empresa/${nombreArchivo}`
+
+  const writeStream = fs.createWriteStream(rutaLocal)
+  await pipeline(data.file, writeStream)
+
+  if (data.file.truncated) {
+    fs.unlink(rutaLocal, () => {})
+    return reply.code(413).send({ error: 'El archivo supera el límite de 5 MB' })
+  }
+
+  const actual = await query(`SELECT logo_url FROM empresa WHERE activo = TRUE LIMIT 1`)
+  const logoAnterior = actual.rows[0]?.logo_url
+
+  const { rows } = await query(
+    `UPDATE empresa SET logo_url = $1 WHERE activo = TRUE RETURNING *`,
+    [urlPublica]
+  )
+  if (!rows.length) {
+    fs.unlink(rutaLocal, () => {})
+    return reply.code(404).send({ error: 'Empresa no encontrada' })
+  }
+
+  // Borra el logo anterior del disco (si había uno) — no se acumulan archivos huérfanos
+  if (logoAnterior) {
+    const rutaAnterior = path.join(__dirname, '..', logoAnterior.replace(/^\//, ''))
+    fs.unlink(rutaAnterior, () => {})
+  }
+
+  return reply.send({ data: rows[0], mensaje: 'Logo actualizado correctamente' })
+}
+
+export async function eliminarLogoEmpresa(req, reply) {
+  const actual = await query(`SELECT logo_url FROM empresa WHERE activo = TRUE LIMIT 1`)
+  const logoActual = actual.rows[0]?.logo_url
+  if (!logoActual) return reply.code(400).send({ error: 'No hay logo cargado' })
+
+  await query(`UPDATE empresa SET logo_url = NULL WHERE activo = TRUE`)
+  const rutaLocal = path.join(__dirname, '..', logoActual.replace(/^\//, ''))
+  fs.unlink(rutaLocal, () => {})
+
+  return reply.send({ ok: true })
 }
 
 /* ════════════════════════════════════════════════

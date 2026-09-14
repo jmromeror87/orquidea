@@ -555,7 +555,7 @@ export async function obtenerRecibo(req, reply) {
     SELECT v.*, u.nombre AS cajero_nombre, b.nombre AS bodega_nombre, s.nombre AS sede_nombre,
       COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS cliente_registrado_nombre,
       e.razon_social AS empresa_razon_social, e.nit AS empresa_nit, e.direccion AS empresa_direccion,
-      e.telefono_1 AS empresa_telefono
+      e.telefono_1 AS empresa_telefono, e.logo_url AS empresa_logo_url
     FROM pos_ventas v
     LEFT JOIN usuarios u ON u.id = v.usuario_id
     LEFT JOIN inv_bodegas b ON b.id = v.bodega_id

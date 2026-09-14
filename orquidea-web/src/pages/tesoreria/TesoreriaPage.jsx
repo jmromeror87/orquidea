@@ -74,6 +74,7 @@ function imprimirComprobante(comp, empresa) {
   </style></head><body>
     <div class="head">
       <div>
+        ${emp.logo_url ? `<img src="http://localhost:3001${emp.logo_url}" style="max-width:45mm;max-height:18mm;object-fit:contain;margin-bottom:6px;display:block">` : ''}
         <div class="emp">${emp.razon_social || 'Funeraria San José de Ábrego S.A.S'}</div>
         <div class="emp-sub">NIT ${emp.nit || ''}</div>
         <div class="emp-sub">${emp.direccion || ''}${emp.telefono_1 ? ' · Tel ' + emp.telefono_1 : ''}</div>

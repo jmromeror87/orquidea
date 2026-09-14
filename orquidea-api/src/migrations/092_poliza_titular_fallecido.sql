@@ -1,0 +1,24 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Módulo          : Pólizas de Previsión — fallecimiento del titular    ║
+-- ║  Archivo         : 092_poliza_titular_fallecido.sql                    ║
+-- ║  Versión         : v1.0.0                                               ║
+-- ║  Fecha           : 2026-09-12                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ║  Software propietario. Prohibida su reproducción, distribución o       ║
+-- ║  comercialización sin autorización escrita del titular.                ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- El titular de la póliza también puede ser la persona que fallece (no solo
+-- los beneficiarios del grupo familiar). En ese caso la póliza NO se cierra
+-- ni se pierde la cobertura de los demás — sigue VIGENTE mientras se hace el
+-- trámite de cesión a un nuevo titular (uno de los beneficiarios u otro
+-- familiar), conservando historial de pagos y antigüedad. Esta columna
+-- marca cuándo falleció el titular para poder avisar del trámite pendiente.
+ALTER TABLE polizas ADD COLUMN IF NOT EXISTS titular_fallecido_en DATE;

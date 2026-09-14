@@ -1,0 +1,25 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Módulo          : Servicios — responsable cuando no hay contratante   ║
+-- ║  Archivo         : 094_servicio_responsable.sql                         ║
+-- ║  Versión         : v1.0.0                                               ║
+-- ║  Fecha           : 2026-09-12                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ║  Software propietario. Prohibida su reproducción, distribución o       ║
+-- ║  comercialización sin autorización escrita del titular.                ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- Un servicio que viene de una póliza no tiene contrato, así que no tiene
+-- "contratante" formal — y cuando el fallecido ES el titular de la póliza,
+-- la cesión de titularidad a un familiar tarda días en formalizarse. Este
+-- campo permite dejar registrado DE UNA VEZ quién responde por el trámite
+-- (recibe llamadas, firma, etc.) sin esperar a que la póliza se transfiera
+-- formalmente.
+ALTER TABLE servicios_funerarios ADD COLUMN IF NOT EXISTS responsable_id UUID REFERENCES terceros(id);
+ALTER TABLE servicios_funerarios ADD COLUMN IF NOT EXISTS responsable_parentesco VARCHAR(60);

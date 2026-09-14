@@ -19,6 +19,7 @@ logs/
 orquidea-api/src/uploads/comprobantes/*
 orquidea-api/src/uploads/soportes/*
 orquidea-api/src/uploads/documentos/*
+orquidea-api/src/uploads/empresa/*
 !orquidea-api/src/uploads/**/.gitkeep
 
 # OS

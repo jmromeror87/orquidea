@@ -88,6 +88,86 @@ export async function subirSoporteDocumento(req, reply) {
   return reply.send({ ok: true, url: urlPublica })
 }
 
+// ── Fichero de documentos del servicio ─────────────────────────────────────
+// Genérico y dinámico: el tipo de documento sale de listas_valores (tipo
+// DOCUMENTO_SERVICIO — configurable desde Configuración sin tocar código),
+// el nombre lo escribe libremente quien sube el archivo. Sirve para acta de
+// defunción, certificados, autorizaciones, encuestas, recibos de terceros,
+// contratos de parroquia, o cualquier otro papel que la funeraria maneje
+// por servicio — sin duplicar los campos fijos de acta/permiso de arriba.
+const DOCUMENTOS_DIR = path.join(__dirname, '..', 'uploads', 'documentos')
+
+export async function listarDocumentos(req, reply) {
+  const { id } = req.params
+  const { rows } = await pool.query(`
+    SELECT d.*, u.nombre AS usuario_nombre
+    FROM documentos_servicio d
+    LEFT JOIN usuarios u ON u.id = d.usuario_id
+    WHERE d.servicio_id = $1
+    ORDER BY d.creado_en DESC`, [id]
+  )
+  return reply.send({ data: rows })
+}
+
+export async function subirDocumento(req, reply) {
+  const { id } = req.params
+
+  const sf = await pool.query(`SELECT id FROM servicios_funerarios WHERE id = $1`, [id])
+  if (!sf.rows.length) return reply.code(404).send({ error: 'Servicio no encontrado' })
+
+  const data = await req.file()
+  if (!data) return reply.code(400).send({ error: 'No se recibió ningún archivo' })
+  const { tipo_codigo, nombre } = data.fields || {}
+  const tipoCod = tipo_codigo?.value || null
+
+  const ext = path.extname(data.filename).toLowerCase()
+  if (!EXT_PERMITIDAS.has(ext))
+    return reply.code(400).send({ error: `Formato no permitido. Use: ${[...EXT_PERMITIDAS].join(', ')}` })
+
+  // Nombre es opcional — si no lo escriben, se usa la etiqueta del tipo elegido
+  // o, en su defecto, el nombre original del archivo (sin extensión).
+  let nombreDoc = nombre?.value?.trim()
+  if (!nombreDoc && tipoCod) {
+    const tipoRes = await pool.query(`SELECT etiqueta FROM listas_valores WHERE tipo='DOCUMENTO_SERVICIO' AND codigo=$1`, [tipoCod])
+    nombreDoc = tipoRes.rows[0]?.etiqueta
+  }
+  if (!nombreDoc) nombreDoc = path.basename(data.filename, ext)
+
+  const nombreArchivo = `doc_${id}_${Date.now()}${ext}`
+  const rutaLocal = path.join(DOCUMENTOS_DIR, nombreArchivo)
+  const urlPublica = `/uploads/documentos/${nombreArchivo}`
+
+  const writeStream = fs.createWriteStream(rutaLocal)
+  await pipeline(data.file, writeStream)
+
+  if (data.file.truncated) {
+    fs.unlink(rutaLocal, () => {})
+    return reply.code(413).send({ error: 'El archivo supera el límite permitido. Comprime la imagen o usa PDF.' })
+  }
+
+  const res = await pool.query(
+    `INSERT INTO documentos_servicio (servicio_id, tipo_codigo, nombre, url, mime_type, tamano_bytes, usuario_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [id, tipoCod, nombreDoc, urlPublica, data.mimetype, data.file.bytesRead || null, req.user?.id]
+  )
+
+  await audit(id, req.user?.id, 'documentos', `Subió documento: "${nombreDoc}"`)
+  return reply.code(201).send({ data: res.rows[0] })
+}
+
+export async function eliminarDocumento(req, reply) {
+  const { id, docId } = req.params
+  const doc = await pool.query(`SELECT * FROM documentos_servicio WHERE id=$1 AND servicio_id=$2`, [docId, id])
+  if (!doc.rows.length) return reply.code(404).send({ error: 'Documento no encontrado' })
+
+  await pool.query(`DELETE FROM documentos_servicio WHERE id=$1`, [docId])
+  const rutaLocal = path.join(__dirname, '..', doc.rows[0].url.replace('/uploads/', 'uploads/'))
+  fs.unlink(rutaLocal, () => {})
+
+  await audit(id, req.user?.id, 'documentos', `Eliminó documento: "${doc.rows[0].nombre}"`)
+  return reply.send({ ok: true })
+}
+
 // ── Auditoría ─────────────────────────────────────────────────────────────────
 async function audit(servicioId, usuarioId, modulo, accion, metadatos = null) {
   try {
@@ -179,7 +259,7 @@ const SELECT_LIST = `
     conv.id AS convenio_id, conv.nombre AS convenio_nombre,
     sf.convenio_valor_cubierto,
     -- Póliza
-    pol.id AS poliza_id, pol.numero AS poliza_numero,
+    pol.id AS poliza_id, pol.numero AS poliza_numero, pol.numero_legado AS poliza_numero_legado,
     -- Sala
     sv.id AS sala_id, sv.nombre AS sala_nombre,
     -- Sede
@@ -264,28 +344,33 @@ export async function obtener(req, reply) {
         gd.nombre          AS difunto_departamento,
         dif.municipio_nac_id AS difunto_municipio_nac_id,
         gn.nombre          AS difunto_municipio_nacimiento,
-        -- Contratante (del contrato, o si no hay, el responsable opcional del convenio)
-        COALESCE(cont.id, contConv.id) AS contratante_id,
+        -- Contratante (del contrato; si no hay, el responsable del convenio;
+        -- si tampoco, el "responsable" informal asignado a mano — típico
+        -- cuando el servicio viene de una póliza y aún no se ha formalizado
+        -- la cesión de titularidad tras el fallecimiento del titular)
+        COALESCE(cont.id, contConv.id, resp.id) AS contratante_id,
         COALESCE(cont.nombres||' '||cont.apellidos, cont.razon_social,
-                 contConv.nombres||' '||contConv.apellidos, contConv.razon_social) AS contratante_nombre,
-        COALESCE(cont.nombres, contConv.nombres)             AS contratante_nombres,
-        COALESCE(cont.apellidos, contConv.apellidos)         AS contratante_apellidos,
-        COALESCE(cont.numero_documento, contConv.numero_documento) AS contratante_documento,
-        COALESCE(tdc.sigla, tdcc.sigla)                       AS contratante_tipo_doc,
-        COALESCE(cont.telefono, contConv.telefono)           AS contratante_tel,
-        COALESCE(cont.telefono_alt, contConv.telefono_alt)   AS contratante_tel_alt,
-        COALESCE(cont.email, contConv.email)                 AS contratante_email,
-        COALESCE(cont.direccion, contConv.direccion)         AS contratante_direccion,
-        COALESCE(cont.municipio_id, contConv.municipio_id)   AS contratante_municipio_id,
-        COALESCE(cont.departamento_id, contConv.departamento_id) AS contratante_departamento_id,
-        COALESCE(gmc.nombre, gmcc.nombre)                     AS contratante_municipio,
-        COALESCE(gdc.nombre, gdcc.nombre)                     AS contratante_departamento,
-        COALESCE(cont.estado_civil, contConv.estado_civil)   AS contratante_estado_civil,
-        COALESCE(cont.ocupacion, contConv.ocupacion)         AS contratante_ocupacion,
-        COALESCE(cont.fecha_nacimiento, contConv.fecha_nacimiento) AS contratante_nacimiento,
-        COALESCE(cont.sexo, contConv.sexo)                   AS contratante_sexo,
-        sf.parentesco          AS contratante_parentesco,
+                 contConv.nombres||' '||contConv.apellidos, contConv.razon_social,
+                 resp.nombres||' '||resp.apellidos, resp.razon_social) AS contratante_nombre,
+        COALESCE(cont.nombres, contConv.nombres, resp.nombres)             AS contratante_nombres,
+        COALESCE(cont.apellidos, contConv.apellidos, resp.apellidos)       AS contratante_apellidos,
+        COALESCE(cont.numero_documento, contConv.numero_documento, resp.numero_documento) AS contratante_documento,
+        COALESCE(tdc.sigla, tdcc.sigla, tdr.sigla)            AS contratante_tipo_doc,
+        COALESCE(cont.telefono, contConv.telefono, resp.telefono)         AS contratante_tel,
+        COALESCE(cont.telefono_alt, contConv.telefono_alt, resp.telefono_alt) AS contratante_tel_alt,
+        COALESCE(cont.email, contConv.email, resp.email)                 AS contratante_email,
+        COALESCE(cont.direccion, contConv.direccion, resp.direccion)     AS contratante_direccion,
+        COALESCE(cont.municipio_id, contConv.municipio_id, resp.municipio_id) AS contratante_municipio_id,
+        COALESCE(cont.departamento_id, contConv.departamento_id, resp.departamento_id) AS contratante_departamento_id,
+        COALESCE(gmc.nombre, gmcc.nombre, gmr.nombre)         AS contratante_municipio,
+        COALESCE(gdc.nombre, gdcc.nombre, gdr.nombre)         AS contratante_departamento,
+        COALESCE(cont.estado_civil, contConv.estado_civil, resp.estado_civil)   AS contratante_estado_civil,
+        COALESCE(cont.ocupacion, contConv.ocupacion, resp.ocupacion)         AS contratante_ocupacion,
+        COALESCE(cont.fecha_nacimiento, contConv.fecha_nacimiento, resp.fecha_nacimiento) AS contratante_nacimiento,
+        COALESCE(cont.sexo, contConv.sexo, resp.sexo)                   AS contratante_sexo,
+        COALESCE(sf.parentesco, sf.responsable_parentesco) AS contratante_parentesco,
         (contConv.id IS NOT NULL AND cont.id IS NULL) AS contratante_es_convenio,
+        (resp.id IS NOT NULL AND cont.id IS NULL AND contConv.id IS NULL) AS contratante_es_responsable,
         -- Póliza / contrato
         c.numero               AS contrato_numero,
         c.id                   AS contrato_id,
@@ -331,6 +416,10 @@ export async function obtener(req, reply) {
       LEFT JOIN tipos_documento tdc   ON tdc.id   = cont.tipo_documento_id
       LEFT JOIN geo_municipios gmc    ON gmc.id   = cont.municipio_id
       LEFT JOIN geo_departamentos gdc ON gdc.id   = cont.departamento_id
+      LEFT JOIN terceros resp         ON resp.id  = sf.responsable_id
+      LEFT JOIN tipos_documento tdr   ON tdr.id   = resp.tipo_documento_id
+      LEFT JOIN geo_municipios gmr    ON gmr.id   = resp.municipio_id
+      LEFT JOIN geo_departamentos gdr ON gdr.id   = resp.departamento_id
       LEFT JOIN polizas pol           ON pol.id   = sf.poliza_id
       LEFT JOIN planes_poliza ppl     ON ppl.id   = pol.plan_id
       LEFT JOIN terceros tpol         ON tpol.id  = pol.titular_id
@@ -499,7 +588,7 @@ export async function crear(req, reply) {
       return reply.code(400).send({ error: 'Debe seleccionar qué beneficiario falleció' })
 
     const eligRes = await pool.query(`
-      SELECT p.estado, p.meses_mora, p.fecha_fin_carencia,
+      SELECT p.estado, p.meses_mora, p.fecha_fin_carencia, p.titular_id, p.titular_fallecido_en,
         (CURRENT_DATE < p.fecha_fin_carencia) AS en_carencia,
         EXISTS(
           SELECT 1 FROM poliza_beneficiarios pb
@@ -511,14 +600,19 @@ export async function crear(req, reply) {
       return reply.code(404).send({ error: 'Póliza no encontrada' })
 
     const e = eligRes.rows[0]
+    const esTitular = e.titular_id === beneficiario_id
     if (e.estado !== 'VIGENTE')
       return reply.code(400).send({ error: `La póliza está ${e.estado}. Solo se ejecutan pólizas VIGENTES.` })
     if (e.en_carencia)
       return reply.code(400).send({ error: `La póliza está en período de carencia hasta ${e.fecha_fin_carencia}.` })
     if (+e.meses_mora > 0)
       return reply.code(400).send({ error: `La póliza tiene ${e.meses_mora} mes(es) de mora. Debe estar al día.` })
-    if (!e.es_beneficiario)
+    if (esTitular) {
+      if (e.titular_fallecido_en)
+        return reply.code(400).send({ error: 'Ya se registró el fallecimiento del titular de esta póliza.' })
+    } else if (!e.es_beneficiario) {
       return reply.code(400).send({ error: 'El beneficiario no está activo en esta póliza o ya fue ejecutado.' })
+    }
   }
 
   const db = await pool.connect()
@@ -643,7 +737,16 @@ export async function crear(req, reply) {
         const planItems = await itemsDesdePoliza(poliza_id, db)
         // items_extras del body (adicionales que el operador agregó)
         const extras = req.body.items_extras || []
+        // items_excluidos: ítems de la cobertura del plan que la familia decidió
+        // NO usar (ej. quiere otro ataúd, o no necesita cierto adicional) —
+        // se dejan fuera del servicio y queda auditado quién y por qué.
+        const excluidos = Array.isArray(req.body.items_excluidos) ? req.body.items_excluidos : []
         for (const item of planItems) {
+          if (excluidos.includes(item.id)) {
+            await audit(servicioId, req.user.id, 'items',
+              `Excluyó de la cobertura: "${item.nombre}" (valor plan: ${item.precio_base})${req.body.motivo_ajuste_cobertura ? ' — motivo: ' + req.body.motivo_ajuste_cobertura : ''}`)
+            continue
+          }
           const inv = await intentarConsumoAuto(item.id, 1, item.nombre)
           await db.query(
             `INSERT INTO items_servicio
@@ -721,25 +824,38 @@ export async function crear(req, reply) {
       )
     }
 
-    // ── Si viene de póliza → ejecutar beneficiario ────────────────────────
+    // ── Si viene de póliza → ejecutar beneficiario (o titular) ────────────
     if (poliza_id && beneficiario_id) {
-      const benUpd = await db.query(`
-        UPDATE poliza_beneficiarios
-        SET ejecutado=TRUE, fecha_ejecucion=CURRENT_DATE, servicio_id=$1
-        WHERE poliza_id=$2 AND tercero_id=$3 AND activo AND NOT ejecutado
-        RETURNING id`, [servicioId, poliza_id, beneficiario_id]
-      )
-      if (!benUpd.rows.length) {
-        await db.query('ROLLBACK')
-        return reply.code(400).send({ error: 'No se pudo ejecutar el beneficiario (ya ejecutado o inactivo)' })
-      }
-      // Si no quedan beneficiarios disponibles → marcar póliza EJECUTADA
-      const restantes = await db.query(`
-        SELECT COUNT(*) FROM poliza_beneficiarios
-        WHERE poliza_id=$1 AND activo AND NOT ejecutado`, [poliza_id]
-      )
-      if (+restantes.rows[0].count === 0) {
-        await db.query(`UPDATE polizas SET estado='EJECUTADA', actualizado=NOW() WHERE id=$1`, [poliza_id])
+      const polTit = await db.query(`SELECT titular_id FROM polizas WHERE id=$1`, [poliza_id])
+      const esTitular = polTit.rows[0]?.titular_id === beneficiario_id
+
+      if (esTitular) {
+        // El titular falleció: la póliza NO se cierra — sigue VIGENTE mientras
+        // se hace la cesión a un nuevo titular (uno de los beneficiarios u
+        // otro familiar), conservando historial de pagos y antigüedad.
+        await db.query(`
+          UPDATE polizas SET titular_fallecido_en=CURRENT_DATE, actualizado=NOW()
+          WHERE id=$1 AND titular_fallecido_en IS NULL`, [poliza_id]
+        )
+      } else {
+        const benUpd = await db.query(`
+          UPDATE poliza_beneficiarios
+          SET ejecutado=TRUE, fecha_ejecucion=CURRENT_DATE, servicio_id=$1
+          WHERE poliza_id=$2 AND tercero_id=$3 AND activo AND NOT ejecutado
+          RETURNING id`, [servicioId, poliza_id, beneficiario_id]
+        )
+        if (!benUpd.rows.length) {
+          await db.query('ROLLBACK')
+          return reply.code(400).send({ error: 'No se pudo ejecutar el beneficiario (ya ejecutado o inactivo)' })
+        }
+        // Si no quedan beneficiarios disponibles → marcar póliza EJECUTADA
+        const restantes = await db.query(`
+          SELECT COUNT(*) FROM poliza_beneficiarios
+          WHERE poliza_id=$1 AND activo AND NOT ejecutado`, [poliza_id]
+        )
+        if (+restantes.rows[0].count === 0) {
+          await db.query(`UPDATE polizas SET estado='EJECUTADA', actualizado=NOW() WHERE id=$1`, [poliza_id])
+        }
       }
     }
 
@@ -1340,7 +1456,7 @@ export async function ordenImpresion(req, reply) {
         COALESCE(cont.direccion, tpol.direccion) AS contratante_direccion,
         c.numero AS contrato_numero, sv.nombre AS sala_nombre,
         u.nombre AS operador_nombre,
-        pol.numero AS poliza_numero, ppl.nombre AS poliza_plan,
+        pol.numero AS poliza_numero, pol.numero_legado AS poliza_numero_legado, ppl.nombre AS poliza_plan,
         COALESCE(tpol.nombres||' '||tpol.apellidos, tpol.razon_social) AS poliza_titular,
         pol.valor_cuota AS poliza_cuota
       FROM servicios_funerarios sf
@@ -1471,6 +1587,31 @@ export async function actualizarContratante(req, reply) {
     [parentesco || null, id]
   )
   await audit(id, req.user?.id, 'contratante', `Actualizó parentesco del contratante: "${parentesco || 'sin especificar'}"`)
+  return reply.send({ ok: true })
+}
+
+// Asigna (o cambia) el "responsable" del servicio cuando no hay contrato ni
+// convenio de por medio — típico en servicios de póliza donde el titular
+// falleció y la cesión de titularidad todavía no se ha formalizado, pero
+// alguien tiene que quedar como punto de contacto desde ya.
+export async function asignarResponsable(req, reply) {
+  const { id } = req.params
+  const { tercero_id, parentesco } = req.body
+  if (!tercero_id) return reply.code(400).send({ error: 'tercero_id es obligatorio' })
+
+  const tercero = await pool.query(`SELECT id, nombres, apellidos, razon_social FROM terceros WHERE id=$1`, [tercero_id])
+  if (!tercero.rows.length) return reply.code(404).send({ error: 'El tercero indicado no existe' })
+
+  const res = await pool.query(
+    `UPDATE servicios_funerarios SET responsable_id=$1, responsable_parentesco=$2, actualizado=NOW()
+     WHERE id=$3 RETURNING id`,
+    [tercero_id, parentesco || null, id]
+  )
+  if (!res.rows.length) return reply.code(404).send({ error: 'Servicio no encontrado' })
+
+  const t = tercero.rows[0]
+  const nombre = t.razon_social || `${t.nombres||''} ${t.apellidos||''}`.trim()
+  await audit(id, req.user?.id, 'contratante', `Asignó responsable del servicio: "${nombre}"${parentesco ? ' (' + parentesco + ')' : ''}`)
   return reply.send({ ok: true })
 }
 
