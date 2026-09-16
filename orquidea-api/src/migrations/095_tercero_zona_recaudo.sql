@@ -1,0 +1,24 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Módulo          : Terceros — zona de recaudo                          ║
+-- ║  Archivo         : 095_tercero_zona_recaudo.sql                         ║
+-- ║  Versión         : v1.0.0                                               ║
+-- ║  Fecha           : 2026-09-16                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ║  Software propietario. Prohibida su reproducción, distribución o       ║
+-- ║  comercialización sin autorización escrita del titular.                ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- El campo "Zona" del formulario de tercero mostraba por error las zonas
+-- político-administrativas (geo_zonas: barrio/vereda) en vez de las zonas
+-- de recaudo/cobranza configuradas en Territorio → Gestión de Recaudo. Se
+-- agrega una relación propia (zona_recaudo_id) para poder asignar a qué
+-- zona de cobranza pertenece un tercero, sin tocar el zona_id existente
+-- (que sigue usándose para barrio/vereda).
+ALTER TABLE terceros ADD COLUMN IF NOT EXISTS zona_recaudo_id UUID REFERENCES zonas_recaudo(id);

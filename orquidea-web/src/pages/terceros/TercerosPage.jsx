@@ -68,6 +68,7 @@ const BLANK_FORM = {
   fecha_nacimiento: '', sexo: '', rh: '',
   telefono: '', telefono_alt: '', email: '',
   direccion: '', barrio: '', vereda: '', departamento_id: '', municipio_id: '', zona_id: '',
+  zona_recaudo_id: '',
   observaciones: '',
   roles: ['CLIENTE'],
 }
@@ -288,6 +289,12 @@ const CSS = `
   .tp-field textarea { min-height:72px; resize:vertical; }
   .tp-field .req { color:#EF4444; }
 
+  /* ─ Zona de recaudo (select con indicador de color) ─ */
+  .tp-zona-recaudo { position:relative; display:flex; align-items:center; }
+  .tp-zona-dot { position:absolute; left:12px; width:8px; height:8px; border-radius:50%; pointer-events:none; }
+  .tp-zona-select { width:100%; cursor:pointer; }
+  .tp-zona-select--picked { padding-left:26px !important; }
+
   /* ─ Rol checkboxes ─ */
   .tp-roles-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:8px; }
   .tp-rol-check  { display:flex; align-items:center; gap:8px; padding:8px 10px;
@@ -465,6 +472,12 @@ function computeNeeds(roles) {
 const BLANK_FORM_DEF = { fecha_fallecimiento: '', hora_fallecimiento: '',
                          lugar_fallecimiento: '', causa_fallecimiento: '' }
 
+const ZONA_RECAUDO_META = {
+  URBANA: { label: 'Urbana', color: '#4F46E5' },
+  RURAL:  { label: 'Rural',  color: '#16A34A' },
+  MIXTA:  { label: 'Mixta',  color: '#D97706' },
+}
+
 function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
   const { depts, mpios, zonas, cargarMpios, cargarZonas } = useGeo()
   const [form, setForm]   = useState(BLANK_FORM)
@@ -474,7 +487,12 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
   const [nuevaZonaTipo, setNuevaZonaTipo] = useState('') // 'BARRIO' | 'VEREDA' | ''
   const [nuevaZonaNombre, setNuevaZonaNombre] = useState('')
   const [creandoZona, setCreandoZona] = useState(false)
+  const [zonasRecaudo, setZonasRecaudo] = useState([])
   const editing = !!tercero
+
+  useEffect(() => {
+    api.get('/zonas-recaudo').then(r => setZonasRecaudo(r.data.data || [])).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (tercero) {
@@ -499,6 +517,7 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
         departamento_id:   tercero.departamento_id || '',
         municipio_id:      tercero.municipio_id || '',
         zona_id:           tercero.zona_id || '',
+        zona_recaudo_id:   tercero.zona_recaudo_id || '',
         observaciones:     tercero.observaciones || '',
         roles:             rolesActivos,
       })
@@ -823,11 +842,27 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
               </select>
             </div>
             <div className="tp-field">
-              <label>Zona</label>
-              <select value={form.zona_id} onChange={e => set('zona_id', e.target.value)} disabled={!zonas.length}>
-                <option value="">— Seleccionar —</option>
-                {zonas.map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
-              </select>
+              <label>Zona de recaudo</label>
+              <div className="tp-zona-recaudo">
+                {form.zona_recaudo_id && (() => {
+                  const zr = zonasRecaudo.find(z => z.id === form.zona_recaudo_id)
+                  const dotColor = zr?.color || '#9CA3AF'
+                  return <span className="tp-zona-dot" style={{ background: dotColor }} />
+                })()}
+                <select
+                  className={form.zona_recaudo_id ? 'tp-zona-select tp-zona-select--picked' : 'tp-zona-select'}
+                  value={form.zona_recaudo_id}
+                  onChange={e => set('zona_recaudo_id', e.target.value)}
+                  disabled={!zonasRecaudo.length}
+                >
+                  <option value="">{zonasRecaudo.length ? '— Seleccionar —' : 'Sin zonas configuradas'}</option>
+                  {zonasRecaudo.map(z => (
+                    <option key={z.id} value={z.id}>
+                      {z.nombre} · {ZONA_RECAUDO_META[z.tipo]?.label || z.tipo}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
           <div className="tp-grid3">

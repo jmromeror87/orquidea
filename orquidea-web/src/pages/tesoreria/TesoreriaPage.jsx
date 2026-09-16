@@ -104,7 +104,7 @@ function imprimirComprobante(comp, empresa) {
       </tbody>
     </table>
     <div class="firmas">
-      <div class="firma">Elaboró</div>
+      <div class="firma">Elaboró<br>${comp.usuario_nombre || ''}</div>
       <div class="firma">${esIngreso ? 'Recibí conforme' : 'Recibí a satisfacción'}</div>
     </div>
   </body></html>`)

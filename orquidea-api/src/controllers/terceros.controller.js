@@ -37,6 +37,8 @@ const SELECT_TERCERO = `
     d.nombre         AS departamento_nombre,
     m.nombre         AS municipio_nombre,
     z.nombre         AS zona_nombre,
+    zr.nombre        AS zona_recaudo_nombre,
+    zr.color         AS zona_recaudo_color,
     COALESCE(
       json_agg(DISTINCT jsonb_build_object('rol', tr.rol, 'activo', tr.activo))
       FILTER (WHERE tr.rol IS NOT NULL), '[]'
@@ -46,6 +48,7 @@ const SELECT_TERCERO = `
   LEFT JOIN geo_departamentos d ON d.id = t.departamento_id
   LEFT JOIN geo_municipios    m ON m.id = t.municipio_id
   LEFT JOIN geo_zonas         z ON z.id = t.zona_id
+  LEFT JOIN zonas_recaudo     zr ON zr.id = t.zona_recaudo_id
   LEFT JOIN tercero_roles     tr ON tr.tercero_id = t.id
 `
 
@@ -93,7 +96,7 @@ export async function listar(req, reply) {
   const [{ rows }, { rows: cnt }] = await Promise.all([
     pool.query(
       `${SELECT_TERCERO} ${where}
-       GROUP BY t.id, td.sigla, td.nombre, td.requiere_dv, d.nombre, m.nombre, z.nombre
+       GROUP BY t.id, td.sigla, td.nombre, td.requiere_dv, d.nombre, m.nombre, z.nombre, zr.nombre, zr.color
        ORDER BY t.apellidos, t.nombres, t.razon_social
        LIMIT $${vals.length + 1} OFFSET $${vals.length + 2}`,
       [...vals, Number(limit), offset]
@@ -121,7 +124,7 @@ export async function obtener(req, reply) {
   }
   const { rows } = await pool.query(
     `${SELECT_TERCERO} WHERE t.id = $1
-     GROUP BY t.id, td.sigla, td.nombre, td.requiere_dv, d.nombre, m.nombre, z.nombre`,
+     GROUP BY t.id, td.sigla, td.nombre, td.requiere_dv, d.nombre, m.nombre, z.nombre, zr.nombre, zr.color`,
     [id]
   )
   if (!rows.length) return reply.code(404).send({ data: null, error: 'Tercero no encontrado' })
@@ -158,7 +161,7 @@ export async function crear(req, reply) {
     tipo_documento_id, numero_documento, dv, tipo_persona = 'NATURAL',
     nombres, apellidos, razon_social, fecha_nacimiento, sexo, rh,
     telefono, telefono_alt, email, direccion, barrio, vereda,
-    departamento_id, municipio_id, zona_id, observaciones,
+    departamento_id, municipio_id, zona_id, zona_recaudo_id, observaciones,
     roles = [],
   } = req.body
 
@@ -182,15 +185,15 @@ export async function crear(req, reply) {
          (tipo_documento_id, numero_documento, dv, tipo_persona,
           nombres, apellidos, razon_social, fecha_nacimiento, sexo, rh,
           telefono, telefono_alt, email, direccion, barrio, vereda,
-          departamento_id, municipio_id, zona_id, observaciones, sede_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+          departamento_id, municipio_id, zona_id, zona_recaudo_id, observaciones, sede_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [tipo_documento_id, numero_documento, dv || null, tipo_persona,
        nombres || null, apellidos || null, razon_social || null,
        fecha_nacimiento || null, sexo || null, rh || null,
        telefono || null, telefono_alt || null, email || null, direccion || null,
        barrio || null, vereda || null,
-       departamento_id || null, municipio_id || null, zona_id || null,
+       departamento_id || null, municipio_id || null, zona_id || null, zona_recaudo_id || null,
        observaciones || null, sede_id]
     )
     const tercero = rows[0]
@@ -243,7 +246,7 @@ export async function actualizar(req, reply) {
     'tipo_documento_id', 'numero_documento', 'dv', 'tipo_persona',
     'nombres', 'apellidos', 'razon_social', 'fecha_nacimiento', 'sexo', 'rh',
     'telefono', 'telefono_alt', 'email', 'direccion', 'barrio', 'vereda',
-    'departamento_id', 'municipio_id', 'zona_id', 'observaciones', 'activo',
+    'departamento_id', 'municipio_id', 'zona_id', 'zona_recaudo_id', 'observaciones', 'activo',
     'estado_civil', 'ocupacion',
   ]
   const sets = []
