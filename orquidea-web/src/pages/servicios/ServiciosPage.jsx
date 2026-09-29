@@ -39,6 +39,7 @@ import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import { FORMATOS_SERVICIO } from '../../utils/formatosServicio.js'
 
 // ── Carroza fúnebre SVG ───────────────────────────────────────────────────────
 const HearseIcon = ({ size = 22, color = '#374151' }) => (
@@ -4420,6 +4421,9 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const [docForm, setDocForm] = useState({ tipo_codigo:'', nombre:'', archivo:null })
   const [subiendoDoc, setSubiendoDoc] = useState(false)
   const [printData, setPrintData] = useState(null)
+  // Formatos para entregar a la familia (asistencia a novenarios, …)
+  const [formatoSel, setFormatoSel] = useState(null)   // { formato, datos, logo, campos }
+  const [cargandoFormato, setCargandoFormato] = useState(null)
 
   const { usuario } = useAuthStore()
   const esEditor = ['superadmin','administrador','operador'].includes(usuario?.rol)
@@ -4634,6 +4638,28 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
       cargar()
     } catch (e) { toast.error(e.response?.data?.error || 'Error al guardar checklist') }
     finally { setSavingCheck(false) }
+  }
+
+  const abrirFormato = async (formato) => {
+    setCargandoFormato(formato.clave)
+    try {
+      const r = await api.get(`/servicios/${id}/orden-impresion`)
+      const logo = await getLogoDataUrl(r.data.empresa?.logo_url)
+      setFormatoSel({ formato, datos: r.data, logo, campos: formato.valorInicial(r.data) })
+    } catch (e) {
+      toast.error('No se pudieron cargar los datos del servicio: ' + (e.response?.data?.error || e.message))
+    } finally { setCargandoFormato(null) }
+  }
+
+  const descargarFormato = () => {
+    const { formato, datos, logo, campos } = formatoSel
+    try {
+      formato.generar(datos, logo, campos)
+      toast.success(`${formato.titulo}: PDF descargado`)
+      setFormatoSel(null)
+    } catch (e) {
+      toast.error('Error al generar el PDF: ' + e.message)
+    }
   }
 
   const abrirImprimir = async () => {
@@ -5256,6 +5282,32 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
           ) : (
             /* ── Tab Documentos ── */
             <div>
+              {/* Formatos que se le entregan a la familia, llenos con los datos del servicio */}
+              <div style={{ background:'#F5F3FF', border:'1.5px solid #DDD6FE', borderRadius:12, padding:14, marginBottom:16 }}>
+                <div style={{ fontSize:10, fontWeight:800, color:'#6D28D9', textTransform:'uppercase', letterSpacing:.5, marginBottom:10 }}>
+                  Formatos para entregar a la familia
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:10 }}>
+                  {FORMATOS_SERVICIO.map(f => (
+                    <div key={f.clave} style={{ background:'#fff', border:'1.5px solid #E9E5FB', borderRadius:10, padding:'10px 12px',
+                      display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ width:34, height:34, borderRadius:9, background:'#EDE9FE', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                        <ScrollText size={17} color="#6D28D9"/>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:800, color:'#0F1035' }}>{f.titulo}</div>
+                        <div style={{ fontSize:11, color:'#9CA3AF' }}>{f.descripcion}</div>
+                      </div>
+                      <button className="sv-btn sv-btn-primary" onClick={() => abrirFormato(f)} disabled={!!cargandoFormato}
+                        title="Revisar datos y descargar PDF">
+                        {cargandoFormato === f.clave ? <Loader2 size={14} className="sv-spin"/> : <Printer size={14}/>}
+                        PDF
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {esEditor && (
                 <div style={{ background:'#F8F9FC', border:'1.5px solid #ECEDF8', borderRadius:12, padding:14, marginBottom:16 }}>
                   <div style={{ fontSize:10, fontWeight:800, color:'#6B7280', textTransform:'uppercase', letterSpacing:.5, marginBottom:12 }}>
@@ -5337,6 +5389,38 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
         </div>
 
       </div>
+
+      {/* Modal del formato: va fuera de .sv-drawer (su animación con transform
+          rompería el position:fixed del overlay) */}
+      {formatoSel && (
+        <div className="sv-overlay" style={{ zIndex:1001 }}
+          onClick={e => { if (e.target === e.currentTarget) setFormatoSel(null) }}>
+          <div className="sv-modal" style={{ maxWidth:560 }}>
+            <div className="sv-mhead">
+              <div>
+                <div className="sv-mtitle">{formatoSel.formato.titulo}</div>
+                <div className="sv-msub">Revisa los datos. Lo que dejes vacío sale como línea para llenar a mano.</div>
+              </div>
+              <button className="sv-mclose" onClick={() => setFormatoSel(null)}><X size={16}/></button>
+            </div>
+            <div className="sv-mbody">
+              <div className="sv-grid2">
+                {formatoSel.formato.campos.map(c => (
+                  <div key={c.k} className="sv-field" style={c.span === 2 ? { gridColumn:'1 / -1' } : undefined}>
+                    <label>{c.label}</label>
+                    <input type={c.type || 'text'} value={formatoSel.campos[c.k] || ''}
+                      onChange={e => setFormatoSel(p => ({ ...p, campos: { ...p.campos, [c.k]: e.target.value } }))}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ padding:'14px 24px', borderTop:'1.5px solid #ECEDF8', display:'flex', justifyContent:'flex-end', gap:10 }}>
+              <button className="sv-btn sv-btn-ghost" onClick={() => setFormatoSel(null)}>Cancelar</button>
+              <button className="sv-btn sv-btn-primary" onClick={descargarFormato}><Printer size={14}/> Descargar PDF</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

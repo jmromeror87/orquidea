@@ -1454,6 +1454,10 @@ export async function ordenImpresion(req, reply) {
         COALESCE(cont.numero_documento, tpol.numero_documento) AS contratante_cedula,
         COALESCE(td_cont.sigla, td_tpol.sigla) AS contratante_tipo_doc,
         COALESCE(cont.direccion, tpol.direccion) AS contratante_direccion,
+        COALESCE(cont.barrio, cont.vereda, tpol.barrio, tpol.vereda) AS contratante_barrio,
+        COALESCE(resp.nombres||' '||resp.apellidos, resp.razon_social) AS responsable_nombre,
+        resp.telefono AS responsable_tel, resp.direccion AS responsable_direccion,
+        COALESCE(resp.barrio, resp.vereda) AS responsable_barrio,
         c.numero AS contrato_numero, sv.nombre AS sala_nombre,
         u.nombre AS operador_nombre,
         pol.numero AS poliza_numero, pol.numero_legado AS poliza_numero_legado, ppl.nombre AS poliza_plan,
@@ -1471,6 +1475,7 @@ export async function ordenImpresion(req, reply) {
       LEFT JOIN planes_poliza ppl  ON ppl.id  = pol.plan_id
       LEFT JOIN terceros tpol      ON tpol.id = pol.titular_id
       LEFT JOIN tipos_documento td_tpol ON td_tpol.id = tpol.tipo_documento_id
+      LEFT JOIN terceros resp      ON resp.id = sf.responsable_id
       WHERE sf.id = $1`, [id]),
     pool.query(`
       SELECT tr.*, v.placa AS vehiculo_placa, v.marca AS vehiculo_marca, v.modelo AS vehiculo_modelo,
@@ -1484,7 +1489,7 @@ export async function ordenImpresion(req, reply) {
       FROM ordenes_tanatopraxia ot
       LEFT JOIN usuarios u ON u.id = ot.responsable_id
       WHERE ot.servicio_id=$1 LIMIT 1`, [id]),
-    pool.query(`SELECT razon_social AS nombre_empresa, COALESCE(nombre_comercial, razon_social) AS nombre_comercial, nit, direccion, telefono_1 AS telefono, email, logo_url, municipio, representante_legal FROM empresa LIMIT 1`),
+    pool.query(`SELECT razon_social AS nombre_empresa, COALESCE(nombre_comercial, razon_social) AS nombre_comercial, nit, digito_verificador, direccion, telefono_1 AS telefono, telefono_2, email, logo_url, municipio, representante_legal FROM empresa LIMIT 1`),
     pool.query(`
       SELECT i.*, sc.codigo AS catalogo_codigo, sc.categoria
       FROM items_servicio i
