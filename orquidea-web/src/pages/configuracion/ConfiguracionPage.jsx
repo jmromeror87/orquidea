@@ -1878,6 +1878,22 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
   const set = k => v => setF(x => ({...x,[k]:v}))
   const guardar = async () => { setSaving(true); try { onOk((await empresaService.actualizarParametros(f)).data.data) } catch { onErr() } finally { setSaving(false) } }
 
+  // ── Coordinador predeterminado (cargo en servicios, no rol de permisos) ──
+  const [usuariosActivos, setUsuariosActivos] = useState([])
+  const [coordinadorId, setCoordinadorId] = useState('')
+  const [savingCoord, setSavingCoord] = useState(false)
+  useEffect(() => { setCoordinadorId(data?.coordinador_usuario_id || '') }, [data?.coordinador_usuario_id])
+  useEffect(() => {
+    api.get('/usuarios?limit=100&activo=true').then(r => setUsuariosActivos(r.data.data || [])).catch(() => {})
+  }, [])
+  const guardarCoordinador = async () => {
+    setSavingCoord(true)
+    try {
+      await empresaService.actualizarParametros({ coordinador_usuario_id: coordinadorId })
+      onOk({ coordinador_usuario_id: coordinadorId || null })
+    } catch { onErr() } finally { setSavingCoord(false) }
+  }
+
   // ── Intereses de mora dinámicos ──────────────────────────────────────────
   const [mora, setMora] = useState({
     nombre: 'Configuración principal',
@@ -1945,6 +1961,23 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
           <div className="campo"><label>Previsión</label><input value={f.prefijo_prevision} onChange={e=>set('prefijo_prevision')(e.target.value)} placeholder="PREV" /></div>
         </div>
         <BtnBar saving={saving} onGuardar={guardar} />
+      </SecCard>
+
+      <SecCard titulo="Coordinador de servicios" sub="Quien aparece como coordinador en los formatos que se entregan a la familia" Icon={UserSquare2} color="#7C3AED">
+        <div className="g2">
+          <div className="campo">
+            <label>Coordinador predeterminado</label>
+            <select value={coordinadorId} onChange={e=>setCoordinadorId(e.target.value)}>
+              <option value="">— Sin coordinador predeterminado —</option>
+              {usuariosActivos.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ fontSize:11.5, color:'#9CA3AF', marginTop:4 }}>
+          Se usa en todos los servicios. Si en un servicio asignas otro coordinador (pestaña Personal → rol "Coordinador"), en ese servicio manda el asignado.
+          Debe ser un usuario del sistema (créalo en Usuarios si aún no existe).
+        </div>
+        <BtnBar saving={savingCoord} onGuardar={guardarCoordinador} />
       </SecCard>
 
       <SecCard titulo="IVA" sub="Porcentaje que se aplica automáticamente cuando un servicio del catálogo marca 'Aplica IVA'" Icon={Sliders} color="#0EA5E9">

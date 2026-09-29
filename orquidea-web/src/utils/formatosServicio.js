@@ -154,7 +154,7 @@ export function generarAsistenciaNovenarios(datos, logoDataUrl, campos = {}) {
   ], y + 6)
 
   y += 6
-  campoLinea(doc, 'ASISTENTE', campos.asistente, y);                                      y += 4.2
+  campoLinea(doc, 'COORDINADOR', campos.coordinador, y);                                     y += 4.2
   campoLinea(doc, 'INICIO NOVENARIO', fmtEntrada(campos.inicio_novenario), y);            y += 4.2
   campoLinea(doc, 'FINALIZACIÓN NOVENARIO', fmtEntrada(campos.fin_novenario), y);         y += 4.2
   campoLinea(doc, 'EUCARISTÍA ÚLTIMA NOCHE', fmtEntrada(campos.eucaristia), y)
@@ -196,7 +196,7 @@ export const FORMATOS_SERVICIO = [
       { k: 'ser_querido',        label: 'Ser querido' },
       { k: 'responsable',        label: 'Responsable' },
       { k: 'direccion_velacion', label: 'Dirección velación', span: 2 },
-      { k: 'asistente',          label: 'Asistente (coordinador)', span: 2 },
+      { k: 'coordinador',        label: 'Coordinador', span: 2 },
       { k: 'inicio_novenario',   label: 'Inicio novenario',        type: 'date' },
       { k: 'fin_novenario',      label: 'Finalización novenario',  type: 'date' },
       { k: 'eucaristia',         label: 'Eucaristía última noche', type: 'datetime-local', span: 2 },
@@ -208,7 +208,8 @@ export const FORMATOS_SERVICIO = [
       direccion_velacion: s.sala_nombre
         || unirDireccion(s.responsable_direccion, s.responsable_barrio)
         || unirDireccion(s.contratante_direccion, s.contratante_barrio),
-      asistente: '', inicio_novenario: '', fin_novenario: '', eucaristia: '',
+      coordinador: s.coordinador_nombre || '',
+      inicio_novenario: '', fin_novenario: '', eucaristia: '',
     }),
   },
 ]

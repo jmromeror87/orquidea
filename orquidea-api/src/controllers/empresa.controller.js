@@ -41,6 +41,7 @@ export async function obtenerEmpresa(req, reply) {
            p.wa_token, p.wa_phone_id, p.wa_business_id,
            p.smtp_host, p.smtp_puerto, p.smtp_usuario, p.smtp_de_nombre,
            p.color_primario, p.color_acento,
+           p.coordinador_usuario_id,
            p.id AS parametros_id
     FROM empresa e
     LEFT JOIN parametros_sistema p ON p.empresa_id = e.id
@@ -177,6 +178,7 @@ export async function actualizarParametros(req, reply) {
     'wa_phone_id', 'wa_business_id',
     'smtp_host', 'smtp_puerto', 'smtp_usuario', 'smtp_de_nombre',
     'color_primario', 'color_acento',
+    'coordinador_usuario_id',
   ]
   // Campos sensibles solo se actualizan si vienen no enmascarados
   const CAMPOS_SENSIBLES = ['dataico_api_key', 'wa_token', 'smtp_password']
@@ -184,7 +186,8 @@ export async function actualizarParametros(req, reply) {
   const sets = []; const vals = [empresa_id]; let idx = 2
   for (const campo of CAMPOS_PERMITIDOS) {
     if (campos[campo] !== undefined) {
-      sets.push(`${campo} = $${idx++}`); vals.push(campos[campo])
+      // '' desde un <select> vacío = quitar el valor (las columnas UUID no aceptan '')
+      sets.push(`${campo} = $${idx++}`); vals.push(campos[campo] === '' ? null : campos[campo])
     }
   }
   for (const campo of CAMPOS_SENSIBLES) {

@@ -1460,6 +1460,14 @@ export async function ordenImpresion(req, reply) {
         COALESCE(resp.barrio, resp.vereda) AS responsable_barrio,
         c.numero AS contrato_numero, sv.nombre AS sala_nombre,
         u.nombre AS operador_nombre,
+        -- Coordinador: el asignado en la pestaña Personal; si no hay, el predeterminado de Parámetros
+        COALESCE(
+          (SELECT uc.nombre FROM servicio_personal sp JOIN usuarios uc ON uc.id = sp.usuario_id
+            WHERE sp.servicio_id = sf.id AND sp.rol_servicio = 'Coordinador'
+            ORDER BY sp.asignado_en DESC LIMIT 1),
+          (SELECT ud.nombre FROM parametros_sistema ps JOIN usuarios ud ON ud.id = ps.coordinador_usuario_id
+            WHERE ud.activo LIMIT 1)
+        ) AS coordinador_nombre,
         pol.numero AS poliza_numero, pol.numero_legado AS poliza_numero_legado, ppl.nombre AS poliza_plan,
         COALESCE(tpol.nombres||' '||tpol.apellidos, tpol.razon_social) AS poliza_titular,
         pol.valor_cuota AS poliza_cuota
