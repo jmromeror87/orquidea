@@ -200,6 +200,22 @@ export async function actualizar(request, reply) {
     }
   }
 
+  // Cambio de correo: el id no cambia, así que se conserva todo su historial
+  const emailNuevo = email?.toLowerCase().trim() || null
+  const cambiaEmail = emailNuevo && emailNuevo !== actual[0].email
+  if (cambiaEmail) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNuevo)) {
+      return reply.status(400).send({ error: 'El correo electrónico no tiene un formato válido' })
+    }
+    const { rows: dup } = await query(
+      'SELECT nombre FROM usuarios WHERE LOWER(email) = $1 AND id <> $2',
+      [emailNuevo, id]
+    )
+    if (dup[0]) {
+      return reply.status(409).send({ error: `El correo ${emailNuevo} ya está asignado a otro usuario` })
+    }
+  }
+
   const sedePrincipal = sede_id || (Array.isArray(sedes) && sedes.length ? sedes[0] : null)
 
   const { rows } = await query(
@@ -214,7 +230,7 @@ export async function actualizar(request, reply) {
      RETURNING id, nombre, email, rol, sede_id, activo`,
     [
       nombre?.trim() || null,
-      email?.toLowerCase().trim() || null,
+      emailNuevo,
       rol || null,
       sedePrincipal,
       activo ?? null,
@@ -233,7 +249,31 @@ export async function actualizar(request, reply) {
     }
   }
 
-  return reply.send({ data: rows[0] })
+  // Si nunca activó la cuenta, el enlace de activación quedó en el correo viejo: se reenvía al nuevo
+  let correoActivacion = null
+  if (cambiaEmail && actual[0].activacion_token) {
+    const token = crypto.randomBytes(32).toString('hex')
+    const expira = new Date(Date.now() + 48 * 60 * 60 * 1000)
+    await query(
+      'UPDATE usuarios SET activacion_token = $1, activacion_expira = $2 WHERE id = $3',
+      [token, expira, id]
+    )
+    const url = `${env.appUrl}/activar-cuenta/${token}`
+    correoActivacion = { enviado: false, url }
+    try {
+      correoActivacion = await enviarCorreoActivacion({ para: emailNuevo, nombre: rows[0].nombre, url })
+    } catch (err) {
+      request.log.error({ err }, 'No se pudo reenviar el correo de activación')
+    }
+  }
+
+  return reply.send({
+    data: rows[0],
+    ...(correoActivacion ? {
+      activacionReenviada: correoActivacion.enviado,
+      ...(correoActivacion.enviado ? {} : { urlActivacion: correoActivacion.url }),
+    } : {}),
+  })
 }
 
 // ── Sedes asignadas a un usuario (multisede) ──────────────────────────────

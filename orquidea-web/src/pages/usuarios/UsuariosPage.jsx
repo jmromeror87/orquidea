@@ -92,6 +92,8 @@ const CSS = `
 
   /* Body */
   .upage-body { flex:1; min-height:0; overflow-y:auto; padding:24px 28px; display:flex; flex-direction:column; gap:20px; }
+  /* Los hijos no deben encogerse: con overflow:hidden/auto se aplastan y cortan la tabla en vez de hacer scroll */
+  .upage-body > * { flex-shrink:0; }
   .upage-body::-webkit-scrollbar { width:4px; }
   .upage-body::-webkit-scrollbar-thumb { background:#DDE1F0; border-radius:4px; }
 
@@ -300,8 +302,9 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
       const body = { nombre:f.nombre, email:f.email, rol:f.rol, sedes: sedesSel, sede_id: sedesSel[0] }
       let id = usuario?.id
       let correoEnviado = true
+      let resEdit = null
       if (esEdit) {
-        await api.put(`/usuarios/${id}`, body)
+        resEdit = await api.put(`/usuarios/${id}`, body)
       } else {
         const res = await api.post('/usuarios', body)
         id = res.data.data.id
@@ -315,7 +318,10 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
       }
 
       if (esEdit) {
-        toast.success('Usuario actualizado')
+        const r = resEdit.data
+        if (r.activacionReenviada === true) toast.success(`Usuario actualizado. Se reenvió el enlace de activación a ${f.email}.`)
+        else if (r.activacionReenviada === false) toast.success('Usuario actualizado, pero el correo de activación no pudo enviarse al nuevo correo.')
+        else toast.success('Usuario actualizado')
       } else if (correoEnviado) {
         toast.success(`Usuario creado. Se envió un correo a ${f.email} para que cree su contraseña.`)
       } else {
@@ -380,7 +386,12 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
               </div>
               <div className="mfield" style={{ gridColumn:'span 2' }}>
                 <label>Correo electrónico *</label>
-                <input value={f.email} onChange={ch('email')} type="email" placeholder="juan@empresa.com" disabled={esEdit}/>
+                <input value={f.email} onChange={ch('email')} type="email" placeholder="juan@empresa.com"/>
+                {esEdit && f.email.trim().toLowerCase() !== (usuario.email||'').toLowerCase() && (
+                  <div style={{ fontSize:11.5, color:'#B45309', marginTop:5 }}>
+                    El usuario conserva su historial, rol y permisos; desde ahora debe iniciar sesión con este nuevo correo.
+                  </div>
+                )}
               </div>
               <div className="mfield">
                 <label>Rol *</label>
