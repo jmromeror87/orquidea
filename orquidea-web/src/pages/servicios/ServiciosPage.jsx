@@ -383,7 +383,7 @@ const BLANK = {
   contrato_id:'', difunto_id:'', tipo_disposicion:'INHUMACION',
   sala_id:'', fecha_velacion_ini:'', fecha_velacion_fin:'',
   lugar_recogida:'', fecha_recogida:'',
-  lugar_disposicion:'', fecha_disposicion:'',
+  lugar_disposicion:'', fecha_disposicion:'', iglesia:'', coro:'',
   acta_defuncion:'', permiso_inhumacion:'', observaciones:'',
 }
 
@@ -1961,6 +1961,18 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                     onChange={e => setForm(p => ({...p, fecha_disposicion:e.target.value}))}/>
                 </div>
               </div>
+              <div className="sv-grid2" style={{ marginTop:14 }}>
+                <div className="sv-field" style={{ marginBottom:0 }}>
+                  <label>Iglesia / parroquia de las exequias</label>
+                  <input value={form.iglesia} placeholder="Ej: Iglesia Santa Bárbara"
+                    onChange={e => setForm(p => ({...p, iglesia:e.target.value}))}/>
+                </div>
+                <div className="sv-field" style={{ marginBottom:0 }}>
+                  <label>Coro <span style={{ color:'#9CA3AF', fontWeight:400 }}>(si aplica)</span></label>
+                  <input value={form.coro} placeholder="Ej: Yesid Ascanio Páez"
+                    onChange={e => setForm(p => ({...p, coro:e.target.value}))}/>
+                </div>
+              </div>
 
               <div className="sv-section" style={{ marginTop:14 }}>Trámites legales</div>
               <div className="sv-grid2">
@@ -2569,6 +2581,8 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
       fecha_recogida:    data.fecha_recogida    ? data.fecha_recogida.slice(0,16) : '',
       lugar_disposicion: data.lugar_disposicion || '',
       fecha_disposicion: data.fecha_disposicion ? data.fecha_disposicion.slice(0,16) : '',
+      iglesia:           data.iglesia           || '',
+      coro:              data.coro              || '',
       observaciones:     data.observaciones     || '',
     })
     setMsg('')
@@ -2730,6 +2744,8 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
       <Card icon={disp.icon} title={`Disposición final — ${disp.label}`} cols={2} accent={disp.color}>
         <DField label="Lugar" value={data.lugar_disposicion}/>
         <DField label="Fecha y hora" value={fmtDT(data.fecha_disposicion)}/>
+        <DField label="Iglesia" value={data.iglesia}/>
+        <DField label="Coro" value={data.coro}/>
       </Card>
 
       {/* Observaciones */}
@@ -2839,6 +2855,16 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
           <label style={lbl}>Fecha y hora de {dispForm.label.toLowerCase()}</label>
           <input type="datetime-local" value={form.fecha_disposicion}
             onChange={e => set('fecha_disposicion', e.target.value)} style={inp}/>
+        </div>
+        <div>
+          <label style={lbl}>⛪ Iglesia / parroquia de las exequias</label>
+          <input value={form.iglesia} onChange={e => set('iglesia', e.target.value)}
+            placeholder="Ej: Iglesia Santa Bárbara" style={inp}/>
+        </div>
+        <div>
+          <label style={lbl}>🎵 Coro (si aplica)</label>
+          <input value={form.coro} onChange={e => set('coro', e.target.value)}
+            placeholder="Ej: Yesid Ascanio Páez" style={inp}/>
         </div>
 
         {/* Observaciones */}
@@ -4651,6 +4677,19 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
     } finally { setCargandoFormato(null) }
   }
 
+  // Descarga directa: todo sale de los datos del servicio
+  const descargarDirecto = async (formato) => {
+    setCargandoFormato(formato.clave)
+    try {
+      const r = await api.get(`/servicios/${id}/orden-impresion`)
+      const logo = await getLogoDataUrl(r.data.empresa?.logo_url)
+      formato.generar(r.data, logo, formato.valorInicial(r.data))
+      toast.success(`${formato.titulo}: PDF descargado`)
+    } catch (e) {
+      toast.error('Error al generar el PDF: ' + (e.response?.data?.error || e.message))
+    } finally { setCargandoFormato(null) }
+  }
+
   const descargarFormato = () => {
     const { formato, datos, logo, campos } = formatoSel
     try {
@@ -5298,8 +5337,12 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                         <div style={{ fontSize:13, fontWeight:800, color:'#0F1035' }}>{f.titulo}</div>
                         <div style={{ fontSize:11, color:'#9CA3AF' }}>{f.descripcion}</div>
                       </div>
-                      <button className="sv-btn sv-btn-primary" onClick={() => abrirFormato(f)} disabled={!!cargandoFormato}
-                        title="Revisar datos y descargar PDF">
+                      <button className="sv-btn sv-btn-ghost" onClick={() => abrirFormato(f)} disabled={!!cargandoFormato}
+                        title="Ajustar algún dato solo para esta impresión" style={{ padding:'7px 9px' }}>
+                        <Pencil size={13}/>
+                      </button>
+                      <button className="sv-btn sv-btn-primary" onClick={() => descargarDirecto(f)} disabled={!!cargandoFormato}
+                        title="Descargar PDF con los datos del servicio">
                         {cargandoFormato === f.clave ? <Loader2 size={14} className="sv-spin"/> : <Printer size={14}/>}
                         PDF
                       </button>

@@ -537,7 +537,7 @@ export async function crear(req, reply) {
     lugar_recogida, fecha_recogida,
     lugar_disposicion, fecha_disposicion,
     acta_defuncion, permiso_inhumacion,
-    observaciones,
+    observaciones, iglesia, coro,
   } = req.body
 
   if (!difunto_id) return reply.code(400).send({ error: 'difunto_id es obligatorio' })
@@ -682,8 +682,8 @@ export async function crear(req, reply) {
         observaciones, usuario_id, estado,
         convenio_id, convenio_autorizacion_id, convenio_numero_autorizacion,
         convenio_valor_servicio, convenio_valor_cubierto, convenio_observaciones,
-        contratante_convenio_id, convenio_absorbe_resto, sede_id, parentesco
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'RECIBIDO',$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+        contratante_convenio_id, convenio_absorbe_resto, sede_id, parentesco, iglesia, coro
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'RECIBIDO',$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
       RETURNING id, numero`,
       [
         contratoIdFinal, poliza_id || null, paquete_id, difunto_id, tipo_disposicion,
@@ -700,6 +700,7 @@ export async function crear(req, reply) {
         convenioCobertura ? convenioCobertura.absorbe_resto : null,
         sedeParaCrear(req),
         parentesco || null,
+        iglesia?.trim() || null, coro?.trim() || null,
       ]
     )
 
@@ -918,6 +919,7 @@ export async function actualizar(req, reply) {
     lugar_disposicion, fecha_disposicion,
     acta_defuncion, permiso_inhumacion,
     tramites_completos, observaciones, parentesco,
+    iglesia, coro,
   } = req.body
 
   // ── Choque de agenda: sala de velación (considerando campos ya guardados) ──
@@ -951,6 +953,9 @@ export async function actualizar(req, reply) {
       tramites_completos = COALESCE($11, tramites_completos),
       observaciones      = COALESCE($12, observaciones),
       parentesco         = COALESCE($14, parentesco),
+      -- iglesia/coro: si vienen en el body se guardan tal cual ('' = quitar)
+      iglesia            = CASE WHEN $15 THEN NULLIF($16, '') ELSE iglesia END,
+      coro               = CASE WHEN $17 THEN NULLIF($18, '') ELSE coro END,
       actualizado        = NOW()
     WHERE id = $13 AND estado NOT IN ('COMPLETADO','CANCELADO')
     RETURNING id`,
@@ -961,6 +966,8 @@ export async function actualizar(req, reply) {
       lugar_disposicion || null, fecha_disposicion || null,
       acta_defuncion || null, permiso_inhumacion || null,
       tramites_completos ?? null, observaciones || null, id, parentesco || null,
+      iglesia !== undefined, iglesia?.trim() ?? null,
+      coro !== undefined, coro?.trim() ?? null,
     ]
   )
 
@@ -1468,6 +1475,12 @@ export async function ordenImpresion(req, reply) {
           (SELECT ud.nombre FROM parametros_sistema ps JOIN usuarios ud ON ud.id = ps.coordinador_usuario_id
             WHERE ud.activo LIMIT 1)
         ) AS coordinador_nombre,
+        (SELECT uj.nombre FROM servicio_personal sp JOIN usuarios uj ON uj.id = sp.usuario_id
+          WHERE sp.servicio_id = sf.id AND sp.rol_servicio = 'Jefe de Protocolo'
+          ORDER BY sp.asignado_en DESC LIMIT 1) AS jefe_protocolo_nombre,
+        (SELECT uk.nombre FROM servicio_personal sp JOIN usuarios uk ON uk.id = sp.usuario_id
+          WHERE sp.servicio_id = sf.id AND sp.rol_servicio = 'Conductor / Traslado'
+          ORDER BY sp.asignado_en DESC LIMIT 1) AS conductor_personal_nombre,
         pol.numero AS poliza_numero, pol.numero_legado AS poliza_numero_legado, ppl.nombre AS poliza_plan,
         COALESCE(tpol.nombres||' '||tpol.apellidos, tpol.razon_social) AS poliza_titular,
         pol.valor_cuota AS poliza_cuota

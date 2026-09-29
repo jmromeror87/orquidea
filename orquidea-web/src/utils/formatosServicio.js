@@ -378,11 +378,14 @@ export const FORMATOS_SERVICIO = [
         fecha_defuncion: fmtFechaISO(defuncion?.fecha_fallecimiento),
         fecha_exequias: ex.fecha,
         hora_exequias: ex.hora,
-        iglesia: '', coro: '',
+        iglesia: s.iglesia || '',
+        coro: s.coro || '',
         carroza: t?.vehiculo_placa || t?.vehiculo || '',
-        conductor: t?.conductor_nombre || t?.conductor || '',
+        // El conductor del traslado a cementerio; si no hay, el asignado en Personal
+        conductor: t?.conductor_nombre || t?.conductor || s.conductor_personal_nombre || '',
         cementerio: s.lugar_disposicion || '',
-        jefe_protocolo: '', parroquia: '', inicio_novenario: '', fin_novenario: '',
+        jefe_protocolo: s.jefe_protocolo_nombre || '',
+        parroquia: '', inicio_novenario: '', fin_novenario: '',
       }
     },
   },
