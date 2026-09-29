@@ -127,6 +127,12 @@ const CSS = `
   .tbl-card-title { font-size:14px; font-weight:800; color:#0F1035; }
   .tbl-card-count { font-size:11.5px; color:#9CA3AF; background:#F4F5FA; border-radius:20px; padding:2px 10px; }
   .tbl-scroll { overflow-x:auto; }
+  .pager { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; padding:12px 18px; border-top:1px solid #F0F1FA; font-size:12.5px; color:#6B7280; }
+  .pager-btns { display:flex; gap:6px; align-items:center; }
+  .pager-btn { padding:6px 11px; border:1.5px solid #E8E9F8; border-radius:8px; background:#fff; color:#4338CA; font-weight:700; font-size:12.5px; cursor:pointer; font-family:inherit; }
+  .pager-btn:hover:not(:disabled) { background:#EEF2FF; }
+  .pager-btn:disabled { color:#C4C7D9; cursor:not-allowed; }
+  .pager-pag { font-weight:700; color:#374151; padding:0 6px; }
   .tbl { width:100%; border-collapse:collapse; min-width:820px; }
   .tbl th { padding:11px 18px; text-align:left; font-size:10px; font-weight:800; color:#9CA3AF; text-transform:uppercase; letter-spacing:1px; background:#FAFBFF; border-bottom:1px solid #ECEDF8; }
   .tbl td { padding:0 18px; border-bottom:1px solid #F4F5FA; }
@@ -535,6 +541,8 @@ function ModalConfirmar({ titulo, mensaje, textoBoton='Confirmar', peligro=true,
 /* ══════════════════════════════════════════════
    TAB 1 — USUARIOS
 ══════════════════════════════════════════════ */
+const POR_PAGINA = 50
+
 function TabUsuarios({ esAdmin }) {
   const usuarioActual = useAuthStore(s => s.usuario)
   const [usuarios, setUsuarios] = useState([])
@@ -546,22 +554,32 @@ function TabUsuarios({ esAdmin }) {
   const [modal,    setModal]    = useState(null)
   const [sel,      setSel]      = useState(null)
   const [confirmar, setConfirmar] = useState(null) // { titulo, mensaje, accion }
+  const [page,     setPage]     = useState(1)
+  const [meta,     setMeta]     = useState({ total:0, pages:1, resumen:{} })
+  const [buscarQ,  setBuscarQ]  = useState('') // búsqueda con debounce
+
+  // Paginado en el servidor: sirve igual con 7 que con miles de usuarios
+  useEffect(() => { const t = setTimeout(() => setBuscarQ(buscar.trim()), 350); return () => clearTimeout(t) }, [buscar])
+  useEffect(() => { setPage(1) }, [buscarQ, filtroRol, filtroEstado])
 
   const cargar = useCallback(async () => {
     setLoading(true)
     try {
-      // Se traen todos (la API pagina de 20 por defecto y aquí no hay paginador); el filtrado es local
-      const [uR,sR] = await Promise.all([
-        api.get('/usuarios?limit=1000'),
-        api.get('/usuarios/sedes'),
-      ])
+      const params = new URLSearchParams({ page, limit: POR_PAGINA })
+      if (buscarQ)      params.set('buscar', buscarQ)
+      if (filtroRol)    params.set('rol', filtroRol)
+      if (filtroEstado) params.set('activo', filtroEstado === 'activos' ? 'true' : 'false')
+      const uR = await api.get(`/usuarios?${params}`)
       setUsuarios(uR.data.data)
-      setSedes(sR.data.data)
-    } catch{}
+      setMeta(uR.data.meta)
+    } catch(err) {
+      toast.error(err.response?.data?.error || 'No se pudo cargar la lista de usuarios')
+    }
     finally { setLoading(false) }
-  }, [])
+  }, [page, buscarQ, filtroRol, filtroEstado])
 
   useEffect(()=>{ cargar() },[cargar])
+  useEffect(()=>{ api.get('/usuarios/sedes').then(r=>setSedes(r.data.data)).catch(()=>{}) },[])
 
   const cambiarActivo = async (u, nuevoActivo) => {
     try {
@@ -583,21 +601,15 @@ function TabUsuarios({ esAdmin }) {
     })
   }
   const guardado = () => { setModal(null); setSel(null); cargar() }
-  const q = buscar.trim().toLowerCase()
-  const visibles = usuarios.filter(u =>
-    (!q || u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)) &&
-    (!filtroRol || u.rol === filtroRol) &&
-    (!filtroEstado || (filtroEstado === 'activos' ? u.activo : !u.activo))
-  )
-  const activos   = usuarios.filter(u=>u.activo).length
-  const inactivos = usuarios.filter(u=>!u.activo).length
-  const roles     = [...new Set(usuarios.map(u=>u.rol))].length
+  const { total: totalGlobal = 0, activos = 0, inactivos = 0, roles = 0 } = meta.resumen || {}
+  const desde = meta.total ? (page - 1) * POR_PAGINA + 1 : 0
+  const hasta = Math.min(page * POR_PAGINA, meta.total)
   const fmtFecha  = d => d ? new Date(d).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'}) : 'Nunca'
 
   return (
     <>
       <div className="kpi-strip">
-        <KpiCard label="Total Usuarios"  value={usuarios.length} color="#4338CA" bg="#EEF2FF" emoji="👥"
+        <KpiCard label="Total Usuarios"  value={totalGlobal} color="#4338CA" bg="#EEF2FF" emoji="👥"
           sel={!filtroEstado} onClick={()=>setFiltroEstado('')}/>
         <KpiCard label="Activos"         value={activos}       color="#047857" bg="#ECFDF5" emoji="✅"
           sel={filtroEstado==='activos'} onClick={()=>setFiltroEstado(filtroEstado==='activos'?'':'activos')}/>
@@ -626,11 +638,11 @@ function TabUsuarios({ esAdmin }) {
       <div className="tbl-card">
         <div className="tbl-card-head">
           <span className="tbl-card-title">Listado de Usuarios</span>
-          <span className="tbl-card-count">{visibles.length === usuarios.length ? `${usuarios.length} registros` : `${visibles.length} de ${usuarios.length}`}</span>
+          <span className="tbl-card-count">{meta.total} {meta.total === 1 ? 'registro' : 'registros'}</span>
         </div>
         {loading ? (
           <div className="tbl-loading"><Loader2 size={26} style={{animation:'spin 1s linear infinite'}}/></div>
-        ) : visibles.length === 0 ? (
+        ) : usuarios.length === 0 ? (
           <div className="tbl-empty"><UserCog size={48}/><p style={{fontWeight:600}}>No se encontraron usuarios</p></div>
         ) : (
           <div className="tbl-scroll">
@@ -639,7 +651,7 @@ function TabUsuarios({ esAdmin }) {
               <tr><th>Usuario</th><th>Rol</th><th>Sede</th><th>Último Acceso</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
             <tbody>
-              {visibles.map(u => {
+              {usuarios.map(u => {
                 const cfg = getRol(u.rol)
                 return (
                   <tr key={u.id}>
@@ -690,6 +702,18 @@ function TabUsuarios({ esAdmin }) {
               })}
             </tbody>
           </table>
+          </div>
+        )}
+        {meta.pages > 1 && (
+          <div className="pager">
+            <span>Mostrando {desde}–{hasta} de {meta.total}</span>
+            <div className="pager-btns">
+              <button type="button" className="pager-btn" disabled={page<=1||loading} onClick={()=>setPage(1)}>«</button>
+              <button type="button" className="pager-btn" disabled={page<=1||loading} onClick={()=>setPage(p=>p-1)}>‹ Anterior</button>
+              <span className="pager-pag">Página {page} de {meta.pages}</span>
+              <button type="button" className="pager-btn" disabled={page>=meta.pages||loading} onClick={()=>setPage(p=>p+1)}>Siguiente ›</button>
+              <button type="button" className="pager-btn" disabled={page>=meta.pages||loading} onClick={()=>setPage(meta.pages)}>»</button>
+            </div>
           </div>
         )}
       </div>

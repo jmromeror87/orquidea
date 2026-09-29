@@ -42,7 +42,9 @@ const CAMPOS_USUARIO = `
 `
 
 export async function listar(request, reply) {
-  const { page = 1, limit = 20, buscar, rol, activo, sede_id } = request.query
+  const { buscar, rol, activo, sede_id } = request.query
+  const page   = Math.max(1, parseInt(request.query.page) || 1)
+  const limit  = Math.min(100, Math.max(1, parseInt(request.query.limit) || 20))
   const offset = (page - 1) * limit
 
   const condiciones = ['u.oculto = false']
@@ -72,7 +74,7 @@ export async function listar(request, reply) {
 
   const where = condiciones.join(' AND ')
 
-  const [{ rows }, { rows: total }] = await Promise.all([
+  const [{ rows }, { rows: total }, { rows: resumen }] = await Promise.all([
     query(
       `SELECT ${CAMPOS_USUARIO}
        FROM usuarios u
@@ -87,15 +89,24 @@ export async function listar(request, reply) {
       `SELECT COUNT(*) FROM usuarios u WHERE ${where}`,
       params
     ),
+    // Totales globales (sin filtros) para las tarjetas de la vista
+    query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE activo)::int AS activos,
+              COUNT(*) FILTER (WHERE NOT activo)::int AS inactivos,
+              COUNT(DISTINCT rol)::int AS roles
+       FROM usuarios WHERE oculto = false`
+    ),
   ])
 
   return reply.send({
     data: rows,
     meta: {
       total: parseInt(total[0].count),
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page,
+      limit,
       pages: Math.ceil(total[0].count / limit),
+      resumen: resumen[0],
     },
   })
 }
