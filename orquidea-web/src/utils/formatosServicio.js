@@ -177,6 +177,138 @@ export function generarAsistenciaNovenarios(datos, logoDataUrl, campos = {}) {
   doc.save(`Asistencia_Novenarios_${s.codigo || s.numero || 'servicio'}.pdf`)
 }
 
+// ── Formato: Atención y acompañamientos ──────────────────────────────────
+// Las fechas del servicio se guardan como hora local "tal cual" (el formulario
+// hace .slice(0,16) del ISO), así que se leen del texto sin convertir zona.
+function partesFechaServicio(iso) {
+  if (!iso || typeof iso !== 'string') return { fecha: '', hora: '' }
+  const fecha = iso.slice(0, 10).replace(/-/g, '/')
+  const [h, m] = iso.slice(11, 16).split(':').map(Number)
+  if (isNaN(h)) return { fecha, hora: '' }
+  return { fecha, hora: `${String(h % 12 || 12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}` }
+}
+
+// "SRV-2026-0126" → "126/2026"
+function controlInterno(codigo) {
+  const m = /(\d{4})-(\d+)$/.exec(codigo || '')
+  return m ? `${parseInt(m[2], 10)}/${m[1]}` : (codigo || '')
+}
+
+// Traslado que lleva al cementerio/crematorio (carroza + conductor de las exequias)
+function trasladoExequias(traslados = []) {
+  return traslados.find(t => ['CEMENTERIO', 'CREMATORIO'].includes(t.tipo)) || traslados[traslados.length - 1] || null
+}
+
+export function generarAtencionAcompanamientos(datos, logoDataUrl, campos = {}) {
+  const { servicio: s = {}, empresa = {} } = datos
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const L = 20, R = 187, C2 = 102.5
+  doc.setLineWidth(0.25)
+  doc.setTextColor(0, 0, 0)
+
+  // Encabezado (en este formato la razón social va en mayúsculas/minúsculas y más grande)
+  dibujarLogoPDF(doc, logoDataUrl, 21, 20, 40, 24)
+  const nit = empresa.nit ? `${empresa.nit}${empresa.digito_verificador != null ? '-' + empresa.digito_verificador : ''}` : ''
+  const dir = [empresa.direccion, empresa.municipio].filter(Boolean).join(', ')
+  const tels = [empresa.telefono, empresa.telefono_2].filter(Boolean).map(fmtTel).join(' - ')
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(17)
+  doc.text(empresa.nombre_empresa || 'Funeraria San José de Ábrego S.A.S', 119, 28, { align: 'center' })
+  doc.setFontSize(10)
+  if (nit)  doc.text(`NIT. ${nit}`, 119, 33, { align: 'center' })
+  if (dir)  doc.text(`DIR. ${dir}`, 119, 37.5, { align: 'center' })
+  if (tels) doc.text(`TEL. ${tels}`, 119, 42, { align: 'center' })
+
+  doc.setFontSize(11)
+  doc.text('ATENCIÓN Y ACOMPAÑAMIENTOS', 105, 52, { align: 'center' })
+
+  // Datos del servicio en dos columnas
+  const par = (x, y, et, val, ancho) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5)
+    doc.text(`${et}: `, x, y)
+    const w = doc.getTextWidth(`${et}: `)
+    // Si el valor es largo (p. ej. nombre completo), se reduce la letra en vez de cortarlo
+    doc.setFont('helvetica', 'normal')
+    const v = String(val || '')
+    let fs = 9.5
+    while (fs > 6.5 && doc.setFontSize(fs) && doc.getTextWidth(v) > ancho - w) fs -= 0.5
+    doc.text(v, x + w, y)
+  }
+  const izq = [
+    ['SER QUERIDO', campos.ser_querido], ['ORDEN NO', campos.orden_no], ['CONTROL INT', campos.control_int],
+    ['COORDINADOR', campos.coordinador], ['FECHA DEFUNCIÓN', campos.fecha_defuncion], ['FECHA EXEQUIAS', campos.fecha_exequias],
+  ]
+  const der = [
+    ['HORA EXEQUIAS', campos.hora_exequias], ['IGLESIA', campos.iglesia], ['CORO', campos.coro],
+    ['CARROZA', campos.carroza], ['CONDUCTOR', campos.conductor], ['CEMENTERIO', campos.cementerio],
+  ]
+  izq.forEach(([e, v], i) => par(L, 62 + i * 4.3, e, v, C2 - L - 6))
+  der.forEach(([e, v], i) => par(C2, 62 + i * 4.3, e, v, R - C2))
+
+  // Utilidades de dibujo
+  const subrayado = (txt, x, y, size = 10) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(size)
+    doc.text(txt, x, y)
+    doc.line(x, y + 0.8, x + doc.getTextWidth(txt), y + 0.8)
+  }
+  const linea = (x1, x2, y) => doc.line(x1, y + 0.6, x2, y + 0.6)
+  const texto = (t, x, y, opts) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.text(t, x, y, opts) }
+  // "1. ________|___/___/___| Inicio __:__ Final __:__"
+  const filaTurno = (n, y, valor) => {
+    texto(`${n}.`, 26.5, y, { align: 'right' })
+    linea(27.5, 85.5, y); if (valor) texto(valor, 28.5, y - 0.4)
+    texto('|', 86, y); linea(87, 94, y); texto('/', 94.3, y); linea(95.5, 105, y); texto('/', 105.3, y); linea(106.5, 114, y)
+    texto('| Inicio', 114.3, y); linea(125, 133, y); texto(':', 133.3, y); linea(134.5, 142, y)
+    texto('Final', 143, y); linea(151, 164, y); texto(':', 164.3, y); linea(165.5, R, y)
+  }
+
+  // Jefe de protocolo
+  subrayado('JEFE DE PROTOCOLO:', L, 92.5)
+  linea(L + doc.getTextWidth('JEFE DE PROTOCOLO:') + 1, R, 92.5)
+  if (campos.jefe_protocolo) texto(campos.jefe_protocolo, L + doc.getTextWidth('JEFE DE PROTOCOLO:') + 3, 92)
+
+  // Cafetería durante velación
+  subrayado('SERVICIO DE CAFETERÍA DURANTE VELACIÓN', L, 104.5)
+  for (let i = 0; i < 5; i++) filaTurno(i + 1, 111.5 + i * 7.3)
+
+  // Cortejo fúnebre (izquierda) y servicio última noche / decoradora (derecha)
+  subrayado('CORTEJO FÚNEBRE', L, 150.5)
+  for (let i = 0; i < 6; i++) { const y = 160 + i * 7.3; texto(`${i + 1}.`, 26.5, y, { align: 'right' }); linea(27.5, 92.5, y) }
+  const x7 = 26.5 - doc.getTextWidth('7.')
+  texto('7. Oración:', x7, 203.6); linea(x7 + doc.getTextWidth('7. Oración:') + 0.5, 92.5, 203.6)
+
+  const X = 98.5
+  subrayado('SERVICIO ÚLTIMA NOCHE', X, 150.5)
+  texto('Parroquia', 106.5, 160); linea(122, 168, 160); if (campos.parroquia) texto(campos.parroquia, 123, 159.6)
+  texto('Hora', 169.5, 160); linea(177, 181, 160); texto(':', 181.3, 160); linea(182.5, R, 160)
+  linea(106.5, 120, 167.3); texto('/', 120.3, 167.3); linea(121.5, 135, 167.3); texto('/', 135.3, 167.3); linea(136.5, 150, 167.3)
+  texto('| Turno', 150.3, 167.3); linea(162, 173, 167.3); texto(':', 173.3, 167.3); linea(174.5, R, 167.3)
+  texto('1.', 103, 174.6); linea(106.5, R, 174.6)
+  texto('2.', 103, 181.9); linea(106.5, R, 181.9)
+
+  subrayado('DECORADORA DE TUMBA', X, 189.2)
+  let xc = 100.5
+  for (const etiqueta of ['3 Asistencias', '5 Asistencias', 'Asistencia última noche']) {
+    doc.rect(xc, 196.5 - 2.6, 2.6, 2.6); texto(etiqueta, xc + 3.6, 196.5)
+    xc += 3.6 + doc.getTextWidth(etiqueta) + 2.2
+  }
+  texto('Auxiliar', 100, 205); linea(111.5, R, 205)
+
+  // Cafetería novenario
+  subrayado('CAFETERÍA NOVENARIO', L, 215.3)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text('NOVENARIO', L, 219.8)
+  const fechaCorta = (et, y, valor) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(et, 27.5, y)
+    const x = 27.5 + doc.getTextWidth(et) + 0.5
+    if (valor) { texto(valor, x + 1, y - 0.4); linea(x, x + 28, y); return }
+    linea(x, x + 11, y); texto('/', x + 11.3, y); linea(x + 12.5, x + 19.5, y); texto('/', x + 19.8, y); linea(x + 21, x + 28, y)
+  }
+  fechaCorta('Inicia:', 229, fmtEntrada(campos.inicio_novenario))
+  fechaCorta('Finaliza:', 236.7, fmtEntrada(campos.fin_novenario))
+  for (let i = 0; i < 3; i++) filaTurno(i + 1, 247.5 + i * 7.3)
+
+  doc.save(`Atencion_Acompanamientos_${s.codigo || s.numero || 'servicio'}.pdf`)
+}
+
 // "VEREDA LA SIERRA" + "LA SIERRA" → no repetir el barrio si ya viene en la dirección
 function unirDireccion(direccion, barrio) {
   const d = (direccion || '').trim(), b = (barrio || '').trim()
@@ -211,5 +343,47 @@ export const FORMATOS_SERVICIO = [
       coordinador: s.coordinador_nombre || '',
       inicio_novenario: '', fin_novenario: '', eucaristia: '',
     }),
+  },
+  {
+    clave: 'atencion_acompanamientos',
+    titulo: 'Atención y acompañamientos',
+    descripcion: 'Exequias, cafetería, cortejo, última noche y novenario',
+    generar: generarAtencionAcompanamientos,
+    campos: [
+      { k: 'ser_querido',     label: 'Ser querido', span: 2 },
+      { k: 'orden_no',        label: 'Orden No.' },
+      { k: 'control_int',     label: 'Control interno' },
+      { k: 'coordinador',     label: 'Coordinador' },
+      { k: 'fecha_defuncion', label: 'Fecha defunción' },
+      { k: 'fecha_exequias',  label: 'Fecha exequias' },
+      { k: 'hora_exequias',   label: 'Hora exequias' },
+      { k: 'iglesia',         label: 'Iglesia' },
+      { k: 'coro',            label: 'Coro' },
+      { k: 'carroza',         label: 'Carroza (placa)' },
+      { k: 'conductor',       label: 'Conductor' },
+      { k: 'cementerio',      label: 'Cementerio', span: 2 },
+      { k: 'jefe_protocolo',  label: 'Jefe de protocolo', span: 2 },
+      { k: 'parroquia',       label: 'Parroquia (última noche)', span: 2 },
+      { k: 'inicio_novenario', label: 'Inicio novenario', type: 'date' },
+      { k: 'fin_novenario',    label: 'Fin novenario',    type: 'date' },
+    ],
+    valorInicial: ({ servicio: s = {}, defuncion, traslados = [] }) => {
+      const ex = partesFechaServicio(s.fecha_disposicion)
+      const t = trasladoExequias(traslados)
+      return {
+        ser_querido: s.difunto_nombre || '',
+        orden_no: s.numero != null ? String(s.numero) : '',
+        control_int: controlInterno(s.codigo),
+        coordinador: s.coordinador_nombre || '',
+        fecha_defuncion: fmtFechaISO(defuncion?.fecha_fallecimiento),
+        fecha_exequias: ex.fecha,
+        hora_exequias: ex.hora,
+        iglesia: '', coro: '',
+        carroza: t?.vehiculo_placa || t?.vehiculo || '',
+        conductor: t?.conductor_nombre || t?.conductor || '',
+        cementerio: s.lugar_disposicion || '',
+        jefe_protocolo: '', parroquia: '', inicio_novenario: '', fin_novenario: '',
+      }
+    },
   },
 ]
