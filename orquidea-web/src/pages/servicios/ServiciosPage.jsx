@@ -38,6 +38,7 @@ import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
+import { archivoUrl } from '../../utils/archivoUrl.js'
 
 // ── Carroza fúnebre SVG ───────────────────────────────────────────────────────
 const HearseIcon = ({ size = 22, color = '#374151' }) => (
@@ -1990,7 +1991,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                       ) : soporteActaUrl ? (
                         <>
                           <span style={{ color:'#059669', fontWeight:700 }}>✓ Documento adjunto</span>
-                          <a href={`http://localhost:3001${soporteActaUrl}`} target="_blank" rel="noreferrer"
+                          <a href={archivoUrl(soporteActaUrl)} target="_blank" rel="noreferrer"
                             onClick={e => e.stopPropagation()} style={{ color:'#6366F1', marginLeft:'auto' }}>Ver</a>
                           <span style={{ color:'#9CA3AF' }}>· Reemplazar</span>
                         </>
@@ -2013,7 +2014,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                       ) : soportePermisoUrl ? (
                         <>
                           <span style={{ color:'#059669', fontWeight:700 }}>✓ Documento adjunto</span>
-                          <a href={`http://localhost:3001${soportePermisoUrl}`} target="_blank" rel="noreferrer"
+                          <a href={archivoUrl(soportePermisoUrl)} target="_blank" rel="noreferrer"
                             onClick={e => e.stopPropagation()} style={{ color:'#6366F1', marginLeft:'auto' }}>Ver</a>
                           <span style={{ color:'#9CA3AF' }}>· Reemplazar</span>
                         </>
@@ -5303,7 +5304,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                         <div style={{ width:38, height:38, borderRadius:9, flexShrink:0, overflow:'hidden',
                           background:'#EEF2FF', display:'flex', alignItems:'center', justifyContent:'center' }}>
                           {esImagen
-                            ? <img src={`http://localhost:3001${doc.url}`} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                            ? <img src={archivoUrl(doc.url)} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
                             : <FileText size={17} color="#4F46E5"/>}
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
@@ -5313,7 +5314,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                             {tipoLabel ? tipoLabel + ' · ' : ''}{fmtDate(doc.creado_en)}{doc.usuario_nombre ? ' · ' + doc.usuario_nombre : ''}
                           </div>
                         </div>
-                        <a href={`http://localhost:3001${doc.url}`} target="_blank" rel="noreferrer"
+                        <a href={archivoUrl(doc.url)} target="_blank" rel="noreferrer"
                           style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
                             color:'#4F46E5', background:'#EEF2FF', border:'1.5px solid #C7D2FE',
                             borderRadius:8, padding:'6px 10px', textDecoration:'none', flexShrink:0 }}>

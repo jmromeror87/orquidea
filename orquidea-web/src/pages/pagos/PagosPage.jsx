@@ -20,6 +20,7 @@ import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
 import { toast } from '../../store/toast.store.js'
+import { archivoUrl } from '../../utils/archivoUrl.js'
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
 const CSS = `
@@ -694,7 +695,7 @@ function TabHistorial() {
                   </td>
                   <td>
                     {r.soporte_url
-                      ? <a href={`http://localhost:3001${r.soporte_url}`} target="_blank" rel="noreferrer"
+                      ? <a href={archivoUrl(r.soporte_url)} target="_blank" rel="noreferrer"
                            style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:11,fontWeight:700,
                              color:'#6366F1',background:'#EEF2FF',padding:'4px 10px',borderRadius:8,textDecoration:'none'}}>
                           <Paperclip size={11}/>Ver soporte

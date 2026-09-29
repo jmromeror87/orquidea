@@ -29,6 +29,7 @@ import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { imprimirReciboPOS } from '../../utils/recibo.js'
+import { archivoUrl } from '../../utils/archivoUrl.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n || 0)
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('es-CO', { dateStyle:'medium', timeStyle:'short' }) : '—'
@@ -359,7 +360,7 @@ function ModalSoportePago({ metodoLabel, referenciaInicial, soporteInicial, onCo
                 <span style={{ fontSize:12.5, color:'#6B7280' }}>Subiendo…</span>
               ) : soporteUrl ? (
                 <>
-                  {esImagen && <img src={`http://localhost:3001${soporteUrl}`} alt="Comprobante" style={{ maxHeight:140, maxWidth:'100%', objectFit:'contain', marginBottom:6, borderRadius:6 }}/>}
+                  {esImagen && <img src={archivoUrl(soporteUrl)} alt="Comprobante" style={{ maxHeight:140, maxWidth:'100%', objectFit:'contain', marginBottom:6, borderRadius:6 }}/>}
                   <div style={{ fontSize:12, fontWeight:700, color:'#059669' }}>✓ Comprobante adjunto</div>
                   <button onClick={e => { e.stopPropagation(); setSoporteUrl('') }}
                     style={{ background:'none', border:'none', color:'#EF4444', cursor:'pointer', fontSize:11.5, marginTop:4 }}>
@@ -777,7 +778,7 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
                   style={sinPrecio ? { opacity: .6, cursor: 'default' } : undefined}>
                   <div className="pos-prod-img">
                     {p.imagen_url
-                      ? <img src={p.imagen_url.startsWith('data:') ? p.imagen_url : `http://localhost:3001${p.imagen_url}`} alt={p.nombre}/>
+                      ? <img src={archivoUrl(p.imagen_url)} alt={p.nombre}/>
                       : (p.categoria_icono || '📦')}
                   </div>
                   <div className="pos-prod-nombre">{p.nombre}</div>
@@ -1240,7 +1241,7 @@ function ReporteAuditoriaCaja({ cajaId, onCerrar }) {
                   <td style={{ padding:'6px 8px', textTransform:'capitalize' }}>
                     {v.metodo_pago}
                     {(v.pagos || []).some(p => p.soporte_url) && (
-                      <a href={`http://localhost:3001${(v.pagos.find(p => p.soporte_url)||{}).soporte_url}`} target="_blank" rel="noreferrer"
+                      <a href={archivoUrl((v.pagos.find(p => p.soporte_url)||{}).soporte_url)} target="_blank" rel="noreferrer"
                         style={{ marginLeft:5, color:'#6366F1' }}>[ver]</a>
                     )}
                   </td>

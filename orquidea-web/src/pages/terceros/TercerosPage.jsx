@@ -27,6 +27,7 @@ import {
 import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
+import { archivoUrl } from '../../utils/archivoUrl.js'
 
 // ── Constantes ────────────────────────────────────────────────────────────
 
@@ -1516,7 +1517,7 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                           ) : data.defuncion.acta_defuncion_soporte_url ? (
                             <>
                               <span style={{ color:'#059669', fontWeight:700 }}>✓ Documento adjunto</span>
-                              <a href={`http://localhost:3001${data.defuncion.acta_defuncion_soporte_url}`} target="_blank" rel="noreferrer"
+                              <a href={archivoUrl(data.defuncion.acta_defuncion_soporte_url)} target="_blank" rel="noreferrer"
                                 onClick={e => e.stopPropagation()} style={{ color:'#6366F1', marginLeft:'auto' }}>Ver</a>
                               <span style={{ color:'#9CA3AF' }}>· Reemplazar</span>
                             </>
@@ -1539,7 +1540,7 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                           ) : data.defuncion.permiso_inhumacion_soporte_url ? (
                             <>
                               <span style={{ color:'#059669', fontWeight:700 }}>✓ Documento adjunto</span>
-                              <a href={`http://localhost:3001${data.defuncion.permiso_inhumacion_soporte_url}`} target="_blank" rel="noreferrer"
+                              <a href={archivoUrl(data.defuncion.permiso_inhumacion_soporte_url)} target="_blank" rel="noreferrer"
                                 onClick={e => e.stopPropagation()} style={{ color:'#6366F1', marginLeft:'auto' }}>Ver</a>
                               <span style={{ color:'#9CA3AF' }}>· Reemplazar</span>
                             </>

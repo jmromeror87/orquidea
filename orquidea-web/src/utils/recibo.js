@@ -9,6 +9,7 @@
  * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
+import { archivoUrl } from './archivoUrl.js'
 // Abre una ventana nueva angosta (como en una impresora térmica 3nstar
 // RPT004 80mm) con el ticket formateado y dispara el diálogo de impresión.
 // El navegador se encarga de mandarlo a la impresora térmica configurada
@@ -51,7 +52,7 @@ export function imprimirReciboPOS(recibo) {
   </style>
   </head><body>
 
-  ${recibo.empresa_logo_url ? `<div class="c" style="margin-bottom:4px"><img src="http://localhost:3001${recibo.empresa_logo_url}" style="max-width:45mm;max-height:20mm;object-fit:contain"></div>` : ''}
+  ${recibo.empresa_logo_url ? `<div class="c" style="margin-bottom:4px"><img src="${archivoUrl(recibo.empresa_logo_url)}" style="max-width:45mm;max-height:20mm;object-fit:contain"></div>` : ''}
   <div class="c b" style="font-size:14px;letter-spacing:.5px;text-transform:uppercase">${recibo.empresa_razon_social || ''}</div>
   ${recibo.empresa_nit ? `<div class="c s">NIT: ${recibo.empresa_nit}</div>` : ''}
   ${recibo.empresa_direccion ? `<div class="c xs">${recibo.empresa_direccion}</div>` : ''}

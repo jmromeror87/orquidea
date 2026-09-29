@@ -34,6 +34,7 @@ import { imprimirConsentimientoBeneficiario } from '../../utils/consentimientoBe
 import { imprimirAvisoCesionPoliza, imprimirAutorizacionCambioTitular } from '../../utils/avisoCesionPoliza.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
+import { archivoUrl } from '../../utils/archivoUrl.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1824,7 +1825,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                         </button>
                       )}
                       {p.soporte_url && (
-                        <a href={`http://localhost:3001${p.soporte_url}`} target="_blank" rel="noreferrer"
+                        <a href={archivoUrl(p.soporte_url)} target="_blank" rel="noreferrer"
                           style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
                             color:'#4F46E5', background:'#EEF2FF', border:'1.5px solid #C7D2FE',
                             borderRadius:8, padding:'5px 10px', textDecoration:'none', flexShrink:0 }}>

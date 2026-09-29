@@ -23,6 +23,7 @@
  */
 import { jsPDF } from 'jspdf'
 import { getLogoDataUrl, dibujarLogoPDF } from './logo.js'
+import { archivoUrl } from './archivoUrl.js'
 
 // PDF nativo (texto/cajas dibujadas con jsPDF), no HTML convertido — la
 // conversión vía html2canvas resultaba en páginas en blanco. Mismo diseño
@@ -188,7 +189,7 @@ export function imprimirAutorizacionCambioTitular({ poliza, autoriza, nuevoTitul
     .ciudad-fecha{margin-top:50px;font-size:12.5px}
     @media print{ body{padding:16px} }
   </style></head><body>
-    ${emp.logo_url ? `<div style="text-align:center;margin-bottom:10px"><img src="http://localhost:3001${emp.logo_url}" style="max-width:55mm;max-height:22mm;object-fit:contain"></div>` : ''}
+    ${emp.logo_url ? `<div style="text-align:center;margin-bottom:10px"><img src="${archivoUrl(emp.logo_url)}" style="max-width:55mm;max-height:22mm;object-fit:contain"></div>` : ''}
     <h1>Autorización para cambio de titular</h1>
 
     <div class="meta">

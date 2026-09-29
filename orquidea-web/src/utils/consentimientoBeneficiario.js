@@ -21,6 +21,7 @@
  * funerario básico — el titular debe dejar constancia firmada de que
  * conoce y acepta esa condición.
  */
+import { archivoUrl } from './archivoUrl.js'
 export function imprimirConsentimientoBeneficiario({ poliza, titular, beneficiario, empresa }) {
   const w = window.open('', '_blank', 'width=800,height=900')
   if (!w) return
@@ -47,7 +48,7 @@ export function imprimirConsentimientoBeneficiario({ poliza, titular, beneficiar
     @media print{ body{padding:16px} }
   </style></head><body>
     <div class="head">
-      ${emp.logo_url ? `<img src="http://localhost:3001${emp.logo_url}" style="max-width:55mm;max-height:22mm;object-fit:contain;margin-bottom:6px">` : ''}
+      ${emp.logo_url ? `<img src="${archivoUrl(emp.logo_url)}" style="max-width:55mm;max-height:22mm;object-fit:contain;margin-bottom:6px">` : ''}
       <div class="emp">${emp.razon_social || 'Funeraria San José de Ábrego S.A.S'}</div>
       <div class="emp-sub">NIT ${emp.nit || ''}${emp.direccion ? ' · ' + emp.direccion : ''}${emp.telefono_1 ? ' · Tel ' + emp.telefono_1 : ''}</div>
     </div>

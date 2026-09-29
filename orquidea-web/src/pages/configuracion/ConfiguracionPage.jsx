@@ -27,6 +27,7 @@ import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PercentInput from '../../components/ui/PercentInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { aplicarColoresTema } from '../../context/ThemeContext.jsx'
+import { archivoUrl } from '../../utils/archivoUrl.js'
 
 const TABS = [
   { id:'empresa',        label:'Empresa',           sub:'Datos legales',        Icon:Building2, color:'#6366F1' },
@@ -1075,7 +1076,7 @@ function TabEmpresa({ data, saving, setSaving, onOk, onErr }) {
           border:'2px dashed #E2E5F0', display:'flex', alignItems:'center', justifyContent:'center',
           overflow:'hidden', flexShrink:0 }}>
           {f.logo_url
-            ? <img src={`http://localhost:3001${f.logo_url}`} alt="Logo" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+            ? <img src={archivoUrl(f.logo_url)} alt="Logo" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
             : <span style={{ fontSize:11, color:'#9CA3AF', textAlign:'center' }}>Sin logo</span>}
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>

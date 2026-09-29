@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
+import { archivoUrl } from '../../utils/archivoUrl.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtFecha = (d) => d ? new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -74,7 +75,7 @@ function imprimirComprobante(comp, empresa) {
   </style></head><body>
     <div class="head">
       <div>
-        ${emp.logo_url ? `<img src="http://localhost:3001${emp.logo_url}" style="max-width:45mm;max-height:18mm;object-fit:contain;margin-bottom:6px;display:block">` : ''}
+        ${emp.logo_url ? `<img src="${archivoUrl(emp.logo_url)}" style="max-width:45mm;max-height:18mm;object-fit:contain;margin-bottom:6px;display:block">` : ''}
         <div class="emp">${emp.razon_social || 'Funeraria San José de Ábrego S.A.S'}</div>
         <div class="emp-sub">NIT ${emp.nit || ''}</div>
         <div class="emp-sub">${emp.direccion || ''}${emp.telefono_1 ? ' · Tel ' + emp.telefono_1 : ''}</div>
