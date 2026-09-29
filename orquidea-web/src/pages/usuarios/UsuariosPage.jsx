@@ -64,7 +64,9 @@ const CSS = `
   @keyframes fadeIn  { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   @keyframes modalIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
 
-  .upage { display:flex; flex-direction:column; height:100%; overflow:hidden; }
+  /* Sin scroll interno: la página crece con su contenido y la desplaza el <main> del layout.
+     Antes .upage-body tenía su propio overflow-y y la tabla quedaba cortada sin forma de bajar. */
+  .upage { display:flex; flex-direction:column; min-height:100%; }
 
   /* Header */
   .upage-head {
@@ -91,25 +93,26 @@ const CSS = `
   .utab.active .utab-badge { background:#4338CA; color:#fff; }
 
   /* Body */
-  .upage-body { flex:1; min-height:0; overflow-y:auto; padding:24px 28px; display:flex; flex-direction:column; gap:20px; }
-  /* Los hijos no deben encogerse: con overflow:hidden/auto se aplastan y cortan la tabla en vez de hacer scroll */
+  .upage-body { padding:20px 28px 32px; display:flex; flex-direction:column; gap:16px; }
   .upage-body > * { flex-shrink:0; }
-  .upage-body::-webkit-scrollbar { width:4px; }
-  .upage-body::-webkit-scrollbar-thumb { background:#DDE1F0; border-radius:4px; }
 
-  /* KPI strip */
-  .kpi-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  /* KPI strip — compacta y clicable (filtra por estado) */
+  .kpi-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }
   .kpi-card {
-    background:#fff; border:1px solid #ECEDF8; border-radius:16px;
-    padding:18px 20px; display:flex; align-items:center; gap:14px;
+    background:#fff; border:1.5px solid #ECEDF8; border-radius:14px;
+    padding:12px 16px; display:flex; align-items:center; gap:12px;
     box-shadow:0 1px 4px rgba(0,0,0,.04); animation:fadeIn .3s ease;
+    font-family:inherit; text-align:left; transition:all .15s;
   }
-  .kpi-icon { width:46px; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px; }
-  .kpi-val  { font-size:28px; font-weight:900; line-height:1; }
+  button.kpi-card { cursor:pointer; }
+  button.kpi-card:hover { border-color:#C7D2FE; }
+  .kpi-card.sel { border-color:#4338CA; box-shadow:0 0 0 3px #EEF2FF; }
+  .kpi-icon { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:17px; }
+  .kpi-val  { font-size:22px; font-weight:900; line-height:1; }
   .kpi-lbl  { font-size:11.5px; color:#9CA3AF; margin-top:3px; font-weight:500; }
 
   /* Toolbar */
-  .toolbar { background:#fff; border:1px solid #ECEDF8; border-radius:14px; padding:14px 16px; display:flex; gap:10px; align-items:center; }
+  .toolbar { background:#fff; border:1px solid #ECEDF8; border-radius:14px; padding:12px 14px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
   .search-wrap { position:relative; flex:1; min-width:180px; }
   .search-wrap svg { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#9CA3AF; pointer-events:none; }
   .search-inp { width:100%; padding:10px 12px 10px 38px; border:1.5px solid #E8E9F8; border-radius:10px; font-size:13.5px; outline:none; background:#FAFBFF; transition:border-color .15s; box-sizing:border-box; font-family:inherit; }
@@ -123,7 +126,8 @@ const CSS = `
   .tbl-card-head { padding:14px 20px; border-bottom:1px solid #F0F1FA; display:flex; align-items:center; justify-content:space-between; }
   .tbl-card-title { font-size:14px; font-weight:800; color:#0F1035; }
   .tbl-card-count { font-size:11.5px; color:#9CA3AF; background:#F4F5FA; border-radius:20px; padding:2px 10px; }
-  .tbl { width:100%; border-collapse:collapse; }
+  .tbl-scroll { overflow-x:auto; }
+  .tbl { width:100%; border-collapse:collapse; min-width:820px; }
   .tbl th { padding:11px 18px; text-align:left; font-size:10px; font-weight:800; color:#9CA3AF; text-transform:uppercase; letter-spacing:1px; background:#FAFBFF; border-bottom:1px solid #ECEDF8; }
   .tbl td { padding:0 18px; border-bottom:1px solid #F4F5FA; }
   .tbl tr:last-child td { border-bottom:none; }
@@ -251,15 +255,16 @@ function RolBadge({ rol }) {
 }
 
 /* ─── KpiCard ─── */
-function KpiCard({ label, value, color, bg, emoji }) {
+function KpiCard({ label, value, color, bg, emoji, onClick, sel }) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div className="kpi-card">
+    <Tag type={onClick ? 'button' : undefined} className={`kpi-card${sel ? ' sel' : ''}`} onClick={onClick}>
       <div className="kpi-icon" style={{ background:bg }}><span>{emoji}</span></div>
       <div>
         <div className="kpi-val" style={{ color }}>{value}</div>
         <div className="kpi-lbl">{label}</div>
       </div>
-    </div>
+    </Tag>
   )
 }
 
@@ -534,10 +539,10 @@ function TabUsuarios({ esAdmin }) {
   const usuarioActual = useAuthStore(s => s.usuario)
   const [usuarios, setUsuarios] = useState([])
   const [sedes,    setSedes]    = useState([])
-  const [meta,     setMeta]     = useState({ total:0 })
   const [loading,  setLoading]  = useState(true)
   const [buscar,   setBuscar]   = useState('')
   const [filtroRol,setFiltroRol]= useState('')
+  const [filtroEstado, setFiltroEstado] = useState('') // '' | 'activos' | 'inactivos'
   const [modal,    setModal]    = useState(null)
   const [sel,      setSel]      = useState(null)
   const [confirmar, setConfirmar] = useState(null) // { titulo, mensaje, accion }
@@ -545,19 +550,16 @@ function TabUsuarios({ esAdmin }) {
   const cargar = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams()
-      if (buscar)    params.set('buscar', buscar)
-      if (filtroRol) params.set('rol', filtroRol)
+      // Se traen todos (la API pagina de 20 por defecto y aquí no hay paginador); el filtrado es local
       const [uR,sR] = await Promise.all([
-        api.get(`/usuarios?${params}`),
+        api.get('/usuarios?limit=1000'),
         api.get('/usuarios/sedes'),
       ])
       setUsuarios(uR.data.data)
-      setMeta(uR.data.meta)
       setSedes(sR.data.data)
     } catch{}
     finally { setLoading(false) }
-  }, [buscar, filtroRol])
+  }, [])
 
   useEffect(()=>{ cargar() },[cargar])
 
@@ -581,6 +583,12 @@ function TabUsuarios({ esAdmin }) {
     })
   }
   const guardado = () => { setModal(null); setSel(null); cargar() }
+  const q = buscar.trim().toLowerCase()
+  const visibles = usuarios.filter(u =>
+    (!q || u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)) &&
+    (!filtroRol || u.rol === filtroRol) &&
+    (!filtroEstado || (filtroEstado === 'activos' ? u.activo : !u.activo))
+  )
   const activos   = usuarios.filter(u=>u.activo).length
   const inactivos = usuarios.filter(u=>!u.activo).length
   const roles     = [...new Set(usuarios.map(u=>u.rol))].length
@@ -589,9 +597,12 @@ function TabUsuarios({ esAdmin }) {
   return (
     <>
       <div className="kpi-strip">
-        <KpiCard label="Total Usuarios"  value={meta.total||0} color="#4338CA" bg="#EEF2FF" emoji="👥"/>
-        <KpiCard label="Activos"         value={activos}       color="#047857" bg="#ECFDF5" emoji="✅"/>
-        <KpiCard label="Inactivos"       value={inactivos}     color="#DC2626" bg="#FEF2F2" emoji="🚫"/>
+        <KpiCard label="Total Usuarios"  value={usuarios.length} color="#4338CA" bg="#EEF2FF" emoji="👥"
+          sel={!filtroEstado} onClick={()=>setFiltroEstado('')}/>
+        <KpiCard label="Activos"         value={activos}       color="#047857" bg="#ECFDF5" emoji="✅"
+          sel={filtroEstado==='activos'} onClick={()=>setFiltroEstado(filtroEstado==='activos'?'':'activos')}/>
+        <KpiCard label="Inactivos"       value={inactivos}     color="#DC2626" bg="#FEF2F2" emoji="🚫"
+          sel={filtroEstado==='inactivos'} onClick={()=>setFiltroEstado(filtroEstado==='inactivos'?'':'inactivos')}/>
         <KpiCard label="Roles Distintos" value={roles}         color="#0369A1" bg="#E0F2FE" emoji="🛡️"/>
       </div>
 
@@ -615,19 +626,20 @@ function TabUsuarios({ esAdmin }) {
       <div className="tbl-card">
         <div className="tbl-card-head">
           <span className="tbl-card-title">Listado de Usuarios</span>
-          <span className="tbl-card-count">{usuarios.length} registros</span>
+          <span className="tbl-card-count">{visibles.length === usuarios.length ? `${usuarios.length} registros` : `${visibles.length} de ${usuarios.length}`}</span>
         </div>
         {loading ? (
           <div className="tbl-loading"><Loader2 size={26} style={{animation:'spin 1s linear infinite'}}/></div>
-        ) : usuarios.length === 0 ? (
+        ) : visibles.length === 0 ? (
           <div className="tbl-empty"><UserCog size={48}/><p style={{fontWeight:600}}>No se encontraron usuarios</p></div>
         ) : (
+          <div className="tbl-scroll">
           <table className="tbl">
             <thead>
               <tr><th>Usuario</th><th>Rol</th><th>Sede</th><th>Último Acceso</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
             <tbody>
-              {usuarios.map(u => {
+              {visibles.map(u => {
                 const cfg = getRol(u.rol)
                 return (
                   <tr key={u.id}>
@@ -678,6 +690,7 @@ function TabUsuarios({ esAdmin }) {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
