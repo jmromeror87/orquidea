@@ -33,8 +33,36 @@ export async function getWhatsappNumero() {
   const digitos = tel.replace(/\D/g, '')
   return digitos.length === 10 ? `57${digitos}` : digitos
 }
-export const getPlanes = () => get('/planes')
-export const getServicios = () => get('/servicios')
+// ── La página pública NO muestra valores en pesos (decisión de la funeraria) ──
+// Los textos de planes/servicios se escriben en el ERP y a veces traen precios
+// ("Valor total cubierto: $1.802.926. Cuota mensual sugerida…", "Bono de
+// $500.000…"). Se limpian aquí, en el único punto donde la landing recibe esos
+// datos, para que ninguna página ni el código fuente los exponga.
+const RE_MONTO = /\s*(?:de\s+|por\s+)?\$\s?\d[\d.,]*(?:\s*(?:pesos|COP))?/gi
+const RE_FRASE_CON_VALOR = /\$\s?\d|valor\s+total|cuota\s+mensual|precio|\bpesos\b|\bCOP\b/i
+
+// Descripciones: se quitan las frases que hablan de valores
+function descripcionSinValores(texto) {
+  return texto
+    .split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡*])/)
+    .filter(frase => !RE_FRASE_CON_VALOR.test(frase))
+    .join(' ')
+    .replace(RE_MONTO, '')
+    .trim()
+}
+
+// Nombres y demás textos cortos: solo se quita el monto
+const textoSinMontos = t => t.replace(RE_MONTO, '').replace(/\s{2,}/g, ' ').trim()
+
+function sinValores(v, clave = '') {
+  if (typeof v === 'string') return /descripcion/i.test(clave) ? descripcionSinValores(v) : textoSinMontos(v)
+  if (Array.isArray(v)) return v.map(x => sinValores(x, clave))
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, sinValores(x, k)]))
+  return v
+}
+
+export const getPlanes = async () => sinValores(await get('/planes'))
+export const getServicios = async () => sinValores(await get('/servicios'))
 export const getSedes = () => get('/sedes')
 export const getMemoriales = () => get('/memoriales', 300)
 
