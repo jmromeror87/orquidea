@@ -21,6 +21,21 @@
  * las páginas, para que la siguiente visita ya muestre lo nuevo.
  */
 import { revalidatePath, revalidateTag } from 'next/cache'
+import { after } from 'next/server'
+
+// Tras vencer la caché, la PRIMERA visita a cada página aún recibiría la versión
+// vieja mientras se genera la nueva. Para que ningún cliente la vea, la landing
+// visita ella misma sus páginas (las del sitemap) justo después del aviso.
+async function precalentar(origin) {
+  const rutas = new Set(['/', '/planes', '/servicios'])
+  try {
+    const xml = await (await fetch(`${origin}/sitemap.xml`, { cache: 'no-store' })).text()
+    for (const [, loc] of xml.matchAll(/<loc>([^<]+)<\/loc>/g)) rutas.add(new URL(loc).pathname)
+  } catch { /* sin sitemap se precalientan solo las principales */ }
+  for (const ruta of rutas) {
+    await fetch(`${origin}${ruta}`, { cache: 'no-store' }).catch(() => {})
+  }
+}
 
 export async function POST(request) {
   const token = process.env.REVALIDAR_TOKEN
@@ -29,5 +44,6 @@ export async function POST(request) {
   }
   revalidateTag('erp', { expire: 0 })   // vence ya, sin servir la versión vieja
   revalidatePath('/', 'layout')         // y todas las páginas generadas
+  after(() => precalentar(new URL(request.url).origin))
   return Response.json({ ok: true, ahora: Date.now() })
 }
