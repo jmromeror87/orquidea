@@ -48,6 +48,11 @@ export const env = {
     serviceUrl:    process.env.WHATSAPP_SERVICE_URL    || '',
     internalToken: process.env.WHATSAPP_INTERNAL_TOKEN || '',
   },
+  // Landing pública: a dónde avisar que borre su caché cuando cambian planes/servicios/etc.
+  landing: {
+    url:   (process.env.LANDING_URL || '').replace(/\/$/, ''),
+    token: process.env.LANDING_REVALIDAR_TOKEN || '',
+  },
   wompi: {
     publicKey:      process.env.WOMPI_PUBLIC_KEY      || '',
     privateKey:      process.env.WOMPI_PRIVATE_KEY     || '',

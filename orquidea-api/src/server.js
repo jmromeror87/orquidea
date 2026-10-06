@@ -68,6 +68,7 @@ import contabilidadRoutes   from './routes/contabilidad.routes.js'
 import tesoreriaRoutes      from './routes/tesoreria.routes.js'
 import auditoriaRoutes      from './routes/auditoria.routes.js'
 import { registrarAuditoria } from './services/auditoria.service.js'
+import { afectaLanding, avisarLanding } from './services/landing.service.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -115,6 +116,8 @@ app.addHook('onResponse', async (request, reply) => {
   const accionBase = ACCION_POR_METODO[request.method]
   if (!accionBase) return
   if (reply.statusCode >= 400) return
+  // Cambios que se ven en la página pública → la landing renueva su caché ya
+  if (afectaLanding(request.url)) avisarLanding(request.log)
   if (request.url.startsWith('/api/auth/')) return
   if (request.url.startsWith('/api/auditoria/')) return
   const user = request.user

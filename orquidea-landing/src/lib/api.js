@@ -19,7 +19,8 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
 async function get(path, revalidate = 3600) {
-  const res = await fetch(`${API_URL}/api/publico${path}`, { next: { revalidate } })
+  // tag 'erp': el ERP avisa (POST /api/revalidar) cuando cambia algo y se renueva al instante
+  const res = await fetch(`${API_URL}/api/publico${path}`, { next: { revalidate, tags: ['erp'] } })
   if (!res.ok) throw new Error(`API ${path} respondió ${res.status}`)
   const json = await res.json()
   return json.data || []
