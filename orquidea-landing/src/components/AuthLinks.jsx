@@ -16,17 +16,22 @@
  * ║  comercialización sin autorización escrita del titular.                ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
+import Link from 'next/link'
 import BenefitIcon from './BenefitIcons'
 
-// Por ahora apunta directo al login del ERP (app.funerariasanjoseabrego.com).
-// Cuando exista un portal de clientes propio en la landing, reemplazar este enlace.
+// Mientras el portal de clientes está en pruebas, "Inicia sesión" y "Regístrate"
+// llevan a /portal (página "en desarrollo"). El personal entra al ERP desde ahí.
 export default function AuthLinks() {
   return (
-    <div className="hidden items-center lg:flex">
-      <a href="https://app.funerariasanjoseabrego.com/login" className="flex items-center gap-1.5 text-sm font-semibold text-brand-900 transition hover:text-gold-700">
+    <div className="hidden items-center gap-4 lg:flex">
+      <Link href="/portal" className="flex items-center gap-1.5 text-sm font-semibold text-brand-900 transition hover:text-gold-700">
         <BenefitIcon name="usuario" className="h-4 w-4" />
         Inicia sesión
-      </a>
+      </Link>
+      <Link href="/portal" className="flex items-center gap-1.5 text-sm font-semibold text-brand-900 transition hover:text-gold-700">
+        <BenefitIcon name="usuarioMas" className="h-4 w-4" />
+        Regístrate
+      </Link>
     </div>
   )
 }

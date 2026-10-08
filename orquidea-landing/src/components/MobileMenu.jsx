@@ -106,9 +106,12 @@ export default function MobileMenu({ sedes = [], telefono = '315 878 6701', telH
             )}
 
             <div className="mt-auto flex flex-col gap-3 border-t border-stone-200 pt-4">
-              <a href="https://app.funerariasanjoseabrego.com/login" className="text-sm font-semibold text-brand-900">
+              <Link href="/portal" onClick={() => setOpen(false)} className="text-sm font-semibold text-brand-900">
                 Inicia sesión
-              </a>
+              </Link>
+              <Link href="/portal" onClick={() => setOpen(false)} className="text-sm font-semibold text-brand-900">
+                Regístrate
+              </Link>
               <a
                 href={`tel:+57${telHref}`}
                 className="rounded-full bg-gold-500 px-4 py-2.5 text-center text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
