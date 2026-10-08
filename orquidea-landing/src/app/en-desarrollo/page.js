@@ -39,6 +39,8 @@ export default async function EnDesarrolloPage() {
 
   return (
     <div className="fixed inset-0 z-[9999] overflow-y-auto bg-brand-950 text-white">
+      {/* El sitio de fondo (menú, pie, botones flotantes) no se desplaza ni se ve */}
+      <style>{'html,body{overflow:hidden!important;height:100%}body>*:not(main){display:none!important}'}</style>
       <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center px-6 py-14 text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.jpg" alt={nombre} className="h-28 w-28 rounded-full border-4 border-gold-500 bg-white object-contain p-1" />
@@ -75,12 +77,22 @@ export default async function EnDesarrolloPage() {
 
         {empresa?.email && <p className="mt-8 text-sm text-white/60">{empresa.email}</p>}
 
-        <p className="mt-14 text-xs text-white/40">
-          © {new Date().getFullYear()} {empresa?.razon_social || 'Funeraria San José de Ábrego S.A.S.'}
-          {' · '}
-          <a href="https://app.funerariasanjoseabrego.com/login" className="underline-offset-4 hover:text-white/70 hover:underline">
-            Acceso colaboradores
+        {/* Acceso del personal al ERP */}
+        <div className="mt-12 w-full max-w-sm border-t border-white/15 pt-8">
+          <p className="text-xs uppercase tracking-widest text-white/50">Colaboradores de la funeraria</p>
+          <a
+            href="https://app.funerariasanjoseabrego.com/login"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-brand-950 transition hover:bg-gold-100 sm:w-auto"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><path d="m10 17 5-5-5-5" /><path d="M15 12H3" />
+            </svg>
+            Iniciar sesión
           </a>
+        </div>
+
+        <p className="mt-12 text-xs text-white/40">
+          © {new Date().getFullYear()} {empresa?.razon_social || 'Funeraria San José de Ábrego S.A.S.'}
         </p>
       </div>
     </div>
