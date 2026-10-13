@@ -28,6 +28,7 @@ export const metadata = {
 }
 
 const soloDigitos = (s) => (s || '').replace(/\D/g, '')
+const CORREO_CORPORATIVO = 'https://p3plzcpnl505428.prod.phx3.secureserver.net:2096/'
 
 export default async function EnDesarrolloPage() {
   const empresaRaw = await getEmpresa().catch(() => null)
@@ -41,7 +42,7 @@ export default async function EnDesarrolloPage() {
     <div className="fixed inset-0 z-[9999] overflow-y-auto bg-brand-950 text-white">
       {/* El sitio de fondo (menú, pie, botones flotantes) no se desplaza ni se ve */}
       <style>{'html,body{overflow:hidden!important;height:100%}body>*:not(main){display:none!important}'}</style>
-      <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center px-6 py-14 text-center">
+      <div className="mx-auto flex min-h-full max-w-3xl flex-col items-center justify-center px-6 py-14 text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.jpg" alt={nombre} className="h-28 w-28 rounded-full border-4 border-gold-500 bg-white object-contain p-1" />
 
@@ -58,7 +59,7 @@ export default async function EnDesarrolloPage() {
           servicios. Mientras tanto, seguimos atendiéndote como siempre, las 24 horas del día.
         </p>
 
-        <div className="mt-10 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row">
+        <div className="mt-10 flex w-full flex-col flex-wrap justify-center gap-3 sm:w-auto sm:flex-row">
           <a
             href={`tel:+${telIntl}`}
             className="rounded-full bg-gold-500 px-7 py-3.5 text-sm font-semibold text-brand-950 transition hover:bg-gold-400"
@@ -72,6 +73,18 @@ export default async function EnDesarrolloPage() {
             className="rounded-full border border-white/40 px-7 py-3.5 text-sm font-semibold transition hover:bg-white/10"
           >
             Escríbenos por WhatsApp
+          </a>
+          {/* Webmail (puerto 2096) — NO el 2083, que es el panel de administración del hosting */}
+          <a
+            href={CORREO_CORPORATIVO}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/40 px-7 py-3.5 text-sm font-semibold transition hover:bg-white/10"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+              <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 6L2 7" />
+            </svg>
+            Correo corporativo
           </a>
         </div>
 
