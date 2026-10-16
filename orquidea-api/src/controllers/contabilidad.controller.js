@@ -18,6 +18,12 @@
  */
 import pool from '../config/database.js'
 
+// Comprobantes que cuentan en libros y reportes. Un comprobante ANULADO se
+// anula con una nota de REVERSIÓN (débitos↔créditos): los DOS deben sumar para
+// que se cancelen. Antes solo sumaba CONTABILIZADO → el original desaparecía
+// pero su reverso sí restaba, y cada anulación descuadraba la caja al doble.
+const ESTADOS_EN_LIBROS = "('CONTABILIZADO','ANULADO')"
+
 const NIVELES = [1, 2, 3, 4, 5]
 const NATURALEZAS = ['D', 'C']
 const TIPOS = [
@@ -275,7 +281,7 @@ export async function libroAuxiliar(req, reply) {
     SELECT COALESCE(SUM(a.debe),0) AS debe, COALESCE(SUM(a.haber),0) AS haber
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
-    WHERE c.estado = 'CONTABILIZADO' AND a.cuenta_codigo = $1 AND c.fecha_contable < $2${tercero_id ? ` AND a.tercero_id = $3` : ''}
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND a.cuenta_codigo = $1 AND c.fecha_contable < $2${tercero_id ? ` AND a.tercero_id = $3` : ''}
   `, tercero_id ? [cuenta, desde, tercero_id] : [cuenta, desde])
 
   const saldoInicial = saldoNeto(cuentaInfo, +inicialRows[0].debe, +inicialRows[0].haber)
@@ -287,7 +293,7 @@ export async function libroAuxiliar(req, reply) {
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
     LEFT JOIN terceros t ON t.id = a.tercero_id
-    WHERE c.estado = 'CONTABILIZADO' AND a.cuenta_codigo = $1
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND a.cuenta_codigo = $1
       AND c.fecha_contable BETWEEN $2 AND $3 ${condsTercero}
     ORDER BY c.fecha_contable, c.numero, a.orden
   `, [cuenta, desde, hasta, ...valsTercero])
@@ -386,7 +392,7 @@ export async function balanceComprobacion(req, reply) {
       COALESCE(SUM(a.haber) FILTER (WHERE c.fecha_contable BETWEEN $1 AND $2), 0) AS haber_periodo
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
-    WHERE c.estado = 'CONTABILIZADO' AND c.fecha_contable <= $2
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable <= $2
     GROUP BY a.cuenta_codigo
   `, [desde, hasta])
 
@@ -433,7 +439,7 @@ export async function estadoResultados(req, reply) {
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
     JOIN contabilidad_puc p ON p.codigo = a.cuenta_codigo
-    WHERE c.estado = 'CONTABILIZADO' AND c.fecha_contable BETWEEN $1 AND $2
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable BETWEEN $1 AND $2
       AND p.clase_codigo IN ('4','5','6','7')
     GROUP BY a.cuenta_codigo
   `, [desde, hasta])
@@ -516,7 +522,7 @@ export async function estadoSituacion(req, reply) {
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
     JOIN contabilidad_puc p ON p.codigo = a.cuenta_codigo
-    WHERE c.estado = 'CONTABILIZADO' AND c.fecha_contable <= $1
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable <= $1
       AND p.clase_codigo IN ('1','2','3')
     GROUP BY a.cuenta_codigo
   `, [hasta])
@@ -591,7 +597,7 @@ export async function flujoCaja(req, reply) {
   const { rows: inicialRows } = await pool.query(`
     SELECT COALESCE(SUM(a.debe),0) - COALESCE(SUM(a.haber),0) AS saldo
     FROM asientos_contables a JOIN comprobantes_contables c ON c.id = a.comprobante_id
-    WHERE c.estado = 'CONTABILIZADO' AND c.fecha_contable < $1 AND a.cuenta_codigo = ANY($2::text[])
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable < $1 AND a.cuenta_codigo = ANY($2::text[])
   `, [desde, codigosDisponible])
   const saldoInicial = +inicialRows[0].saldo
 
@@ -599,7 +605,7 @@ export async function flujoCaja(req, reply) {
     SELECT date_trunc($3, c.fecha_contable)::date AS periodo,
       COALESCE(SUM(a.debe),0) AS entradas, COALESCE(SUM(a.haber),0) AS salidas
     FROM asientos_contables a JOIN comprobantes_contables c ON c.id = a.comprobante_id
-    WHERE c.estado = 'CONTABILIZADO' AND c.fecha_contable BETWEEN $1 AND $2 AND a.cuenta_codigo = ANY($4::text[])
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable BETWEEN $1 AND $2 AND a.cuenta_codigo = ANY($4::text[])
     GROUP BY periodo ORDER BY periodo
   `, [desde, hasta, trunc, codigosDisponible])
 
@@ -614,7 +620,7 @@ export async function flujoCaja(req, reply) {
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
     LEFT JOIN reglas_contables rc ON rc.evento_codigo = c.evento_codigo
-    WHERE c.estado='CONTABILIZADO' AND c.fecha_contable BETWEEN $1 AND $2
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable BETWEEN $1 AND $2
       AND a.cuenta_codigo = ANY($3::text[]) AND a.debe > 0
     GROUP BY COALESCE(rc.nombre, c.tipo) ORDER BY total DESC LIMIT 8
   `, [desde, hasta, codigosDisponible])
@@ -624,7 +630,7 @@ export async function flujoCaja(req, reply) {
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
     LEFT JOIN reglas_contables rc ON rc.evento_codigo = c.evento_codigo
-    WHERE c.estado='CONTABILIZADO' AND c.fecha_contable BETWEEN $1 AND $2
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable BETWEEN $1 AND $2
       AND a.cuenta_codigo = ANY($3::text[]) AND a.haber > 0
     GROUP BY COALESCE(rc.nombre, c.tipo) ORDER BY total DESC LIMIT 8
   `, [desde, hasta, codigosDisponible])
@@ -657,7 +663,7 @@ async function estadoResultadosInterno(desde, hasta) {
     FROM asientos_contables a
     JOIN comprobantes_contables c ON c.id = a.comprobante_id
     JOIN contabilidad_puc p ON p.codigo = a.cuenta_codigo
-    WHERE c.estado = 'CONTABILIZADO' AND c.fecha_contable BETWEEN $1 AND $2
+    WHERE c.estado IN ${ESTADOS_EN_LIBROS} AND c.fecha_contable BETWEEN $1 AND $2
       AND p.clase_codigo IN ('4','5','6','7')
     GROUP BY a.cuenta_codigo
   `, [desde, hasta])
@@ -691,8 +697,8 @@ export async function libroDiarioResumen(req, reply) {
   const { rows } = await pool.query(
     `SELECT
        COUNT(*)::int AS total_comprobantes,
-       COALESCE(SUM(total_debe) FILTER (WHERE estado = 'CONTABILIZADO'), 0) AS total_debe,
-       COALESCE(SUM(total_haber) FILTER (WHERE estado = 'CONTABILIZADO'), 0) AS total_haber,
+       COALESCE(SUM(total_debe) FILTER (WHERE estado IN ${ESTADOS_EN_LIBROS}), 0) AS total_debe,
+       COALESCE(SUM(total_haber) FILTER (WHERE estado IN ${ESTADOS_EN_LIBROS}), 0) AS total_haber,
        COUNT(*) FILTER (WHERE estado = 'ANULADO')::int AS anulados
      FROM comprobantes_contables c ${where}`,
     vals

@@ -55,7 +55,7 @@ const SELECT_LIST = `
     -- Beneficiarios count
     (SELECT COUNT(*) FROM poliza_beneficiarios pb WHERE pb.poliza_id = p.id AND pb.activo) AS total_beneficiarios,
     -- Pagos al día
-    (SELECT COUNT(*) FROM pagos_poliza pp WHERE pp.poliza_id = p.id) AS total_pagos
+    (SELECT COUNT(*) FROM pagos_poliza pp WHERE pp.poliza_id = p.id AND NOT pp.anulado) AS total_pagos
 `
 
 // ── Buscar póliza por titular (autocomplete para servicios) ──────────────
@@ -236,11 +236,19 @@ export async function obtener(req, reply) {
 
       ORDER BY creado_en`, [id]),
     pool.query(`
-      SELECT pp.*, u.nombre AS cajero
+      SELECT pp.*, u.nombre AS cajero, ua.nombre AS anulado_por_nombre,
+        -- Trazabilidad contable de la anulación: comprobante original y su nota de reverso
+        (SELECT c.numero FROM comprobantes_contables c
+          WHERE c.documento_origen_tipo = 'pagos_poliza' AND c.documento_origen_id = pp.id AND c.tipo <> 'REVERSION'
+          ORDER BY c.creado_en LIMIT 1) AS comprobante_numero,
+        (SELECT r.numero FROM comprobantes_contables r
+          WHERE r.documento_origen_tipo = 'pagos_poliza' AND r.documento_origen_id = pp.id AND r.tipo = 'REVERSION'
+          ORDER BY r.creado_en DESC LIMIT 1) AS reverso_numero
       FROM pagos_poliza pp
-      LEFT JOIN usuarios u ON u.id = pp.usuario_id
+      LEFT JOIN usuarios u  ON u.id  = pp.usuario_id
+      LEFT JOIN usuarios ua ON ua.id = pp.anulado_por
       WHERE pp.poliza_id = $1
-      ORDER BY pp.mes_correspondiente DESC`, [id]),
+      ORDER BY pp.mes_correspondiente DESC, pp.anulado, pp.creado_en DESC`, [id]),
   ])
 
   if (!pRes.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
@@ -764,7 +772,7 @@ async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, 
   const pagoRes = await client.query(`
     INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id)
     VALUES ($1,$2,$3,$4,$5,$6,$7)
-    ON CONFLICT (poliza_id, mes_correspondiente) DO UPDATE SET
+    ON CONFLICT (poliza_id, mes_correspondiente) WHERE NOT anulado DO UPDATE SET
       monto = EXCLUDED.monto, metodo_pago = EXCLUDED.metodo_pago,
       referencia = EXCLUDED.referencia, fecha_pago = EXCLUDED.fecha_pago
     RETURNING id, numero_recibo`,

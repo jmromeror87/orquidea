@@ -158,7 +158,7 @@ async function aplicarPagoOnline(registro, tx) {
       const mesesAPagar = Math.max(1, Math.round(Number(registro.monto) / valorCuota))
 
       const yaPagados = await client.query(
-        `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_poliza WHERE poliza_id=$1`,
+        `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_poliza WHERE poliza_id=$1 AND NOT anulado`,
         [registro.entidad_id]
       )
       const setPagados = new Set(yaPagados.rows.map(r => r.mes))

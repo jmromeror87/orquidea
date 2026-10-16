@@ -261,7 +261,7 @@ export async function registrarPagoPoliza(req, reply) {
   // Meses que ya tienen un pago registrado — para nunca duplicar ni chocar
   // con la restricción única (poliza_id, mes_correspondiente).
   const yaPagados = await pool.query(
-    `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_poliza WHERE poliza_id=$1`,
+    `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_poliza WHERE poliza_id=$1 AND NOT anulado`,
     [poliza_id]
   )
   const setPagados = new Set(yaPagados.rows.map(r => r.mes))
@@ -585,8 +585,9 @@ export async function registrarPagoContrato(req, reply) {
 // ── Anular pago de póliza ───────────────────────────────────────────────────
 export async function anularPagoPoliza(req, reply) {
   const { id } = req.params
-  const { motivo = '' } = req.body
+  const motivo = (req.body?.motivo || '').trim()
   const { sedeIds } = resolverSede(req)
+  if (motivo.length < 5) return reply.status(400).send({ error: 'Escribe el motivo de la anulación (mínimo 5 caracteres)' })
 
   const pago = await pool.query(`
     SELECT pp.*, p.valor_cuota, p.meses_mora, p.sede_id
@@ -605,8 +606,9 @@ export async function anularPagoPoliza(req, reply) {
     await client.query('BEGIN')
 
     await client.query(`
-      UPDATE pagos_poliza SET anulado=TRUE, fecha_anulacion=CURRENT_DATE, motivo_anulacion=$1
-      WHERE id = $2`, [motivo, id])
+      UPDATE pagos_poliza SET anulado=TRUE, fecha_anulacion=CURRENT_DATE, motivo_anulacion=$1,
+             anulado_por=$3, anulado_en=NOW()
+      WHERE id = $2`, [motivo, id, req.user.id])
 
     const comprobante = await client.query(
       `SELECT id FROM comprobantes_contables
@@ -618,18 +620,28 @@ export async function anularPagoPoliza(req, reply) {
     }
 
     // Revertir pago_hasta al día anterior al mes de la cuota anulada (nunca lo
-    // adelanta, solo lo regresa) y recalcula el estado real con fn_estado_poliza
-    // — antes esto dejaba el estado intacto, así que una póliza podía quedar
-    // "VIGENTE" con meses_mora > 0 después de anular un pago.
-    const nuevaMora = pg.meses_mora + 1
+    // adelanta, solo lo regresa) y recalcular la mora con la MISMA regla del
+    // proceso nocturno (fn_recalcular_mora_polizas): meses vencidos entre
+    // pago_hasta y hoy. Antes sumaba +1 mes fijo, así que anular un pago
+    // ADELANTADO (mes aún no vencido) dejaba en mora/suspendida una póliza al día.
     await client.query(`
       UPDATE polizas SET
-        pago_hasta  = LEAST(COALESCE(pago_hasta, fecha_inicio), ($2::date - INTERVAL '1 day')::date),
-        meses_mora  = $3::int,
-        saldo_mora  = $3::int * valor_cuota,
-        estado      = CASE WHEN estado IN ('CANCELADA','EJECUTADA') THEN estado ELSE fn_estado_poliza($3::int) END,
+        pago_hasta = LEAST(COALESCE(pago_hasta, fecha_inicio), ($2::date - INTERVAL '1 day')::date)
+      WHERE id = $1`, [pg.poliza_id, pg.mes_correspondiente])
+    await client.query(`
+      WITH m AS (
+        SELECT id, GREATEST(0,
+          EXTRACT(YEAR  FROM AGE(CURRENT_DATE, COALESCE(pago_hasta, ultimo_pago, fecha_inicio)))::int * 12 +
+          EXTRACT(MONTH FROM AGE(CURRENT_DATE, COALESCE(pago_hasta, ultimo_pago, fecha_inicio)))::int
+        ) AS mora
+        FROM polizas WHERE id = $1
+      )
+      UPDATE polizas p SET
+        meses_mora  = m.mora,
+        saldo_mora  = m.mora * p.valor_cuota,
+        estado      = CASE WHEN p.estado IN ('CANCELADA','EJECUTADA') THEN p.estado ELSE fn_estado_poliza(m.mora) END,
         actualizado = NOW()
-      WHERE id = $1`, [pg.poliza_id, pg.mes_correspondiente, nuevaMora])
+      FROM m WHERE p.id = m.id`, [pg.poliza_id])
 
     await client.query('COMMIT')
     return reply.send({ ok: true })

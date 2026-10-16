@@ -610,7 +610,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
   useEffect(() => {
     api.get(`/polizas/${poliza.id}`).then(res => {
       const pagos = res.data?.data?.pagos || []
-      setMesesPagadosSet(new Set(pagos.map(p => p.mes_correspondiente.slice(0,10))))
+      setMesesPagadosSet(new Set(pagos.filter(p => !p.anulado).map(p => p.mes_correspondiente.slice(0,10))))
     }).catch(() => {})
   }, [poliza.id])
 
@@ -1243,6 +1243,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   const [empresaInfo, setEmpresaInfo] = useState({})
   const [showImportPagos, setShowImportPagos] = useState(false)
   const [pagosPage, setPagosPage] = useState(1)
+  const [anularPago, setAnularPago] = useState(null)   // pago que se va a anular
   const PAGOS_POR_PAGINA = 10
   const { usuario } = useAuthStore()
   const { label: fmtMetodo } = useFormasPago()
@@ -1814,6 +1815,23 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                           {p.cajero && <><span>·</span><span>{p.cajero}</span></>}
                           {p.referencia && <span style={{ background:'#F3F4F6', padding:'1px 6px', borderRadius:5, fontSize:10.5, color:'#374151', fontWeight:600 }}>Ref: {p.referencia}</span>}
                         </div>
+                        {p.anulado && (
+                          <div style={{ marginTop:6, fontSize:11.5, color:'#B91C1C', background:'#FEF2F2', border:'1px solid #FECACA',
+                            borderRadius:8, padding:'6px 9px', lineHeight:1.5 }}>
+                            <strong>Anulado</strong>
+                            {p.anulado_por_nombre && <> por <strong>{p.anulado_por_nombre}</strong></>}
+                            {' el '}{p.anulado_en
+                              ? new Date(p.anulado_en).toLocaleString('es-CO', { dateStyle:'medium', timeStyle:'short' })
+                              : fmtDate(p.fecha_anulacion)}
+                            {p.motivo_anulacion && <> — <em>{p.motivo_anulacion}</em></>}
+                            {(p.comprobante_numero || p.reverso_numero) && (
+                              <div style={{ marginTop:3, fontSize:11, color:'#7F1D1D' }}>
+                                Contabilidad: {p.comprobante_numero && <>comprobante <strong>{p.comprobante_numero}</strong> anulado</>}
+                                {p.reverso_numero && <> · nota de reverso <strong>{p.reverso_numero}</strong></>}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {!p.anulado && (
                         <button onClick={() => imprimirReciboPagoPoliza({ pago: p, poliza: data, empresa: empresaInfo })}
@@ -1822,6 +1840,14 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                             color:'#059669', background:'#ECFDF5', border:'1.5px solid #A7F3D0',
                             borderRadius:8, padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
                           <Printer size={12}/> Recibo
+                        </button>
+                      )}
+                      {!p.anulado && esAdmin && (
+                        <button onClick={() => setAnularPago(p)} title="Anular este pago"
+                          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
+                            color:'#DC2626', background:'#FEF2F2', border:'1.5px solid #FECACA',
+                            borderRadius:8, padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
+                          <Ban size={12}/> Anular
                         </button>
                       )}
                       {p.soporte_url && (
@@ -1997,7 +2023,72 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
       <ModalImportarPagos polizaId={id} onClose={() => setShowImportPagos(false)}
         onImportado={() => { setShowImportPagos(false); cargar() }}/>
     )}
+    {anularPago && (
+      <ModalAnularPago pago={anularPago} poliza={data} onClose={() => setAnularPago(null)}
+        onAnulado={() => { setAnularPago(null); cargar() }}/>
+    )}
     </>
+  )
+}
+
+// ── Anular un pago de póliza ────────────────────────────────────────────────
+// Queda trazado: quién anuló, cuándo y por qué (se ve en el historial de pagos).
+// El backend reversa el comprobante contable y la póliza vuelve a deber ese mes.
+function ModalAnularPago({ pago, poliza, onClose, onAnulado }) {
+  const [motivo, setMotivo] = useState('')
+  const [anulando, setAnulando] = useState(false)
+  const valido = motivo.trim().length >= 5
+
+  const anular = async () => {
+    if (!valido) return
+    setAnulando(true)
+    try {
+      await api.patch(`/pagos/${pago.id}/anular`, { motivo: motivo.trim() })
+      toast.success(`Pago N° ${String(pago.numero_recibo).padStart(6,'0')} anulado`)
+      onAnulado()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'No se pudo anular el pago')
+    } finally { setAnulando(false) }
+  }
+
+  return (
+    <div className="pl-overlay" style={{ zIndex:1100 }} onClick={e => { if (e.target === e.currentTarget && !anulando) onClose() }}>
+      <div className="pl-modal" style={{ maxWidth: 480 }}>
+        <div className="pl-mhead">
+          <div>
+            <div className="pl-mtitle">Anular pago</div>
+            <div className="pl-msub">Póliza {poliza?.numero} · Recibo N° {String(pago.numero_recibo).padStart(6,'0')}</div>
+          </div>
+          <button className="pl-mclose" onClick={onClose} disabled={anulando}><X size={16}/></button>
+        </div>
+        <div className="pl-mbody">
+          <div style={{ background:'#FEF2F2', border:'1.5px solid #FECACA', borderRadius:10, padding:'12px 14px', marginBottom:14, fontSize:12.5, color:'#991B1B', lineHeight:1.55 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontWeight:800, marginBottom:4 }}>
+              <AlertTriangle size={14}/> Esta acción no se puede deshacer
+            </div>
+            Se anulará el pago de <strong>{new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(pago.monto)}</strong>
+            {' '}del mes <strong>{new Date(pago.mes_correspondiente).toLocaleDateString('es-CO',{ month:'long', year:'numeric', timeZone:'UTC' })}</strong>.
+            Se reversa su registro contable y la póliza vuelve a deber ese mes. El pago queda en el historial como anulado, con tu nombre y el motivo.
+          </div>
+          <div className="pl-field" style={{ marginBottom:14 }}>
+            <label style={{ fontSize:11.5, fontWeight:700, color:'#374151' }}>Motivo de la anulación *</label>
+            <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={3} autoFocus
+              placeholder="Ej: El cliente pagó dos veces el mismo mes / valor digitado por error"
+              style={{ width:'100%', boxSizing:'border-box', padding:'9px 12px', border:'1.5px solid #E2E5F0', borderRadius:10,
+                fontSize:13, fontFamily:'inherit', resize:'vertical', marginTop:5, outline:'none' }}/>
+            {!valido && motivo.length > 0 && <div style={{ fontSize:11, color:'#DC2626', marginTop:4 }}>Mínimo 5 caracteres</div>}
+          </div>
+          <div style={{ display:'flex', gap:10 }}>
+            <button className="pl-btn pl-btn-ghost" style={{ flex:1 }} onClick={onClose} disabled={anulando}>Cancelar</button>
+            <button className="pl-btn" style={{ flex:1, background:'#DC2626', color:'#fff', opacity: valido ? 1 : .5 }}
+              onClick={anular} disabled={!valido || anulando}>
+              {anulando ? <Loader2 size={14} className="pl-spin"/> : <Ban size={14}/>}
+              Anular pago
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
