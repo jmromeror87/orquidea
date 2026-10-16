@@ -552,6 +552,7 @@ function TabPlanCuentas() {
 // ═══════════════════════════════════════════════════════════════════════
 const fmtMoney = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtFecha = (d) => d ? new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+const fmtFechaHora = (d) => d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
 
 const ESTADO_INFO = {
   CONTABILIZADO: { label: 'Contabilizado', color: '#059669', bg: '#ECFDF5' },
@@ -680,7 +681,22 @@ function TabLibroDiario() {
                           </td>
                           <td><span className="ctb-codigo">{c.numero}</span></td>
                           <td>{fmtFecha(c.fecha_contable)}</td>
-                          <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.concepto}</td>
+                          <td style={{ maxWidth: 320 }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.concepto}</div>
+                            {c.estado === 'ANULADO' && (
+                              <div style={{ fontSize: 11, color: '#B91C1C', marginTop: 2 }}>
+                                Anulado{c.anulado_por_nombre && <> por <strong>{c.anulado_por_nombre}</strong></>}
+                                {c.anulado_en && <> · {fmtFechaHora(c.anulado_en)}</>}
+                                {c.reverso_numero && <> · reverso <strong>{c.reverso_numero}</strong></>}
+                              </div>
+                            )}
+                            {c.reversa_de_numero && (
+                              <div style={{ fontSize: 11, color: '#7C3AED', marginTop: 2 }}>
+                                Nota de reverso de <strong>{c.reversa_de_numero}</strong>
+                                {c.reversa_anulado_por && <> · anuló <strong>{c.reversa_anulado_por}</strong></>}
+                              </div>
+                            )}
+                          </td>
                           <td>{c.tercero_nombre?.trim() || '—'}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtMoney(c.total_debe)}</td>
                           <td><span className="badge" style={{ background: ei.bg, color: ei.color }}>{ei.label}</span></td>
@@ -689,6 +705,23 @@ function TabLibroDiario() {
                           <tr>
                             <td></td>
                             <td colSpan={6} style={{ padding: '0 16px 14px' }}>
+                              {(c.estado === 'ANULADO' || c.reversa_de_numero) && (
+                                <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12.5, lineHeight: 1.6,
+                                  background: c.estado === 'ANULADO' ? '#FEF2F2' : '#F5F3FF',
+                                  border: `1px solid ${c.estado === 'ANULADO' ? '#FECACA' : '#DDD6FE'}`,
+                                  color: c.estado === 'ANULADO' ? '#991B1B' : '#5B21B6' }}>
+                                  {c.estado === 'ANULADO' ? <>
+                                    <strong>Comprobante anulado.</strong>{' '}
+                                    Anuló: <strong>{c.anulado_por_nombre || '—'}</strong> · Fecha y hora: <strong>{c.anulado_en ? fmtFechaHora(c.anulado_en) : '—'}</strong>
+                                    <br/>Motivo: <em>{c.motivo_anulacion || 'sin motivo registrado'}</em>
+                                    {c.reverso_numero && <><br/>Nota de reverso: <strong>{c.reverso_numero}</strong> (débitos y créditos invertidos; ambos se cancelan en los reportes)</>}
+                                  </> : <>
+                                    <strong>Nota de reverso</strong> del comprobante <strong>{c.reversa_de_numero}</strong>.
+                                    {' '}Anuló: <strong>{c.reversa_anulado_por || '—'}</strong> · Fecha y hora: <strong>{c.reversa_anulado_en ? fmtFechaHora(c.reversa_anulado_en) : '—'}</strong>
+                                    <br/>Motivo: <em>{c.reversa_motivo || 'sin motivo registrado'}</em>
+                                  </>}
+                                </div>
+                              )}
                               <table style={{ width: '100%', borderCollapse: 'collapse', background: '#FAFBFF', borderRadius: 10, overflow: 'hidden' }}>
                                 <thead>
                                   <tr style={{ fontSize: 10.5, color: '#9CA3AF', textTransform: 'uppercase' }}>

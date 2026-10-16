@@ -213,11 +213,20 @@ export async function libroDiario(req, reply) {
   const { rows: comprobantes } = await pool.query(
     `SELECT c.*,
        COALESCE(t.razon_social, CONCAT(TRIM(COALESCE(t.nombres,'')),' ',TRIM(COALESCE(t.apellidos,'')))) AS tercero_nombre,
-       s.nombre AS sede_nombre, u.nombre AS usuario_nombre
+       s.nombre AS sede_nombre, u.nombre AS usuario_nombre,
+       -- Trazabilidad de anulaciones: quién/cuándo/por qué y el par original ↔ nota de reverso
+       ua.nombre AS anulado_por_nombre,
+       (SELECT r.numero FROM comprobantes_contables r
+         WHERE r.comprobante_reversa_id = c.id ORDER BY r.creado_en DESC LIMIT 1) AS reverso_numero,
+       o.numero AS reversa_de_numero, o.motivo_anulacion AS reversa_motivo,
+       o.anulado_en AS reversa_anulado_en, uo.nombre AS reversa_anulado_por
      FROM comprobantes_contables c
      LEFT JOIN terceros t ON t.id = c.tercero_id
      LEFT JOIN sedes s    ON s.id = c.sede_id
      LEFT JOIN usuarios u ON u.id = c.usuario_creador
+     LEFT JOIN usuarios ua ON ua.id = c.anulado_por
+     LEFT JOIN comprobantes_contables o ON o.id = c.comprobante_reversa_id
+     LEFT JOIN usuarios uo ON uo.id = o.anulado_por
      ${where}
      ORDER BY c.fecha_contable DESC, c.numero DESC
      LIMIT $${vals.length + 1} OFFSET $${vals.length + 2}`,
