@@ -624,9 +624,12 @@ export async function anularPagoPoliza(req, reply) {
     // proceso nocturno (fn_recalcular_mora_polizas): meses vencidos entre
     // pago_hasta y hoy. Antes sumaba +1 mes fijo, así que anular un pago
     // ADELANTADO (mes aún no vencido) dejaba en mora/suspendida una póliza al día.
+    // ultimo_pago: la fecha del último pago que SIGUE vigente (sin él, el listado
+    // seguía mostrando como "último pago" la fecha del pago recién anulado)
     await client.query(`
       UPDATE polizas SET
-        pago_hasta = LEAST(COALESCE(pago_hasta, fecha_inicio), ($2::date - INTERVAL '1 day')::date)
+        pago_hasta  = LEAST(COALESCE(pago_hasta, fecha_inicio), ($2::date - INTERVAL '1 day')::date),
+        ultimo_pago = (SELECT MAX(fecha_pago) FROM pagos_poliza WHERE poliza_id = $1 AND NOT anulado)
       WHERE id = $1`, [pg.poliza_id, pg.mes_correspondiente])
     await client.query(`
       WITH m AS (
