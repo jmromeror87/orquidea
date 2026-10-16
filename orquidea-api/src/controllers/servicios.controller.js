@@ -541,6 +541,8 @@ export async function crear(req, reply) {
   } = req.body
 
   if (!difunto_id) return reply.code(400).send({ error: 'difunto_id es obligatorio' })
+  if (!contrato_id && !contratante_id && !poliza_id && !convenio_id)
+    return reply.code(400).send({ error: 'Indica de dónde sale el servicio: un contrato/contratante, una póliza o un convenio' })
 
   // ── Validar contrato (si se proporcionó) ─────────────────────────────────
   if (contrato_id) {
