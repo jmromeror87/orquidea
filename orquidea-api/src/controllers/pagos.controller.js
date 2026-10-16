@@ -206,6 +206,7 @@ export async function listar(req, reply) {
       pc.descuento,
       pc.recargo_mora,
       pc.monto - pc.descuento + pc.recargo_mora AS total,
+      pc.tipo,
       pc.metodo_pago,
       pc.referencia,
       pc.anulado,
@@ -468,8 +469,17 @@ export async function registrarPagoContrato(req, reply) {
 
   if (!contrato.rows.length) return reply.status(404).send({ error: 'Contrato no encontrado' })
   const cont = contrato.rows[0]
-  if (cont.estado !== 'activo') return reply.status(400).send({ error: `El contrato está ${cont.estado}` })
-  if (cont.modalidad !== 'CUOTAS') return reply.status(400).send({ error: 'Solo contratos en cuotas pueden registrar pagos aquí' })
+  if (cont.estado === 'cancelado') return reply.status(400).send({ error: 'El contrato está cancelado' })
+  const saldo = Number(cont.valor_total) - Number(cont.valor_pagado)
+  if (saldo <= 0) return reply.status(400).send({ error: 'El contrato no tiene saldo pendiente' })
+
+  // Abono libre: contratos de CONTADO (todos los de servicio directo) o cuando
+  // el cajero escribe un monto en vez de pagar cuotas completas. Antes Cartera
+  // rechazaba cualquier contrato que no fuera EN CUOTAS y 'activo', así que un
+  // servicio directo nunca podía recibir un pago.
+  if (req.body.monto_abono != null || cont.modalidad !== 'CUOTAS') {
+    return registrarAbonoContrato(req, reply, { cont, saldo, usuario_id, metodo_pago, referencia, notas })
+  }
 
   const valorCuota = Number(cont.valor_cuota)
   const n = Math.max(1, Number(meses) || 1)
@@ -477,7 +487,7 @@ export async function registrarPagoContrato(req, reply) {
   // Meses que ya tienen un pago registrado — igual que en pólizas, para no
   // duplicar ni chocar con el índice único (contrato_id, mes_correspondiente).
   const yaPagados = await pool.query(
-    `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_contrato WHERE contrato_id=$1`,
+    `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_contrato WHERE contrato_id=$1 AND tipo='CUOTA' AND NOT anulado`,
     [contrato_id]
   )
   const setPagados = new Set(yaPagados.rows.map(r => r.mes))
@@ -576,6 +586,65 @@ export async function registrarPagoContrato(req, reply) {
   } catch (e) {
     await client.query('ROLLBACK')
     if (e.code === '23505') return reply.status(409).send({ error: 'Ya existe un pago para ese período' })
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
+// ── Abono libre a un contrato (contado o cuotas) ─────────────────────────────
+// Reduce el saldo (valor_total − valor_pagado) por el monto recibido y se
+// contabiliza con CONTRATO_PAGO_CUOTA: Debe caja/banco · Haber 130505.01.
+async function registrarAbonoContrato(req, reply, { cont, saldo, usuario_id, metodo_pago, referencia, notas }) {
+  const monto = Math.round(Number(req.body.monto_abono ?? saldo) * 100) / 100
+  if (!(monto > 0)) return reply.status(400).send({ error: 'El valor del abono debe ser mayor a 0' })
+  if (monto > saldo + 0.5) {
+    return reply.status(400).send({ error: `El abono (${monto.toLocaleString('es-CO')}) supera el saldo pendiente (${saldo.toLocaleString('es-CO')})` })
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const ins = await client.query(`
+      INSERT INTO pagos_contrato (
+        contrato_id, tipo, mes_correspondiente, periodo_hasta, monto,
+        descuento, recargo_mora, metodo_pago, referencia, fecha_pago, usuario_id, notas
+      ) VALUES ($1,'ABONO',date_trunc('month', CURRENT_DATE)::date,NULL,$2,0,0,$3,$4,CURRENT_DATE,$5,$6)
+      RETURNING *, numero_recibo`,
+      [cont.id, monto, metodo_pago, referencia || null, usuario_id, notas || null]
+    )
+    const recibo = ins.rows[0]
+
+    await client.query(
+      `UPDATE contratos SET valor_pagado = valor_pagado + $1, actualizado = NOW() WHERE id = $2`,
+      [monto, cont.id]
+    )
+
+    await contabilizarEvento(client, {
+      evento_codigo: 'CONTRATO_PAGO_CUOTA',
+      montos: { total: monto },
+      forma_pago_codigo: metodo_pago,
+      concepto: `Abono contrato ${cont.numero} — recibo ${String(recibo.numero_recibo).padStart(6, '0')}`,
+      tercero_id: cont.contratante_id,
+      sede_id: cont.sede_id,
+      documento_origen_tipo: 'pagos_contrato',
+      documento_origen_id: recibo.id,
+      usuario_id,
+    })
+
+    await client.query('COMMIT')
+    return reply.status(201).send({
+      tipo: 'ABONO',
+      recibo,
+      numero_recibo: recibo.numero_recibo,
+      monto,
+      saldo_anterior: saldo,
+      saldo_restante: Math.max(0, Math.round((saldo - monto) * 100) / 100),
+      contrato_numero: cont.numero,
+      titular: cont.titular_nombre,
+    })
+  } catch (e) {
+    await client.query('ROLLBACK')
     throw e
   } finally {
     client.release()
@@ -725,7 +794,8 @@ export async function morosos(req, reply) {
 // ── Buscar póliza/contrato para pagar ───────────────────────────────────────
 export async function buscarParaPagar(req, reply) {
   const { q = '', tipo = 'POLIZA' } = req.query
-  if (q.length < 2) return reply.send({ data: [] })
+  // Un número (de póliza/contrato) se busca aunque sea de 1 dígito — el contrato N° 1 nunca aparecía
+  if (q.length < 2 && !/^\d+$/.test(q)) return reply.send({ data: [] })
   const { sedeIds } = resolverSede(req)
 
   if (tipo === 'POLIZA') {
@@ -770,18 +840,23 @@ export async function buscarParaPagar(req, reply) {
       c.saldo_mora,
       c.dia_cobro,
       c.tipo_contrato AS plan,
+      c.modalidad, c.meses_mora,
+      c.valor_total, c.valor_pagado, c.saldo_pendiente,
       t.nombres || ' ' || COALESCE(t.apellidos,'') AS titular,
       t.numero_documento AS cedula,
       t.telefono
     FROM contratos c
     JOIN terceros t ON t.id = c.contratante_id
-    WHERE c.modalidad = 'CUOTAS'
+    -- Todo contrato con saldo (contado o cuotas, también los de servicio directo
+    -- ya "completados"); antes solo aparecían los EN CUOTAS.
+    WHERE c.estado <> 'cancelado' AND c.saldo_pendiente > 0
       AND (t.nombres ILIKE '%'||$1||'%'
         OR t.apellidos ILIKE '%'||$1||'%'
         OR t.numero_documento = $1
-        OR c.numero::TEXT = $1)
+        OR c.numero::TEXT = $1
+        OR c.numero_legado = $1)
       AND ($2::uuid[] IS NULL OR c.sede_id = ANY($2::uuid[]))
-    ORDER BY c.saldo_mora DESC
+    ORDER BY c.saldo_mora DESC, c.saldo_pendiente DESC
     LIMIT 10
   `, [q, sedeIds])
   return reply.send({ data: res.rows })

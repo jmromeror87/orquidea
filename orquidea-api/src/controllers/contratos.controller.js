@@ -106,8 +106,10 @@ export async function obtener(req, reply) {
       `${SELECT_LIST} ${JOINS} WHERE c.id = $1`, [id]
     ),
     pool.query(
-      `SELECT p.*, u.nombre AS cajero
-       FROM pagos p
+      // pagos_contrato es donde Cartera registra cuotas y abonos (la tabla
+      // vieja "pagos" ya no se usa — por eso la ficha mostraba siempre 0 pagos)
+      `SELECT p.*, p.monto - p.descuento + p.recargo_mora AS total, u.nombre AS cajero
+       FROM pagos_contrato p
        LEFT JOIN usuarios u ON u.id = p.usuario_id
        WHERE p.contrato_id = $1
        ORDER BY p.fecha_pago DESC, p.creado_en DESC`,

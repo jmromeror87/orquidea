@@ -1,0 +1,23 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Módulo          : Servicios — ítems adicionales cobrados al contrato   ║
+-- ║  Archivo         : 101_items_cargados_contrato.sql                      ║
+-- ║  Versión         : v1.0.0                                               ║
+-- ║  Fecha           : 2026-10-16                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ║  Software propietario. Prohibida su reproducción, distribución o       ║
+-- ║  comercialización sin autorización escrita del titular.                ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- Un ítem agregado DESPUÉS de crear un servicio que sale de un contrato suma
+-- su valor al contrato (y a la cartera 130505.01). Esta marca distingue esos
+-- ítems de los que vinieron con el paquete — ya incluidos en valor_total —
+-- para que editar o quitar un ítem del paquete no descuadre el contrato.
+ALTER TABLE items_servicio
+  ADD COLUMN IF NOT EXISTS cargado_a_contrato BOOLEAN NOT NULL DEFAULT FALSE;

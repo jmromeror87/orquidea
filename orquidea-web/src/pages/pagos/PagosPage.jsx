@@ -23,7 +23,8 @@ import { toast } from '../../store/toast.store.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
-const CSS = `
+// Exportado para usar la ventana de pago (ModalPago) desde otras pantallas, p. ej. la ficha del contrato
+export const CSS_PAGOS = `
 .pg { display:flex; flex-direction:column; height:100%; background:#F8F9FC; }
 
 /* Stats bar */
@@ -257,7 +258,7 @@ function MoraBadge({ meses, valor }) {
 }
 
 // ── Modal registrar pago ─────────────────────────────────────────────────────
-function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
+export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
   const [busca, setBusca]           = useState('')
   const [opciones, setOpciones]     = useState([])
   const [seleccionado, setSeleccionado] = useState(polizaInicial || null)
@@ -273,6 +274,8 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
   const [loading, setLoading]       = useState(false)
   const [recibo, setRecibo]         = useState(null)
   const [error, setError]           = useState('')
+  const [modoAbono, setModoAbono]   = useState(false)   // contratos: abono de monto libre
+  const [montoAbono, setMontoAbono] = useState(0)
   const fileRef = useRef(null)
   const searchRef = useRef(null)
 
@@ -289,7 +292,7 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
   const doBusca = v => {
     setBusca(v); setSeleccionado(null)
     clearTimeout(buscarDebounce.current)
-    if (v.length < 2) { setOpciones([]); return }
+    if (v.length < 2 && !/^\d+$/.test(v)) { setOpciones([]); return }
     buscarDebounce.current = setTimeout(async () => {
       const res = await api.get('/pagos/buscar', { params: { q: v, tipo } })
       setOpciones(res.data.data || [])
@@ -297,12 +300,17 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
   }
 
   const sel = polizaInicial ? polizaInicial : seleccionado
-  const monto = sel ? Number(sel.valor_cuota) * meses : 0
-  const total = monto - Number(descuento) + Number(recargo)
+  const saldoContrato = tipo === 'CONTRATO' && sel ? Number(sel.saldo_pendiente ?? (Number(sel.valor_total||0) - Number(sel.valor_pagado||0))) : 0
+  // Contratos de contado (servicio directo) solo admiten abono; en cuotas el cajero elige
+  const soloAbono = tipo === 'CONTRATO' && sel && sel.modalidad !== 'CUOTAS'
+  const esAbono = tipo === 'CONTRATO' && (soloAbono || modoAbono)
+  const monto = sel ? (esAbono ? Number(montoAbono || 0) : Number(sel.valor_cuota) * meses) : 0
+  const total = esAbono ? monto : monto - Number(descuento) + Number(recargo)
   const moraMeses = sel ? Number(sel.meses_mora || 0) : 0
 
   useEffect(() => {
     if (sel && moraMeses > 0) setMeses(moraMeses)
+    if (sel && tipo === 'CONTRATO') { setMontoAbono(saldoContrato); setModoAbono(sel.modalidad !== 'CUOTAS') }
   }, [sel])
 
   const onArchivoChange = e => {
@@ -314,6 +322,8 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
 
   const handlePagar = async () => {
     if (!sel) return setError('Seleccione una póliza o contrato')
+    if (esAbono && !(Number(montoAbono) > 0)) return setError('Escribe el valor del abono')
+    if (esAbono && Number(montoAbono) > saldoContrato) return setError(`El abono no puede superar el saldo pendiente (${fmt(saldoContrato)})`)
     if (formaSel?.requiere_referencia && !referencia.trim())
       return setError(`La forma de pago "${formaSel.nombre}" requiere número de referencia.`)
     if (formaSel?.requiere_soporte && !archivo)
@@ -324,7 +334,9 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
       const endpoint = tipo === 'POLIZA' ? '/pagos/poliza' : '/pagos/contrato'
       const body = tipo === 'POLIZA'
         ? { poliza_id: sel.id, meses, metodo_pago: metodo, referencia, descuento: Number(descuento), recargo_mora: Number(recargo), notas }
-        : { contrato_id: sel.id, meses, metodo_pago: metodo, referencia, descuento: Number(descuento), recargo_mora: Number(recargo), notas }
+        : esAbono
+          ? { contrato_id: sel.id, monto_abono: Number(montoAbono), metodo_pago: metodo, referencia, notas }
+          : { contrato_id: sel.id, meses, metodo_pago: metodo, referencia, descuento: Number(descuento), recargo_mora: Number(recargo), notas }
       const res = await api.post(endpoint, body)
 
       // Subir soporte si se adjuntó
@@ -366,8 +378,14 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
           <div className="pg-recibo-row"><span>{tipo === 'POLIZA' ? 'Póliza' : 'Contrato'}</span><span>N° {sel?.numero}</span></div>
           <div className="pg-recibo-row"><span>Plan</span><span>{sel?.plan}</span></div>
           <hr className="pg-recibo-sep"/>
-          <div className="pg-recibo-row"><span>Período</span><span>{mesLabel(recibo.recibo?.mes_correspondiente)} – {mesLabel(recibo.recibo?.periodo_hasta)}</span></div>
-          <div className="pg-recibo-row"><span>Meses</span><span>{meses}</span></div>
+          {recibo.tipo === 'ABONO' ? <>
+            <div className="pg-recibo-row"><span>Concepto</span><span>Abono a contrato</span></div>
+            <div className="pg-recibo-row"><span>Saldo anterior</span><span>{fmt(recibo.saldo_anterior)}</span></div>
+            <div className="pg-recibo-row"><span>Saldo pendiente</span><span style={{fontWeight:700}}>{fmt(recibo.saldo_restante)}</span></div>
+          </> : <>
+            <div className="pg-recibo-row"><span>Período</span><span>{mesLabel(recibo.recibo?.mes_correspondiente)} – {mesLabel(recibo.recibo?.periodo_hasta)}</span></div>
+            <div className="pg-recibo-row"><span>Meses</span><span>{meses}</span></div>
+          </>}
           <div className="pg-recibo-row">
             <span>Forma de pago</span>
             <span>{formaSel ? `${formaSel.icono} ${formaSel.nombre}` : metodo}</span>
@@ -420,7 +438,12 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
                     <div key={o.id} className="pg-ac-item" onClick={() => { setSeleccionado(o); setOpciones([]); setBusca(o.titular) }}>
                       <div>
                         <div className="pg-ac-nombre">{o.titular}</div>
-                        <div className="pg-ac-meta">N°{o.numero} · {o.plan} · {fmt(o.valor_cuota)}/mes</div>
+                        <div className="pg-ac-meta">
+                          N°{o.numero} · {o.plan}
+                          {tipo === 'CONTRATO'
+                            ? <> · {o.modalidad === 'CUOTAS' ? `${fmt(o.valor_cuota)}/mes · ` : 'Contado · '}saldo {fmt(o.saldo_pendiente)}</>
+                            : <> · {fmt(o.valor_cuota)}/mes</>}
+                        </div>
                       </div>
                       <div><MoraBadge meses={Number(o.meses_mora||0)} valor={Number(o.saldo_mora||0)}/></div>
                     </div>
@@ -440,6 +463,13 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
               <div className="pg-titular-item"><Calendar size={12}/>Día cobro: {sel.dia_cobro || '—'}</div>
               <div className="pg-titular-item">Pago hasta: <strong>{fmtFecha(sel.pago_hasta)}</strong></div>
             </div>
+            {tipo === 'CONTRATO' && (
+              <div style={{marginTop:8,padding:'6px 10px',background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:8,fontSize:12,color:'#92400E',display:'flex',flexWrap:'wrap',gap:10}}>
+                <span>Valor: <strong>{fmt(sel.valor_total)}</strong></span>
+                <span>Pagado: <strong>{fmt(sel.valor_pagado)}</strong></span>
+                <span>Saldo: <strong style={{color:'#B91C1C'}}>{fmt(saldoContrato)}</strong></span>
+              </div>
+            )}
             {moraMeses > 0 && (
               <div style={{marginTop:8,padding:'6px 10px',background:'#FEF2F2',borderRadius:8,display:'flex',alignItems:'center',gap:6}}>
                 <AlertTriangle size={14} color="#EF4444"/>
@@ -451,13 +481,34 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
           </div>
         )}
 
+        {tipo === 'CONTRATO' && sel && !soloAbono && (
+          <div style={{display:'flex',gap:8,marginBottom:12}}>
+            {[['Pagar cuotas', false], ['Abono de otro valor', true]].map(([lbl, v]) => (
+              <button key={lbl} type="button" onClick={() => setModoAbono(v)}
+                className={`pg-btn ${modoAbono === v ? 'pg-btn-success' : 'pg-btn-ghost'}`} style={{flex:1,padding:'8px 10px'}}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="pg-row">
+          {esAbono ? (
+            <div className="pg-field">
+              <label className="pg-label">Valor del abono</label>
+              <CurrencyInput style={{width:'100%'}} value={montoAbono} onChange={v => setMontoAbono(v)}/>
+              <span style={{fontSize:11,color:'#6B7280',marginTop:3,display:'block'}}>
+                Saldo pendiente: {fmt(saldoContrato)}
+              </span>
+            </div>
+          ) : (
           <div className="pg-field">
             <label className="pg-label">Meses a pagar</label>
             <select className="pg-select" value={meses} onChange={e => setMeses(Number(e.target.value))}>
               {[1,2,3,4,5,6,12].map(m => <option key={m} value={m}>{m} mes{m!==1?'es':''}</option>)}
             </select>
           </div>
+          )}
           <div className="pg-field">
             <label className="pg-label">Forma de pago</label>
             <select className="pg-select" value={metodo} onChange={e => { setMetodo(e.target.value); setReferencia(''); setArchivo(null); setArchivoNombre('') }}>
@@ -545,7 +596,7 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
           </div>
         )}
 
-        <div className="pg-row">
+        {!esAbono && <div className="pg-row">
           <div className="pg-field">
             <label className="pg-label">Descuento ($)</label>
             <CurrencyInput style={{width:'100%'}} value={descuento} onChange={v=>setDescuento(v)}/>
@@ -554,7 +605,7 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
             <label className="pg-label">Recargo mora ($)</label>
             <CurrencyInput style={{width:'100%'}} value={recargo} onChange={v=>setRecargo(v)}/>
           </div>
-        </div>
+        </div>}
 
         <div className="pg-field">
           <label className="pg-label">Notas</label>
@@ -563,6 +614,16 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
 
         {sel && (
           <div className="pg-resumen">
+            {esAbono ? <>
+              <div className="pg-resumen-row">
+                <span className="pg-resumen-label">Saldo pendiente</span>
+                <span className="pg-resumen-valor">{fmt(saldoContrato)}</span>
+              </div>
+              <div className="pg-resumen-row">
+                <span className="pg-resumen-label">Quedará debiendo</span>
+                <span className="pg-resumen-valor">{fmt(Math.max(0, saldoContrato - Number(montoAbono||0)))}</span>
+              </div>
+            </> : <>
             <div className="pg-resumen-row">
               <span className="pg-resumen-label">Cuota mensual</span>
               <span className="pg-resumen-valor">{fmt(sel.valor_cuota)}</span>
@@ -571,6 +632,7 @@ function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
               <span className="pg-resumen-label">× {meses} mes{meses!==1?'es':''}</span>
               <span className="pg-resumen-valor">{fmt(monto)}</span>
             </div>
+            </>}
             {Number(descuento) > 0 && (
               <div className="pg-resumen-row">
                 <span className="pg-resumen-label">Descuento</span>
@@ -829,7 +891,7 @@ export default function PagosPage() {
 
   return (
     <>
-      <style>{CSS}</style>
+      <style>{CSS_PAGOS}</style>
       <div className="pg">
 
         {/* Stats */}

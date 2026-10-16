@@ -1918,6 +1918,46 @@ async function revertirInventarioItem(client, item, { usuario_id, motivo }) {
   }
 }
 
+// ── Ítems adicionales → valor del contrato y cartera ───────────────────────
+// Si el servicio sale de un contrato (servicio directo o contrato previo, sin
+// póliza ni convenio, que tienen su propia cobertura/cartera), un ítem que se
+// agrega DESPUÉS de crearlo es un cobro más al cliente: sube valor_total y la
+// cartera (CONTRATO_VENTA). Quitarlo o bajar su valor hace lo contrario
+// (CONTRATO_AJUSTE_MENOS). Antes estos ítems no llegaban nunca a Cartera.
+async function servicioCobraAContrato(client, servicioId) {
+  const r = await client.query(
+    `SELECT c.id, c.numero, c.contratante_id, c.sede_id, c.valor_total, c.valor_pagado, c.estado
+     FROM servicios_funerarios sf JOIN contratos c ON c.id = sf.contrato_id
+     WHERE sf.id = $1 AND sf.poliza_id IS NULL AND sf.convenio_id IS NULL`, [servicioId]
+  )
+  const c = r.rows[0]
+  return c && c.estado !== 'cancelado' ? c : null
+}
+
+async function ajustarContratoPorItem(client, contrato, { delta, item_id, descripcion, usuario_id }) {
+  delta = Math.round(Number(delta) * 100) / 100
+  if (!contrato || !delta) return
+  if (delta < 0 && Number(contrato.valor_total) + delta < Number(contrato.valor_pagado)) {
+    throw Object.assign(new Error(
+      `No se puede bajar el valor del contrato N° ${contrato.numero} por debajo de lo ya pagado (${Number(contrato.valor_pagado).toLocaleString('es-CO')}).`
+    ), { httpCode: 400 })
+  }
+  await client.query(
+    `UPDATE contratos SET valor_total = valor_total + $1, actualizado = NOW() WHERE id = $2`,
+    [delta, contrato.id]
+  )
+  await contabilizarEvento(client, {
+    evento_codigo: delta > 0 ? 'CONTRATO_VENTA' : 'CONTRATO_AJUSTE_MENOS',
+    montos: { total: Math.abs(delta) },
+    concepto: `${delta > 0 ? 'Ítem adicional' : 'Ajuste de ítem'} contrato ${contrato.numero} — ${descripcion}`,
+    tercero_id: contrato.contratante_id,
+    sede_id: contrato.sede_id,
+    documento_origen_tipo: 'items_servicio',
+    documento_origen_id: item_id,
+    usuario_id,
+  })
+}
+
 export async function agregarItem(req, reply) {
   const { id } = req.params
   const { catalogo_id, descripcion, cantidad = 1, precio_unit, es_cobertura = false, bodega_id } = req.body
@@ -1971,14 +2011,20 @@ export async function agregarItem(req, reply) {
       comprobante_id = consumo.comprobanteId
     }
 
+    const contrato = es_cobertura ? null : await servicioCobraAContrato(client, id)
     const r = await client.query(
       `INSERT INTO items_servicio
          (servicio_id, catalogo_id, descripcion, cantidad, precio_unit, es_cobertura,
-          producto_id, bodega_id, costo_unitario, movimiento_id, comprobante_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+          producto_id, bodega_id, costo_unitario, movimiento_id, comprobante_id, cargado_a_contrato)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [id, catalogo_id || null, desc, cantidad, precio || 0, es_cobertura,
-       producto_id, producto_id ? bodega_id : null, costo_unitario, movimiento_id, comprobante_id]
+       producto_id, producto_id ? bodega_id : null, costo_unitario, movimiento_id, comprobante_id, !!contrato]
     )
+    if (contrato) {
+      await ajustarContratoPorItem(client, contrato, {
+        delta: +cantidad * +(precio || 0), item_id: r.rows[0].id, descripcion: desc, usuario_id: req.user?.id,
+      })
+    }
     await client.query('COMMIT')
 
     await audit(id, req.user?.id, 'items', `Agregó ítem: "${desc}"${es_cobertura ? ' (cobertura póliza)' : ''}${producto_id ? ' — descontado de inventario' : ''}`)
@@ -2038,6 +2084,14 @@ export async function actualizarItem(req, reply) {
       [descripcion || null, cantidad ?? null, precio_unit ?? null,
        bodega_id || null, costo_unitario, movimiento_id, comprobante_id, itemId, id]
     )
+    if (item.cargado_a_contrato) {
+      const delta = (+nuevaCantidad * +nuevoPrecio) - (+item.cantidad * +item.precio_unit)
+      if (delta) {
+        await ajustarContratoPorItem(client, await servicioCobraAContrato(client, id), {
+          delta, item_id: itemId, descripcion: r.rows[0].descripcion, usuario_id: req.user?.id,
+        })
+      }
+    }
     await client.query('COMMIT')
 
     await audit(id, req.user?.id, 'items', `Editó ítem: "${r.rows[0].descripcion}"`)
@@ -2062,6 +2116,11 @@ export async function eliminarItem(req, reply) {
     await client.query('BEGIN')
     if (item.producto_id) {
       await revertirInventarioItem(client, item, { usuario_id: req.user?.id, motivo: 'Eliminación del ítem del servicio' })
+    }
+    if (item.cargado_a_contrato) {
+      await ajustarContratoPorItem(client, await servicioCobraAContrato(client, id), {
+        delta: -(+item.cantidad * +item.precio_unit), item_id: itemId, descripcion: item.descripcion, usuario_id: req.user?.id,
+      })
     }
     await client.query('DELETE FROM items_servicio WHERE id=$1 AND servicio_id=$2', [itemId, id])
     await client.query('COMMIT')

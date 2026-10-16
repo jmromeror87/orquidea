@@ -30,6 +30,7 @@ import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
+import { ModalPago, CSS_PAGOS } from '../pagos/PagosPage.jsx'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -637,9 +638,11 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab]         = useState('info')
+  const [abonando, setAbonando] = useState(false)
   const { usuario } = useAuthStore()
   const { label: fmtMetodo } = useFormasPago()
   const esAdmin = ['superadmin','administrador'].includes(usuario?.rol)
+  const esCajero = ['superadmin','administrador','operador','asesor_comercial'].includes(usuario?.rol)
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -679,6 +682,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   )
 
   return (
+    <>
     <div className="ct-drawer-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="ct-drawer">
 
@@ -859,12 +863,29 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
               </>
 
             ) : (
+              <>
+              {/* Saldo del contrato + registrar abono (antes solo desde Cartera y solo contratos en cuotas) */}
+              <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap', padding:'14px 16px', marginBottom:14,
+                background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:12 }}>
+                <div style={{ fontSize:12.5, color:'#92400E' }}>Valor<div style={{ fontSize:15, fontWeight:800 }}>{fmt(data.valor_total)}</div></div>
+                <div style={{ fontSize:12.5, color:'#065F46' }}>Pagado<div style={{ fontSize:15, fontWeight:800 }}>{fmt(data.valor_pagado)}</div></div>
+                <div style={{ fontSize:12.5, color: +data.saldo_pendiente > 0 ? '#B91C1C' : '#059669' }}>
+                  Saldo<div style={{ fontSize:15, fontWeight:800 }}>{+data.saldo_pendiente > 0 ? fmt(data.saldo_pendiente) : '✓ Pagado'}</div>
+                </div>
+                {esCajero && +data.saldo_pendiente > 0 && data.estado !== 'cancelado' && (
+                  <button onClick={() => setAbonando(true)}
+                    style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:6, padding:'9px 16px', borderRadius:10, border:'none',
+                      background:'linear-gradient(135deg,#059669,#10B981)', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer' }}>
+                    <CreditCard size={14}/> Registrar abono
+                  </button>
+                )}
+              </div>
               <CtdCard icon="💳" title="Historial de pagos">
                 {(data.pagos || []).length === 0 ? (
                   <div className="ct-empty" style={{ padding:40 }}>
                     <CreditCard size={32}/>
                     <p>Sin pagos registrados</p>
-                    <span>Los pagos se registran desde el módulo de Cartera</span>
+                    <span>Usa "Registrar abono" o el módulo de Cartera</span>
                   </div>
                 ) : (
                   (data.pagos || []).map(p => (
@@ -876,7 +897,16 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                         <CreditCard size={16} color="#fff"/>
                       </div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontSize:14, fontWeight:800, color:'#065F46' }}>{fmt(p.monto)}</div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                          <span style={{ fontSize:14, fontWeight:800, color: p.anulado ? '#9CA3AF' : '#065F46',
+                            textDecoration: p.anulado ? 'line-through' : 'none' }}>{fmt(p.total ?? p.monto)}</span>
+                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6,
+                            background: p.tipo === 'ABONO' ? '#EDE9FE' : '#E0F2FE', color: p.tipo === 'ABONO' ? '#6D28D9' : '#0369A1' }}>
+                            {p.tipo === 'ABONO' ? 'ABONO' : `CUOTA ${new Date(p.mes_correspondiente).toLocaleDateString('es-CO',{ month:'short', year:'numeric', timeZone:'UTC' })}`}
+                          </span>
+                          {p.anulado && <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6, background:'#FEE2E2', color:'#EF4444' }}>ANULADO</span>}
+                          {p.numero_recibo && <span style={{ fontSize:10, fontWeight:700, color:'#059669' }}>N° {String(p.numero_recibo).padStart(6,'0')}</span>}
+                        </div>
                         <div style={{ fontSize:11.5, color:'#6B7280', marginTop:2 }}>
                           {fmtMetodo(p.metodo_pago)} · {fmtDate(p.fecha_pago)}{p.cajero && ` · ${p.cajero}`}
                         </div>
@@ -891,11 +921,25 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                   ))
                 )}
               </CtdCard>
+              </>
             )}
           </div>
         </div>
       </div>
     </div>
+    {abonando && data && (
+      <>
+        <style>{CSS_PAGOS}</style>
+        <div style={{ position:'relative', zIndex:1100 }}>
+          <ModalPago tipo="CONTRATO"
+            polizaInicial={{ ...data, titular: data.contratante_nombre, plan: data.tipo_contrato,
+              telefono: data.contratante_tel }}
+            onClose={() => { setAbonando(false); cargar() }}
+            onOk={() => { setAbonando(false); cargar() }}/>
+        </div>
+      </>
+    )}
+    </>
   )
 }
 
