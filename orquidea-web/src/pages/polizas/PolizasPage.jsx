@@ -34,6 +34,7 @@ import { imprimirConsentimientoBeneficiario } from '../../utils/consentimientoBe
 import { imprimirAvisoCesionPoliza, imprimirAutorizacionCambioTitular } from '../../utils/avisoCesionPoliza.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
+import BuscadorBeneficiario from '../../components/polizas/BuscadorBeneficiario.jsx'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
          diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
@@ -118,6 +119,8 @@ const TIPO_COLOR = {
 }
 
 
+// 'titular' no es un parentesco de beneficiario (el titular ya está en la póliza)
+const PARENTESCOS_BEN = ['cónyuge','hijo','hija','padre','madre','suegro','suegra','hermano','hermana','abuelo','abuela','tio','tia','sobrino','sobrina','otro']
 const PARENTESCOS = ['titular','cónyuge','hijo','hija','padre','madre','suegro','suegra','hermano','hermana','abuelo','abuela','tio','tia','sobrino','sobrina','otro']
 
 // ── CSS ─────────────────────────────────────────────────────────────────────
@@ -310,9 +313,6 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
   const [candTit, setCandTit]       = useState([])
   const [titularId, setTitularId]   = useState(poliza?.titular_id || '')
   const [bens, setBens]             = useState([])      // [{tercero_id, nombre, parentesco}]
-  const [busqBen, setBusqBen]       = useState('')
-  const [candBen, setCandBen]       = useState([])
-  const [parBen, setParBen]         = useState('hijo')
   const [saving, setSaving]         = useState(false)
   const [err, setErr]               = useState('')
 
@@ -334,19 +334,9 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
     return () => clearTimeout(t)
   }, [busqTit])
 
-  useEffect(() => {
-    if (busqBen.length < 1) return setCandBen([])
-    const t = setTimeout(async () => {
-      const r = await api.get(`/terceros/select?q=${encodeURIComponent(busqBen)}`)
-      setCandBen((r.data.data || []).filter(c => c.id !== titularId && !bens.find(b => b.tercero_id === c.id)))
-    }, 300)
-    return () => clearTimeout(t)
-  }, [busqBen, titularId, bens])
-
-  const agregarBen = (t) => {
+  const agregarBen = (t, parentesco) => {
     setBens(p => [...p, { tercero_id:t.id, nombre:`${t.nombres||''} ${t.apellidos||''}`.trim(),
-      doc:`${t.tipo_doc_sigla} ${t.numero_documento}`, parentesco: parBen }])
-    setBusqBen(''); setCandBen([])
+      doc:`${t.tipo_doc_sigla} ${t.numero_documento}`, parentesco }])
   }
 
   const guardar = async () => {
@@ -527,48 +517,18 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
               <div className="pl-section" style={{ marginTop:18 }}>
                 Beneficiarios ({bens.length}/{planActual?.max_beneficiarios || '?'})
               </div>
-              <div className="pl-grid2" style={{ marginBottom:10 }}>
-                <div className="pl-field" style={{ marginBottom:0 }}>
-                  <label>Buscar persona</label>
-                  <div style={{ position:'relative' }}>
-                    <Search size={13} color="#9CA3AF" style={{ position:'absolute', left:10,
-                      top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
-                    <input value={busqBen} onChange={e => setBusqBen(e.target.value)}
-                      placeholder="Nombre o documento…" style={{ paddingLeft:30 }}
-                      disabled={!titularId}/>
-                  </div>
-                </div>
-                <div className="pl-field" style={{ marginBottom:0 }}>
-                  <label>Parentesco</label>
-                  <select value={parBen} onChange={e => setParBen(e.target.value)} disabled={!titularId}>
-                    {PARENTESCOS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                  </select>
-                </div>
+              <div style={{ marginBottom:10 }}>
+                <BuscadorBeneficiario
+                  parentescos={PARENTESCOS_BEN}
+                  disabled={!titularId || (planActual && bens.length >= planActual.max_beneficiarios)}
+                  disabledMsg={!titularId ? 'Primero selecciona el titular de la póliza.' : `El plan permite máximo ${planActual?.max_beneficiarios} beneficiarios.`}
+                  excluidos={new Map([
+                    ...(titularId ? [[titularId, 'Titular']] : []),
+                    ...bens.map(b => [b.tercero_id, 'Ya agregado']),
+                  ])}
+                  onAgregar={(t, parentesco) => agregarBen(t, parentesco)}
+                />
               </div>
-              {candBen.length > 0 && (
-                <div style={{ border:'1.5px solid #ECEDF8', borderRadius:10, overflow:'hidden',
-                  maxHeight:130, overflowY:'auto', background:'#fff', marginBottom:10 }}>
-                  {candBen.map((c,i) => (
-                    <div key={c.id} onClick={() => agregarBen(c)}
-                      style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
-                        cursor:'pointer', borderBottom:i<candBen.length-1?'1px solid #F4F5FA':'none',
-                        transition:'background .1s' }}
-                      onMouseEnter={e => e.currentTarget.style.background='#ECFDF5'}
-                      onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                      <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
-                        background:'linear-gradient(135deg,#0891B2,#0F5E7A)',
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                        fontSize:11, fontWeight:800, color:'#fff' }}>
-                        {(c.nombres?.[0]||'?').toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontSize:12.5, fontWeight:700 }}>{c.nombres} {c.apellidos}</div>
-                        <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
               {bens.length > 0 && (
                 <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
                   {bens.map((b, i) => (
@@ -1295,9 +1255,6 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   const [loading, setLoading] = useState(true)
   const [tab, setTab]         = useState('info')
   const [showBen, setShowBen] = useState(false)
-  const [busqBen, setBusqBen] = useState('')
-  const [candBen, setCandBen] = useState([])
-  const [parBen, setParBen]   = useState('hijo')
   const [showTransf, setShowTransf]   = useState(false)
   const [busqTransf, setBusqTransf]   = useState('')
   const [candTransf, setCandTransf]   = useState([])
@@ -1375,29 +1332,18 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
     }
   }
 
-  useEffect(() => {
-    if (busqBen.length < 1) return setCandBen([])
-    const t = setTimeout(async () => {
-      const r = await api.get(`/terceros/select?q=${encodeURIComponent(busqBen)}`)
-      setCandBen((r.data.data||[]).filter(c =>
-        c.id !== data?.titular_id &&
-        !(data?.beneficiarios||[]).find(b => b.tercero_id === c.id && b.activo)
-      ))
-    }, 300)
-    return () => clearTimeout(t)
-  }, [busqBen, data])
-
-  const agregarBen = async (t) => {
+  const agregarBen = async (t, parentesco) => {
     try {
-      const r = await api.post(`/polizas/${id}/beneficiarios`, { tercero_id:t.id, parentesco:parBen })
+      const r = await api.post(`/polizas/${id}/beneficiarios`, { tercero_id:t.id, parentesco })
       if (r.data.cobertura_basica) {
         toast.success(`Beneficiario agregado — por tener ${r.data.edad} años queda con cobertura de servicio funerario básico. Imprime el consentimiento para que el titular lo firme.`)
       } else {
         toast.success('Beneficiario agregado con éxito')
       }
-      setBusqBen(''); setCandBen([]); setShowBen(false); cargar()
+      setShowBen(false); cargar()
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Error')
+      toast.error(e.response?.data?.error || 'No se pudo agregar el beneficiario')
+      throw e   // el buscador conserva la selección para corregir y reintentar
     }
   }
 
@@ -1714,47 +1660,15 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                 </div>
 
                 {showBen && (
-                  <div style={{ background:'#F0FDF4', border:'1.5px solid #A7F3D0', borderRadius:12,
-                    padding:14, marginBottom:14 }}>
-                    <div className="pld-grid2" style={{ marginBottom:10 }}>
-                      <div className="pl-field" style={{ marginBottom:0 }}>
-                        <label>Buscar persona</label>
-                        <div style={{ position:'relative' }}>
-                          <Search size={13} color="#9CA3AF" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
-                          <input value={busqBen} onChange={e => setBusqBen(e.target.value)}
-                            placeholder="Nombre o documento…" style={{ paddingLeft:30 }}/>
-                        </div>
-                      </div>
-                      <div className="pl-field" style={{ marginBottom:0 }}>
-                        <label>Parentesco</label>
-                        <select value={parBen} onChange={e => setParBen(e.target.value)}>
-                          {PARENTESCOS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    {candBen.length > 0 && (
-                      <div style={{ border:'1.5px solid #A7F3D0', borderRadius:10, overflow:'hidden',
-                        maxHeight:130, overflowY:'auto', background:'#fff' }}>
-                        {candBen.map((c,i) => (
-                          <div key={c.id} onClick={() => agregarBen(c)}
-                            style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
-                              cursor:'pointer', borderBottom:i<candBen.length-1?'1px solid #F4F5FA':'none' }}
-                            onMouseEnter={e => e.currentTarget.style.background='#ECFDF5'}
-                            onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                            <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
-                              background:'linear-gradient(135deg,#0891B2,#0F5E7A)',
-                              display:'flex', alignItems:'center', justifyContent:'center',
-                              fontSize:11, fontWeight:800, color:'#fff' }}>
-                              {(c.nombres?.[0]||'?').toUpperCase()}
-                            </div>
-                            <div>
-                              <div style={{ fontSize:12.5, fontWeight:700 }}>{c.nombres} {c.apellidos}</div>
-                              <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  <div style={{ marginBottom:14 }}>
+                    <BuscadorBeneficiario
+                      parentescos={PARENTESCOS_BEN}
+                      excluidos={new Map([
+                        [data.titular_id, 'Titular'],
+                        ...(data.beneficiarios || []).filter(b => b.activo && !b.ejecutado && b.tercero_id).map(b => [b.tercero_id, 'Ya es beneficiario']),
+                      ])}
+                      onAgregar={agregarBen}
+                    />
                   </div>
                 )}
 

@@ -204,7 +204,7 @@ export async function obtener(req, reply) {
     pool.query(`${SELECT_LIST} ${JOINS} WHERE p.id = $1`, [id]),
     pool.query(`
       -- Beneficiarios normales del grupo familiar
-      SELECT pb.id, pb.parentesco, pb.activo, pb.ejecutado, pb.fecha_ejecucion, pb.creado_en,
+      SELECT pb.id, pb.tercero_id, pb.parentesco, pb.activo, pb.ejecutado, pb.fecha_ejecucion, pb.creado_en,
         FALSE AS es_titular_historico,
         COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre,
         t.numero_documento AS documento, t.telefono,
@@ -224,7 +224,7 @@ export async function obtener(req, reply) {
       -- póliza, pero nunca fueron un "beneficiario" — no tienen fila en
       -- poliza_beneficiarios). Se muestran igual, con el mismo angelito,
       -- para no perder ese rastro en el historial de la póliza.
-      SELECT NULL::uuid AS id, 'Titular (anterior)' AS parentesco, TRUE AS activo,
+      SELECT NULL::uuid AS id, t.id AS tercero_id, 'Titular (anterior)' AS parentesco, TRUE AS activo,
         TRUE AS ejecutado, sf.creado_en::date AS fecha_ejecucion, sf.creado_en,
         TRUE AS es_titular_historico,
         COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre,

@@ -417,14 +417,15 @@ export async function select(req, reply) {
   conds.push(`($${vals.length + 1}::uuid[] IS NULL OR t.sede_id = ANY($${vals.length + 1}::uuid[]))`)
   vals.push(sedeIds)
 
-  if (q) {
-    conds.push(`(
-      t.nombres ILIKE $${vals.length + 1} OR
-      t.apellidos ILIKE $${vals.length + 1} OR
-      t.razon_social ILIKE $${vals.length + 1} OR
-      t.numero_documento ILIKE $${vals.length + 1}
-    )`)
-    vals.push(`%${q}%`)
+  // Cada palabra debe aparecer en el nombre completo o el documento, sin
+  // importar tildes/ñ ni el orden: "maria cañizares" encuentra a "MARIA DE JESUS
+  // CAÑIZARES" (antes se buscaba la frase entera dentro de UNA sola columna).
+  const sinTildes = expr => `translate(lower(${expr}), 'áéíóúüñ', 'aeiouun')`
+  const palabras = String(q || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean).slice(0, 6)
+  for (const palabra of palabras) {
+    conds.push(`${sinTildes(`concat_ws(' ', t.nombres, t.apellidos, t.razon_social, t.numero_documento)`)} LIKE $${vals.length + 1}`)
+    vals.push(`%${palabra}%`)
   }
   if (rol) {
     conds.push(`EXISTS (
@@ -438,6 +439,7 @@ export async function select(req, reply) {
   const { rows } = await pool.query(
     `SELECT t.id, t.tipo_persona, t.nombres, t.apellidos, t.razon_social,
             t.numero_documento, t.telefono, t.email, t.direccion,
+            t.fecha_nacimiento, DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad,
             td.sigla AS tipo_doc_sigla,
             COALESCE(
               json_agg(DISTINCT tr.rol) FILTER (WHERE tr.rol IS NOT NULL), '[]'
