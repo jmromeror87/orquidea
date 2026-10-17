@@ -38,6 +38,7 @@ import BuscadorBeneficiario from '../../components/polizas/BuscadorBeneficiario.
 import TablaPagosPoliza from '../../components/polizas/TablaPagosPoliza.jsx'
 import ResponsablesPoliza from '../../components/polizas/ResponsablesPoliza.jsx'
 import CoberturaPlan from '../../components/polizas/CoberturaPlan.jsx'
+import Bitacora from '../../components/bitacora/Bitacora.jsx'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
          diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
@@ -1401,6 +1402,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
     { key:'bens',      icon:'👨‍👩‍👧', label:`Beneficiarios (${data?.total_beneficiarios||0})` },
     { key:'pagos',     icon:'💳',  label:`Pagos (${data?.total_pagos||0})` },
     { key:'cobertura', icon:'✅',  label:'Cobertura' },
+    { key:'bitacora',  icon:'📓',  label:'Bitácora' },
   ]
 
   const PldField = ({ label, value, color }) => (
@@ -1771,6 +1773,12 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                   ))
                 )}
               </PldCard>
+
+            ) : tab === 'bitacora' ? (
+              <div className="pld-card" style={{ padding:'18px 20px' }}>
+                <Bitacora tipo="poliza" entidadId={data.id} usuario={usuario} puedeEscribir={esEditor}
+                  titulo={`Póliza ${data.numero_legado || '#' + data.numero} — ${data.titular_nombre}`}/>
+              </div>
 
             ) : tab === 'pagos' ? (
               <>

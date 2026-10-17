@@ -10,6 +10,17 @@
     "lint": "eslint src --ext .js,.jsx"
   },
   "dependencies": {
+    "@tiptap/extension-color": "3.31.4",
+    "@tiptap/extension-highlight": "3.31.4",
+    "@tiptap/extension-image": "3.31.4",
+    "@tiptap/extension-list": "3.31.4",
+    "@tiptap/extension-placeholder": "3.31.4",
+    "@tiptap/extension-table": "3.31.4",
+    "@tiptap/extension-text-align": "3.31.4",
+    "@tiptap/extension-text-style": "3.31.4",
+    "@tiptap/pm": "3.31.4",
+    "@tiptap/react": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
     "axios": "^1.7.2",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.2",

@@ -62,6 +62,7 @@ import carteraTercerosRoutes from './routes/carteraTerceros.routes.js'
 import posRoutes           from './routes/pos.routes.js'
 import publicoRoutes       from './routes/publico.routes.js'
 import memorialesRoutes    from './routes/memoriales.routes.js'
+import bitacoraRoutes      from './routes/bitacora.routes.js'
 import leadsRoutes         from './routes/leads.routes.js'
 import notificacionesRoutes from './routes/notificaciones.routes.js'
 import contabilidadRoutes   from './routes/contabilidad.routes.js'
@@ -177,6 +178,7 @@ app.register(carteraTercerosRoutes, { prefix: '/api/cartera-terceros' })
 app.register(posRoutes,           { prefix: '/api/pos' })
 app.register(publicoRoutes,       { prefix: '/api/publico' })
 app.register(memorialesRoutes,    { prefix: '/api/memoriales' })
+app.register(bitacoraRoutes,      { prefix: '/api/bitacora' })
 app.register(leadsRoutes,         { prefix: '/api/leads' })
 app.register(notificacionesRoutes, { prefix: '/api/notificaciones' })
 app.register(contabilidadRoutes,   { prefix: '/api/contabilidad' })
