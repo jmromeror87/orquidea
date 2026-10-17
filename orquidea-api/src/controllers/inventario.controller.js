@@ -178,7 +178,7 @@ export async function listarProductos(req, reply) {
 
   if (q) {
     params.push(`%${q}%`)
-    wheres.push(`(p.nombre ILIKE $${params.length} OR p.codigo_sku ILIKE $${params.length})`)
+    wheres.push(`(busca(p.nombre, $${params.length}) OR busca(p.codigo_sku, $${params.length}))`)
   }
   if (categoria_id) {
     params.push(categoria_id)

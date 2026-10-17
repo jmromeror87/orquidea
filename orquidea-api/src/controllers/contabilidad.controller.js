@@ -49,7 +49,7 @@ export async function arbol(req, reply) {
     const { rows } = await pool.query(
       `WITH RECURSIVE coincidencias AS (
          SELECT codigo, padre_codigo FROM contabilidad_puc
-         WHERE (codigo ILIKE $1 OR nombre ILIKE $1) ${activa !== undefined ? 'AND activa = $2' : ''}
+         WHERE (busca(codigo, $1) OR busca(nombre, $1)) ${activa !== undefined ? 'AND activa = $2' : ''}
        ),
        ancestros AS (
          SELECT codigo, padre_codigo FROM coincidencias
@@ -77,7 +77,7 @@ export async function select(req, reply) {
   const { q } = req.query
   const conds = [`acepta_movimiento = TRUE`, `activa = TRUE`]
   const vals = []
-  if (q?.trim()) { conds.push(`(codigo ILIKE $${vals.length + 1} OR nombre ILIKE $${vals.length + 1})`); vals.push(`%${q.trim()}%`) }
+  if (q?.trim()) { conds.push(`(busca(codigo, $${vals.length + 1}) OR busca(nombre, $${vals.length + 1}))`); vals.push(`%${q.trim()}%`) }
   const { rows } = await pool.query(
     `SELECT codigo, nombre, naturaleza, tipo, requiere_tercero, requiere_centro_costo
      FROM contabilidad_puc WHERE ${conds.join(' AND ')} ORDER BY codigo LIMIT 100`,
@@ -204,7 +204,7 @@ export async function libroDiario(req, reply) {
   if (evento_codigo)   { conds.push(`c.evento_codigo = $${vals.length + 1}`); vals.push(evento_codigo) }
   if (estado)          { conds.push(`c.estado = $${vals.length + 1}`); vals.push(estado) }
   if (cuenta)          { conds.push(`EXISTS (SELECT 1 FROM asientos_contables ax WHERE ax.comprobante_id = c.id AND ax.cuenta_codigo = $${vals.length + 1})`); vals.push(cuenta) }
-  if (q?.trim())       { conds.push(`(c.numero ILIKE $${vals.length + 1} OR c.concepto ILIKE $${vals.length + 1})`); vals.push(`%${q.trim()}%`) }
+  if (q?.trim())       { conds.push(`(busca(c.numero, $${vals.length + 1}) OR busca(c.concepto, $${vals.length + 1}))`); vals.push(`%${q.trim()}%`) }
 
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
   const limitNum = Math.min(100, Math.max(1, +limit))

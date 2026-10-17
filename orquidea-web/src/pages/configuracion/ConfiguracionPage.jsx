@@ -28,6 +28,7 @@ import PercentInput from '../../components/ui/PercentInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { aplicarColoresTema } from '../../context/ThemeContext.jsx'
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import { coincide, sinTildes } from '../../utils/textoFormato.js'
 
 const TABS = [
   { id:'empresa',        label:'Empresa',           sub:'Datos legales',        Icon:Building2, color:'#6366F1' },
@@ -441,9 +442,7 @@ function TabPaquetes() {
   const yaAgregados = new Set(items.map(i => i.catalogo_id).filter(Boolean))
   const catalogoFiltrado = catalogo.filter(c =>
     !yaAgregados.has(c.id) &&
-    (busqueda.length < 2 || c.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      c.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      c.categoria.toLowerCase().includes(busqueda.toLowerCase()))
+    (busqueda.length < 2 || coincide(busqueda, c.nombre, c.codigo, c.categoria))
   )
 
   const COLOR = ['#2563EB','#059669','#7C3AED','#D97706','#DC2626','#0891B2']
@@ -2279,7 +2278,7 @@ function TabServicios({ servs, ivaDefecto, saving, setSaving, onOk, onErr }) {
   const q = busq.trim().toLowerCase()
   const lista = servs
     .filter(s => !filt || s.categoria === filt)
-    .filter(s => !q || s.nombre.toLowerCase().includes(q) || (s.codigo||'').toLowerCase().includes(q))
+    .filter(s => !q || coincide(q, s.nombre, s.codigo))
   const totalPaginas = Math.max(1, Math.ceil(lista.length / SERV_PAGE_SIZE))
   const paginaSeg = Math.min(pagina, totalPaginas)
   const pageItems = lista.slice((paginaSeg-1)*SERV_PAGE_SIZE, paginaSeg*SERV_PAGE_SIZE)

@@ -381,7 +381,7 @@ export async function listarProveedores(req, reply) {
 
   if (q) {
     params.push(`%${q}%`)
-    wheres.push(`(COALESCE(t.razon_social, CONCAT(t.nombres,' ',t.apellidos)) ILIKE $${params.length} OR t.numero_documento ILIKE $${params.length} OR cp.codigo ILIKE $${params.length})`)
+    wheres.push(`(busca(COALESCE(t.razon_social, CONCAT(t.nombres,' ',t.apellidos)), $${params.length}) OR busca(t.numero_documento, $${params.length}) OR busca(cp.codigo, $${params.length}))`)
   }
   if (tipo_proveedor) { params.push(tipo_proveedor); wheres.push(`cp.tipo_proveedor = $${params.length}`) }
   if (activo !== undefined) { params.push(activo === 'true' || activo === true); wheres.push(`cp.activo = $${params.length}`) }

@@ -72,14 +72,9 @@ export async function listar(req, reply) {
   }
   if (q) {
     const idx = vals.length + 1
-    conds.push(`(
-      t.nombres         ILIKE $${idx} OR
-      t.apellidos       ILIKE $${idx} OR
-      t.razon_social    ILIKE $${idx} OR
-      t.numero_documento ILIKE $${idx} OR
-      t.email           ILIKE $${idx} OR
-      t.telefono        ILIKE $${idx}
-    )`)
+    // Todas las palabras, en cualquier orden, en cualquiera de los datos:
+    // "pacheco 8814" encuentra a Luis Pacheco con documento 88148596
+    conds.push(`busca(concat_ws(' ', t.nombres, t.apellidos, t.razon_social, t.numero_documento, t.email, t.telefono), $${idx})`)
     vals.push(`%${q}%`)
   }
   if (rol) {
@@ -102,7 +97,8 @@ export async function listar(req, reply) {
       [...vals, Number(limit), offset]
     ),
     pool.query(
-      `SELECT COUNT(*) FROM terceros t
+      // DISTINCT: con el JOIN de roles, un tercero con 3 roles se contaba 3 veces
+      `SELECT COUNT(DISTINCT t.id) FROM terceros t
        LEFT JOIN tercero_roles tr ON tr.tercero_id = t.id ${where}`,
       vals
     ),

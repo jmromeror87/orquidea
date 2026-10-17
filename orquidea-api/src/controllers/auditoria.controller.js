@@ -30,7 +30,7 @@ export async function listarLog(req, reply) {
   if (ip?.trim())  { conds.push(`ip = $${vals.length + 1}`); vals.push(ip.trim()) }
   if (desde)       { conds.push(`creado_en >= $${vals.length + 1}`); vals.push(desde) }
   if (hasta)       { conds.push(`creado_en < ($${vals.length + 1}::date + INTERVAL '1 day')`); vals.push(hasta) }
-  if (q?.trim())   { conds.push(`(usuario_nombre ILIKE $${vals.length + 1} OR descripcion ILIKE $${vals.length + 1} OR ruta ILIKE $${vals.length + 1})`); vals.push(`%${q.trim()}%`) }
+  if (q?.trim())   { conds.push(`(busca(usuario_nombre, $${vals.length + 1}) OR busca(descripcion, $${vals.length + 1}) OR busca(ruta, $${vals.length + 1}))`); vals.push(`%${q.trim()}%`) }
 
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
   const limitNum = Math.min(200, Math.max(1, +limit))

@@ -28,6 +28,7 @@
 import { jsPDF } from 'jspdf'
 import { dibujarLogoPDF } from './logo.js'
 import { verPDF } from '../store/visorPdf.store.js'
+import { coincide, sinTildes } from './textoFormato.js'
 
 // Márgenes del formato original de la funeraria (A4, mm)
 const PL = 29, PR = 182, CX = (PL + PR) / 2
@@ -313,7 +314,7 @@ export function generarAtencionAcompanamientos(datos, logoDataUrl, campos = {}) 
 // "VEREDA LA SIERRA" + "LA SIERRA" → no repetir el barrio si ya viene en la dirección
 function unirDireccion(direccion, barrio) {
   const d = (direccion || '').trim(), b = (barrio || '').trim()
-  if (!b || d.toLowerCase().includes(b.toLowerCase())) return d
+  if (!b || sinTildes(d).includes(sinTildes(b))) return d
   return d ? `${d}, ${b}` : b
 }
 

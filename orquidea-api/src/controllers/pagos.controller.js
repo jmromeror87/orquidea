@@ -170,8 +170,7 @@ export async function listar(req, reply) {
       JOIN planes_poliza pl ON pl.id = p.plan_id
       JOIN usuarios u ON u.id = pp.usuario_id
       LEFT JOIN usuarios uc ON uc.id = pp.cobrador_id
-      WHERE ($1 = '' OR t.nombres ILIKE '%'||$1||'%'
-                     OR t.apellidos ILIKE '%'||$1||'%'
+      WHERE ($1 = '' OR busca(concat_ws(' ', t.nombres, t.apellidos), '%'||$1||'%')
                      OR p.numero::TEXT = $1)
         AND (NULLIF($2,'') IS NULL OR pp.fecha_pago >= NULLIF($2,'')::date)
         AND (NULLIF($3,'') IS NULL OR pp.fecha_pago <= NULLIF($3,'')::date)
@@ -185,8 +184,7 @@ export async function listar(req, reply) {
       SELECT COUNT(*) FROM pagos_poliza pp
       JOIN polizas p ON p.id = pp.poliza_id
       JOIN terceros t ON t.id = p.titular_id
-      WHERE ($1 = '' OR t.nombres ILIKE '%'||$1||'%'
-                     OR t.apellidos ILIKE '%'||$1||'%'
+      WHERE ($1 = '' OR busca(concat_ws(' ', t.nombres, t.apellidos), '%'||$1||'%')
                      OR p.numero::TEXT = $1)
         AND (NULLIF($2,'') IS NULL OR pp.fecha_pago >= NULLIF($2,'')::date)
         AND (NULLIF($3,'') IS NULL OR pp.fecha_pago <= NULLIF($3,'')::date)
@@ -232,8 +230,7 @@ export async function listar(req, reply) {
     JOIN contratos c ON c.id = pc.contrato_id
     JOIN terceros t ON t.id = c.contratante_id
     JOIN usuarios u ON u.id = pc.usuario_id
-    WHERE ($1 = '' OR t.nombres ILIKE '%'||$1||'%'
-                   OR t.apellidos ILIKE '%'||$1||'%'
+    WHERE ($1 = '' OR busca(concat_ws(' ', t.nombres, t.apellidos), '%'||$1||'%')
                    OR c.numero::TEXT = $1)
       AND (NULLIF($2,'') IS NULL OR pc.fecha_pago >= NULLIF($2,'')::date)
       AND (NULLIF($3,'') IS NULL OR pc.fecha_pago <= NULLIF($3,'')::date)
@@ -612,8 +609,7 @@ export async function morosos(req, reply) {
       LEFT JOIN usuarios u ON u.id = p.cobrador_id
       WHERE p.meses_mora >= $1
         AND p.estado NOT IN ('CANCELADA','EJECUTADA')
-        AND ($2 = '' OR t.nombres ILIKE '%'||$2||'%'
-                     OR t.apellidos ILIKE '%'||$2||'%'
+        AND ($2 = '' OR busca(concat_ws(' ', t.nombres, t.apellidos), '%'||$2||'%')
                      OR t.numero_documento = $2
                      OR p.numero::TEXT = $2)
         AND ($3::uuid[] IS NULL OR p.sede_id = ANY($3::uuid[]))
@@ -639,8 +635,7 @@ export async function morosos(req, reply) {
     FROM contratos c
     JOIN terceros t ON t.id = c.contratante_id
     WHERE c.saldo_mora > 0 AND c.estado = 'activo'
-      AND ($1 = '' OR t.nombres ILIKE '%'||$1||'%'
-                   OR t.apellidos ILIKE '%'||$1||'%'
+      AND ($1 = '' OR busca(concat_ws(' ', t.nombres, t.apellidos), '%'||$1||'%')
                    OR c.numero::TEXT = $1)
       AND ($2::uuid[] IS NULL OR c.sede_id = ANY($2::uuid[]))
     ORDER BY c.saldo_mora DESC
@@ -677,8 +672,7 @@ export async function buscarParaPagar(req, reply) {
       JOIN terceros t ON t.id = p.titular_id
       JOIN planes_poliza pl ON pl.id = p.plan_id
       WHERE p.estado NOT IN ('CANCELADA')
-        AND (t.nombres ILIKE '%'||$1||'%'
-          OR t.apellidos ILIKE '%'||$1||'%'
+        AND (busca(concat_ws(' ', t.nombres, t.apellidos), '%'||$1||'%')
           OR t.numero_documento = $1
           OR p.numero::TEXT = $1)
         AND ($2::uuid[] IS NULL OR p.sede_id = ANY($2::uuid[]))
@@ -708,8 +702,7 @@ export async function buscarParaPagar(req, reply) {
     -- Todo contrato con saldo (contado o cuotas, también los de servicio directo
     -- ya "completados"); antes solo aparecían los EN CUOTAS.
     WHERE c.estado <> 'cancelado' AND c.saldo_pendiente > 0
-      AND (t.nombres ILIKE '%'||$1||'%'
-        OR t.apellidos ILIKE '%'||$1||'%'
+      AND (busca(concat_ws(' ', t.nombres, t.apellidos), '%'||$1||'%')
         OR t.numero_documento = $1
         OR c.numero::TEXT = $1
         OR c.numero_legado = $1)

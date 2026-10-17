@@ -302,7 +302,7 @@ export async function catalogo(req, reply) {
 
   const params = [bodega_id]
   let where = ''
-  if (q) { params.push(`%${q}%`); where = `AND (p.nombre ILIKE $2 OR p.codigo_sku ILIKE $2)` }
+  if (q) { params.push(`%${q}%`); where = `AND (busca(p.nombre, $2) OR busca(p.codigo_sku, $2))` }
 
   const { rows } = await pool.query(`
     SELECT p.id, p.codigo_sku, p.nombre, p.precio_venta, p.imagen_url, p.unidad_medida,

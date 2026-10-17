@@ -101,10 +101,10 @@ export async function buscar(req, reply) {
     JOIN terceros t   ON t.id  = p.titular_id
     JOIN planes_poliza pl ON pl.id = p.plan_id
     WHERE (
-      COALESCE(t.nombres||' '||t.apellidos,'') ILIKE $1
-      OR t.numero_documento ILIKE $1
-      OR CAST(p.numero AS TEXT) ILIKE $1
-      OR p.numero_legado ILIKE $1
+      busca(concat_ws(' ', t.nombres, t.apellidos), $1)
+      OR busca(t.numero_documento, $1)
+      OR busca(CAST(p.numero AS TEXT), $1)
+      OR busca(p.numero_legado, $1)
     )
     ORDER BY p.estado = 'VIGENTE' DESC, p.creado_en DESC
     LIMIT 10`, [`%${q}%`]
@@ -187,11 +187,11 @@ export async function listar(req, reply) {
 
   if (q) {
     conds.push(`(
-      CAST(p.numero AS TEXT) ILIKE $${i}
-      OR p.numero_legado ILIKE $${i}
-      OR COALESCE(t.nombres||' '||t.apellidos,'') ILIKE $${i}
-      OR t.numero_documento ILIKE $${i}
-      OR t.telefono ILIKE $${i}
+      busca(CAST(p.numero AS TEXT), $${i})
+      OR busca(p.numero_legado, $${i})
+      OR busca(concat_ws(' ', t.nombres, t.apellidos), $${i})
+      OR busca(t.numero_documento, $${i})
+      OR busca(t.telefono, $${i})
     )`)
     vals.push(`%${q}%`); i++
   }

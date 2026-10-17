@@ -36,7 +36,7 @@ export async function listar(req, reply) {
   if (estado)        { conds.push(`c.estado = $${vals.length + 1}`); vals.push(estado) }
   if (desde)         { conds.push(`c.fecha_contable >= $${vals.length + 1}`); vals.push(desde) }
   if (hasta)         { conds.push(`c.fecha_contable <= $${vals.length + 1}`); vals.push(hasta) }
-  if (q?.trim())     { conds.push(`(c.numero ILIKE $${vals.length + 1} OR c.concepto ILIKE $${vals.length + 1})`); vals.push(`%${q.trim()}%`) }
+  if (q?.trim())     { conds.push(`(busca(c.numero, $${vals.length + 1}) OR busca(c.concepto, $${vals.length + 1}))`); vals.push(`%${q.trim()}%`) }
 
   const where = `WHERE ${conds.join(' AND ')}`
   const limitNum = Math.min(100, Math.max(1, +limit))

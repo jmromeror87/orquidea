@@ -28,6 +28,7 @@ import PercentInput from '../../components/ui/PercentInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import { useAuthStore } from '../../store/auth.store.js'
+import { coincide, sinTildes } from '../../utils/textoFormato.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n || 0)
 
@@ -419,7 +420,7 @@ function TarjetaConvenio({ convenio, onEditar, onRecargar }) {
   }, [abierto])
 
   const candPaquetes = busqPaquete.length < 2 ? [] : paquetesDisponibles.filter(p =>
-    p.nombre.toLowerCase().includes(busqPaquete.toLowerCase()) &&
+    coincide(busqPaquete, p.nombre) &&
     !paquetesVinculados.some(pv => pv.paquete_id === p.id))
 
   const agregarPaqueteVinculado = async (p) => {
@@ -728,10 +729,7 @@ export default function ConveniosPage() {
 
   const q = busq.trim().toLowerCase()
   const conveniosFiltrados = q
-    ? convenios.filter(c =>
-        c.nombre?.toLowerCase().includes(q) ||
-        c.nit?.toLowerCase().includes(q) ||
-        c.contacto_nombre?.toLowerCase().includes(q))
+    ? convenios.filter(c => coincide(q, c.nombre, c.nit, c.contacto_nombre))
     : convenios
 
   return (

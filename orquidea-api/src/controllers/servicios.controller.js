@@ -280,9 +280,9 @@ export async function listar(req, reply) {
 
   if (q) {
     conds.push(`(
-      CAST(sf.numero AS TEXT) ILIKE $${i}
-      OR COALESCE(dif.nombres||' '||dif.apellidos,'') ILIKE $${i}
-      OR COALESCE(cont.nombres||' '||cont.apellidos,'') ILIKE $${i}
+      busca(CAST(sf.numero AS TEXT), $${i})
+      OR busca(concat_ws(' ', dif.nombres, dif.apellidos), $${i})
+      OR busca(concat_ws(' ', cont.nombres, cont.apellidos), $${i})
     )`)
     vals.push(`%${q}%`); i++
   }
@@ -1312,7 +1312,7 @@ export async function sugerenciaTanatopraxiaIA(req, reply) {
     FROM inv_productos p
     JOIN inv_categorias c ON c.id = p.categoria_id
     LEFT JOIN inv_stock st ON st.producto_id = p.id
-    WHERE p.activo = true AND c.nombre ILIKE '%Preparación%'
+    WHERE p.activo = true AND busca(c.nombre, '%Preparación%')
     GROUP BY p.id
     ORDER BY p.nombre
   `)
@@ -1554,7 +1554,7 @@ export async function buscarCatalogo(req, reply) {
   }
   const r = await pool.query(
     `SELECT ${campos} ${join}
-     WHERE sc.activo AND (sc.nombre ILIKE $1 OR sc.codigo ILIKE $1 OR sc.categoria ILIKE $1)
+     WHERE sc.activo AND (busca(sc.nombre, $1) OR busca(sc.codigo, $1) OR busca(sc.categoria, $1))
      ${agrupar} ORDER BY sc.nombre LIMIT $2`,
     [`%${q}%`, Number(limit)]
   )

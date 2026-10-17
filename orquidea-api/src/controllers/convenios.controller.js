@@ -31,7 +31,7 @@ export async function listar(req, reply) {
   const vals = []
   let i = 1
 
-  if (q) { conds.push(`(c.nombre ILIKE $${i} OR c.nit ILIKE $${i})`); vals.push(`%${q}%`); i++ }
+  if (q) { conds.push(`(busca(c.nombre, $${i}) OR busca(c.nit, $${i}))`); vals.push(`%${q}%`); i++ }
   if (activo === '1' || activo === '0') { conds.push(`c.activo = $${i}`); vals.push(activo === '1'); i++ }
   conds.push(`($${i}::uuid[] IS NULL OR c.sede_id = ANY($${i}::uuid[]))`); vals.push(sedeIds); i++
 

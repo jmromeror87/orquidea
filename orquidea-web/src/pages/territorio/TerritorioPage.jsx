@@ -17,6 +17,7 @@ import {
 import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
+import { coincide, sinTildes } from '../../utils/textoFormato.js'
 
 /* ─── Tipos de zona ─── */
 const TIPOS = ['BARRIO','VEREDA','CORREGIMIENTO','SECTOR','COMUNA','INSPECCIÓN','URBANIZACIÓN']
@@ -573,7 +574,7 @@ function PanelDepartamentos({ selId, onSel }) {
 
   useEffect(() => { cargar() }, [cargar])
 
-  const filtrados = items.filter(i => i.nombre.toLowerCase().includes(q.toLowerCase()))
+  const filtrados = items.filter(i => coincide(q, i.nombre))
 
   const guardar = async () => {
     setSaving(true); setErr('')
@@ -675,7 +676,7 @@ function PanelMunicipios({ departamento, selId, onSel }) {
 
   useEffect(() => { setQ(''); cargar() }, [cargar])
 
-  const filtrados = items.filter(i => i.nombre.toLowerCase().includes(q.toLowerCase()))
+  const filtrados = items.filter(i => coincide(q, i.nombre))
 
   const guardar = async () => {
     setSaving(true); setErr('')
@@ -853,7 +854,7 @@ function PanelZonas({ municipio }) {
   useEffect(() => { setQ(''); setTipoFilt(''); cargar() }, [cargar])
 
   const filtrados = items.filter(i =>
-    i.nombre.toLowerCase().includes(q.toLowerCase()) &&
+    coincide(q, i.nombre) &&
     (tipoFilt ? i.tipo === tipoFilt : true)
   )
 

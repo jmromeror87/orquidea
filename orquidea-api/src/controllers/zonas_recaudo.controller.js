@@ -233,7 +233,7 @@ export async function polizasSugeridas(req, reply) {
         (
           ${allKeywords.length > 0
             ? allKeywords.map(kw => `
-          CASE WHEN LOWER(COALESCE(t.direccion,'')) ILIKE '%${kw}%' THEN 1 ELSE 0 END`).join(' + ')
+          CASE WHEN busca(LOWER(COALESCE(t.direccion,'')), '%${kw}%') THEN 1 ELSE 0 END`).join(' + ')
             : '1'}
         ) AS score
       FROM polizas p

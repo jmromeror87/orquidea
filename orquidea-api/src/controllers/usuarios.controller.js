@@ -52,7 +52,7 @@ export async function listar(request, reply) {
   let i = 1
 
   if (buscar) {
-    condiciones.push(`(u.nombre ILIKE $${i} OR u.email ILIKE $${i})`)
+    condiciones.push(`(busca(u.nombre, $${i}) OR busca(u.email, $${i}))`)
     params.push(`%${buscar}%`)
     i++
   }

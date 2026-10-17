@@ -41,6 +41,7 @@ import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { FORMATOS_SERVICIO } from '../../utils/formatosServicio.js'
 import { verPDF } from '../../store/visorPdf.store.js'
+import { coincide, sinTildes } from '../../utils/textoFormato.js'
 
 // ── Carroza fúnebre SVG ───────────────────────────────────────────────────────
 const HearseIcon = ({ size = 22, color = '#374151' }) => (
@@ -3403,10 +3404,7 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
   const yaAgregados = new Set(items.map(i => i.catalogo_id).filter(Boolean))
   const catalogoFiltrado = catalogo.filter(c =>
     !yaAgregados.has(c.id) &&
-    (busqueda.length < 2 ||
-      c.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      c.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-      (c.categoria||'').toLowerCase().includes(busqueda.toLowerCase()))
+    (busqueda.length < 2 || coincide(busqueda, c.nombre, c.codigo, c.categoria))
   )
 
   const agregar = async () => {

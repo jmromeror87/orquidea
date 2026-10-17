@@ -61,11 +61,11 @@ export async function listar(req, reply) {
 
   if (q) {
     conditions.push(`(
-      CAST(c.numero AS TEXT) ILIKE $${i}
-      OR c.numero_legado ILIKE $${i}
-      OR COALESCE(cont.nombres||' '||cont.apellidos, cont.razon_social) ILIKE $${i}
-      OR cont.numero_documento ILIKE $${i}
-      OR COALESCE(dif.nombres||' '||dif.apellidos,'') ILIKE $${i}
+      busca(CAST(c.numero AS TEXT), $${i})
+      OR busca(c.numero_legado, $${i})
+      OR busca(concat_ws(' ', cont.nombres, cont.apellidos, cont.razon_social), $${i})
+      OR busca(cont.numero_documento, $${i})
+      OR busca(concat_ws(' ', dif.nombres, dif.apellidos), $${i})
     )`)
     vals.push(`%${q}%`); i++
   }

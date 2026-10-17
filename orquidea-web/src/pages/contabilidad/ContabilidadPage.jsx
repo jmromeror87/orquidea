@@ -24,6 +24,7 @@ import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import ReportesFinancierosTab from './ReportesFinancierosTab.jsx'
 import FlujoCajaTab from './FlujoCajaTab.jsx'
+import { coincide, sinTildes } from '../../utils/textoFormato.js'
 
 const TIPOS = [
   { key: 'ACTIVO',            label: 'Activo',      color: '#059669', bg: '#ECFDF5' },
@@ -198,7 +199,7 @@ function TabPlanCuentas() {
     const q = busq.trim().toLowerCase()
     return cuentas
       .filter(c => !tipoFiltro || c.tipo === tipoFiltro)
-      .filter(c => !q || c.codigo.toLowerCase().includes(q) || c.nombre.toLowerCase().includes(q))
+      .filter(c => !q || coincide(q, c.codigo, c.nombre))
       .sort((a, b) => a.codigo.localeCompare(b.codigo))
   }, [cuentas, tipoFiltro, busq])
 
@@ -257,7 +258,7 @@ function TabPlanCuentas() {
     if (!q) return []
     return cuentas
       .filter(c => c.nivel < 5)
-      .filter(c => c.codigo.toLowerCase().includes(q) || c.nombre.toLowerCase().includes(q))
+      .filter(c => coincide(q, c.codigo, c.nombre))
       .slice(0, 8)
   }, [cuentas, buscarPadre, creando])
 

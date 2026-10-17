@@ -22,8 +22,12 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import ToastContainer from './components/ui/ToastContainer.jsx'
 import VisorPdf from './components/ui/VisorPdf.jsx'
+import { instalarCapitalizacion } from './utils/capitalizarEnVivo.js'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 import './index.css'
+
+// Mayúsculas automáticas al escribir en todos los campos del sistema
+instalarCapitalizacion()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

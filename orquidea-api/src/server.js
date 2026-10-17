@@ -63,6 +63,7 @@ import posRoutes           from './routes/pos.routes.js'
 import publicoRoutes       from './routes/publico.routes.js'
 import memorialesRoutes    from './routes/memoriales.routes.js'
 import bitacoraRoutes      from './routes/bitacora.routes.js'
+import { normalizarCuerpo } from './utils/normalizarTextos.js'
 import leadsRoutes         from './routes/leads.routes.js'
 import notificacionesRoutes from './routes/notificaciones.routes.js'
 import contabilidadRoutes   from './routes/contabilidad.routes.js'
@@ -148,6 +149,14 @@ app.get('/health', async () => ({
 app.setErrorHandler(errorHandler)
 
 app.register(authRoutes,         { prefix: '/api/auth' })
+
+// Textos uniformes al guardar (nombres en Nombre Propio, observaciones con
+// mayúscula inicial…) — ver utils/normalizarTextos.js
+app.addHook('preValidation', async (req) => {
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method) || req.url.startsWith('/api/auth')) return
+  if (req.body && typeof req.body === 'object' && !req.isMultipart?.()) normalizarCuerpo(req.body)
+})
+
 app.register(usuariosRoutes,     { prefix: '/api/usuarios' })
 app.register(tercerosRoutes,      { prefix: '/api/terceros' })
 app.register(serviciosRoutes,    { prefix: '/api/servicios' })

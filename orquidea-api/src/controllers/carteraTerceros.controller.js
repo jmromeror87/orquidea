@@ -79,7 +79,7 @@ export async function listar(req, reply) {
   if (estado)      { vals.push(estado);      conds.push(`ct.estado = $${vals.length}`) }
   if (q) {
     vals.push(`%${q}%`)
-    conds.push(`(ct.concepto ILIKE $${vals.length} OR con.nombre ILIKE $${vals.length} OR ter.nombres ILIKE $${vals.length} OR ter.apellidos ILIKE $${vals.length})`)
+    conds.push(`(busca(ct.concepto, $${vals.length}) OR busca(con.nombre, $${vals.length}) OR busca(concat_ws(' ', ter.nombres, ter.apellidos), $${vals.length}))`)
   }
 
   const { rows } = await pool.query(`

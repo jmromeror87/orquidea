@@ -17,7 +17,7 @@ export async function listarDepartamentos(req, reply) {
   const conds = ['1=1']
   const vals  = []
   if (activo !== undefined) { conds.push(`d.activo = $${vals.length+1}`); vals.push(activo === 'true') }
-  if (q)                    { conds.push(`d.nombre ILIKE $${vals.length+1}`); vals.push(`%${q}%`) }
+  if (q)                    { conds.push(`busca(d.nombre, $${vals.length+1})`); vals.push(`%${q}%`) }
 
   const { rows } = await pool.query(
     `SELECT d.id, d.nombre, d.activo,
@@ -53,7 +53,7 @@ export async function listarMunicipios(req, reply) {
   const conds = ['1=1']; const vals = []
   if (departamento_id) { conds.push(`m.departamento_id = $${vals.length+1}`); vals.push(departamento_id) }
   if (activo !== undefined) { conds.push(`m.activo = $${vals.length+1}`); vals.push(activo === 'true') }
-  if (q)               { conds.push(`m.nombre ILIKE $${vals.length+1}`); vals.push(`%${q}%`) }
+  if (q)               { conds.push(`busca(m.nombre, $${vals.length+1})`); vals.push(`%${q}%`) }
 
   const { rows } = await pool.query(
     `SELECT m.id, m.departamento_id, m.nombre, m.activo,
@@ -115,7 +115,7 @@ export async function listarZonas(req, reply) {
   if (municipio_id)         { conds.push(`z.municipio_id = $${vals.length+1}`); vals.push(municipio_id) }
   if (tipo)                 { conds.push(`z.tipo = $${vals.length+1}`); vals.push(tipo.toUpperCase()) }
   if (activo !== undefined) { conds.push(`z.activo = $${vals.length+1}`); vals.push(activo === 'true') }
-  if (q)                    { conds.push(`z.nombre ILIKE $${vals.length+1}`); vals.push(`%${q}%`) }
+  if (q)                    { conds.push(`busca(z.nombre, $${vals.length+1})`); vals.push(`%${q}%`) }
 
   const { rows } = await pool.query(
     `SELECT z.*, m.nombre AS municipio_nombre, d.nombre AS departamento_nombre

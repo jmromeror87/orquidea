@@ -25,6 +25,7 @@ import api from '../../services/api.js'
 import PercentInput from '../../components/ui/PercentInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import { useAuthStore } from '../../store/auth.store.js'
+import { coincide, sinTildes } from '../../utils/textoFormato.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-CO', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -144,9 +145,8 @@ export default function AsesoresPage() {
   const [busqueda, setBusqueda] = useState('')
 
   const asesoresFiltrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
-    if (!q) return asesores
-    return asesores.filter(a => a.nombre.toLowerCase().includes(q) || a.email.toLowerCase().includes(q))
+    if (!busqueda.trim()) return asesores
+    return asesores.filter(a => coincide(busqueda, a.nombre, a.email))
   }, [asesores, busqueda])
 
   const cargar = useCallback(() => {
