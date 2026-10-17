@@ -25,6 +25,11 @@ const JOINS = `
   JOIN terceros t   ON t.id  = p.titular_id
   JOIN planes_poliza pl ON pl.id = p.plan_id
   LEFT JOIN usuarios u ON u.id = p.usuario_id
+  LEFT JOIN usuarios ua ON ua.id = p.asesor_id
+  LEFT JOIN usuarios uc ON uc.id = p.cobrador_id
+  LEFT JOIN geo_municipios gm ON gm.id = t.municipio_id
+  LEFT JOIN geo_zonas gz ON gz.id = t.zona_id
+  LEFT JOIN zonas_recaudo zr ON zr.id = t.zona_recaudo_id
   LEFT JOIN sedes se ON se.id = p.sede_id
 `
 
@@ -41,6 +46,14 @@ const SELECT_LIST = `
     t.numero_documento AS titular_doc,
     t.telefono AS titular_tel,
     t.email    AS titular_email,
+    t.telefono_alt AS titular_tel_alt,
+    t.fecha_nacimiento AS titular_fecha_nacimiento,
+    DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::int AS titular_edad,
+    t.sexo AS titular_sexo,
+    t.direccion AS titular_direccion,
+    COALESCE(NULLIF(t.barrio,''), NULLIF(t.vereda,''), gz.nombre) AS titular_barrio,
+    gm.nombre AS titular_municipio,
+    zr.id AS titular_zona_recaudo_id, zr.nombre AS titular_zona_recaudo, zr.color AS titular_zona_recaudo_color,
     -- Plan (nombre/tipo se muestran en vivo; la COBERTURA se lee congelada
     -- desde la propia póliza — ver migración 034 — para que editar el plan
     -- después de la venta nunca cambie lo que esta póliza ya cubre)
@@ -50,8 +63,15 @@ const SELECT_LIST = `
     p.cubre_traslado_local, p.cubre_traslado_nacional,
     p.cubre_flores, p.cubre_cremacion, p.cubre_tramites, p.cubre_lapida,
     p.coberturas_extra, p.servicios_incluidos,
-    -- Asesor
-    u.nombre AS asesor_nombre,
+    -- Quién la registró, quién la vendió (asesor) y quién la cobra (recaudador)
+    p.usuario_id AS registrado_por_id, u.nombre AS registrado_por_nombre,
+    p.asesor_id, ua.nombre AS asesor_nombre,
+    p.cobrador_id AS recaudador_id, uc.nombre AS recaudador_nombre,
+    -- Recaudador sugerido: el de la ruta de la zona de recaudo del titular
+    (SELECT json_build_object('id', r.recaudador_id, 'nombre', ur.nombre, 'ruta', r.nombre)
+       FROM rutas_recaudo r JOIN usuarios ur ON ur.id = r.recaudador_id
+      WHERE r.zona_id = t.zona_recaudo_id AND r.activa AND ur.activo
+      ORDER BY r.creado_en LIMIT 1) AS recaudador_sugerido,
     -- Sede
     p.sede_id, se.nombre AS sede_nombre,
     -- Beneficiarios count
@@ -158,7 +178,7 @@ export async function stats(req, reply) {
 
 export async function listar(req, reply) {
   await pool.query('SELECT calcular_mora_polizas()')
-  const { q = '', estado = '', plan = '', page = 1, limit = 20 } = req.query
+  const { q = '', estado = '', plan = '', recaudador = '', asesor = '', page = 1, limit = 20 } = req.query
   const offset = (Math.max(1, +page) - 1) * +limit
 
   const conds = ['1=1']
@@ -177,6 +197,11 @@ export async function listar(req, reply) {
   }
   if (estado) { conds.push(`p.estado = $${i}`); vals.push(estado); i++ }
   if (plan)   { conds.push(`p.plan_id = $${i}`); vals.push(plan); i++ }
+  // 'sin' = pólizas sin recaudador / sin asesor asignado
+  if (recaudador === 'sin') conds.push('p.cobrador_id IS NULL')
+  else if (recaudador) { conds.push(`p.cobrador_id = $${i}`); vals.push(recaudador); i++ }
+  if (asesor === 'sin') conds.push('p.asesor_id IS NULL')
+  else if (asesor) { conds.push(`p.asesor_id = $${i}`); vals.push(asesor); i++ }
 
   const { sedeIds } = resolverSede(req)
   if (sedeIds) { conds.push(`p.sede_id = ANY($${i}::uuid[])`); vals.push(sedeIds); i++ }
@@ -354,6 +379,7 @@ export async function crear(req, reply) {
   const {
     titular_id, plan_id, valor_cuota, dia_cobro = 1,
     fecha_inicio, observaciones, beneficiarios = [], numero_legado,
+    asesor_id, recaudador_id,
   } = req.body
 
   if (!titular_id) return reply.code(400).send({ error: 'titular_id es obligatorio' })
@@ -382,6 +408,19 @@ export async function crear(req, reply) {
     WHERE ps.plan_id = $1 AND sc.activo
     ORDER BY sc.nombre`, [plan_id])
 
+  // Asesor (quien vende): el elegido, o quien la registra si es asesor
+  // comercial. Recaudador: el elegido, o el de la ruta de la zona del titular.
+  const asesorId = asesor_id || (req.user.rol === 'asesor_comercial' ? req.user.id : null)
+  let recaudadorId = recaudador_id || null
+  if (!recaudadorId) {
+    const sug = await pool.query(`
+      SELECT r.recaudador_id FROM terceros t
+        JOIN rutas_recaudo r ON r.zona_id = t.zona_recaudo_id AND r.activa
+        JOIN usuarios u ON u.id = r.recaudador_id AND u.activo
+       WHERE t.id = $1 ORDER BY r.creado_en LIMIT 1`, [titular_id])
+    recaudadorId = sug.rows[0]?.recaudador_id || null
+  }
+
   const db = await pool.connect()
   try {
     await db.query('BEGIN')
@@ -391,15 +430,15 @@ export async function crear(req, reply) {
       INSERT INTO polizas (
         titular_id, plan_id, valor_cuota, dia_cobro,
         fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion,
-        servicios_incluidos, numero_legado
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)
+        servicios_incluidos, numero_legado, asesor_id, cobrador_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)
       RETURNING id, numero, costo_afiliacion, fecha_inicio, fecha_fin_carencia`,
       [
         // Periodos desde el día de afiliación: el día de cobro ES ese día
         titular_id, plan_id, valor_cuota, ymd(fecha_inicio || new Date().toISOString().split('T')[0]).d,
         fecha_inicio || new Date().toISOString().split('T')[0],
         observaciones || null, req.user.id, sedeParaCrear(req), costoAfiliacion,
-        JSON.stringify(serviciosPlanRes.rows), numero_legado || null,
+        JSON.stringify(serviciosPlanRes.rows), numero_legado || null, asesorId, recaudadorId,
       ]
     )
 
@@ -431,8 +470,8 @@ export async function crear(req, reply) {
       )
     }
 
-    await generarComision(db, {
-      usuarioId: req.user.id,
+    if (asesorId) await generarComision(db, {
+      usuarioId: asesorId,
       origenTipo: 'POLIZA',
       origenId: polizaId,
       valorBase: valor_cuota,
@@ -1422,4 +1461,61 @@ export async function desactivarPlan(req, reply) {
   )
   if (!res.rows.length) return reply.code(404).send({ error: 'Plan no encontrado' })
   return reply.send({ data: res.rows[0] })
+}
+// ── Asesor y recaudador de la póliza ──────────────────────────────────────
+
+// Usuarios activos que pueden ser asesor o recaudador (el listado de
+// /usuarios es solo para administradores; aquí basta nombre y rol).
+export async function responsablesDisponibles(req, reply) {
+  const { rows } = await pool.query(`
+    SELECT u.id, u.nombre, u.rol,
+      (SELECT COUNT(*) FROM polizas p WHERE p.cobrador_id = u.id AND p.estado NOT IN ('CANCELADA','EJECUTADA'))::int AS polizas_recaudo,
+      (SELECT string_agg(r.nombre, ', ') FROM rutas_recaudo r WHERE r.recaudador_id = u.id AND r.activa) AS rutas
+    FROM usuarios u
+    WHERE u.activo AND NOT COALESCE(u.oculto, FALSE)
+    ORDER BY u.nombre`)
+  return reply.send({ data: rows })
+}
+
+export async function actualizarResponsables(req, reply) {
+  const { id } = req.params
+  const body = req.body || {}
+  const sets = [], vals = []
+  if ('asesor_id' in body)     { vals.push(body.asesor_id || null);     sets.push(`asesor_id = $${vals.length}`) }
+  if ('recaudador_id' in body) { vals.push(body.recaudador_id || null); sets.push(`cobrador_id = $${vals.length}`) }
+  if (!sets.length) return reply.code(400).send({ error: 'Indique el asesor o el recaudador' })
+
+  for (const uid of [body.asesor_id, body.recaudador_id].filter(Boolean)) {
+    const ok = await pool.query('SELECT 1 FROM usuarios WHERE id=$1 AND activo', [uid])
+    if (!ok.rows.length) return reply.code(400).send({ error: 'El usuario elegido no existe o está inactivo' })
+  }
+
+  const db = await pool.connect()
+  try {
+    await db.query('BEGIN')
+    vals.push(id)
+    const { rows } = await db.query(
+      `UPDATE polizas SET ${sets.join(', ')}, actualizado = NOW() WHERE id = $${vals.length}
+       RETURNING id, asesor_id, cobrador_id AS recaudador_id, valor_cuota`, vals)
+    if (!rows.length) { await db.query('ROLLBACK'); return reply.code(404).send({ error: 'Póliza no encontrada' }) }
+
+    // La comisión de venta sigue al asesor mientras no se haya pagado
+    if ('asesor_id' in body) {
+      if (body.asesor_id) {
+        const upd = await db.query(`
+          UPDATE comisiones SET usuario_id = $1
+           WHERE origen_tipo = 'POLIZA' AND origen_id = $2 AND estado = 'PENDIENTE' RETURNING id`, [body.asesor_id, id])
+        if (!upd.rows.length) await generarComision(db, {
+          usuarioId: body.asesor_id, origenTipo: 'POLIZA', origenId: id, valorBase: rows[0].valor_cuota,
+        })
+      } else {
+        await db.query(`UPDATE comisiones SET estado = 'ANULADA'
+          WHERE origen_tipo = 'POLIZA' AND origen_id = $1 AND estado = 'PENDIENTE'`, [id])
+      }
+    }
+    await db.query('COMMIT')
+    return reply.send({ data: rows[0] })
+  } catch (e) {
+    await db.query('ROLLBACK'); throw e
+  } finally { db.release() }
 }

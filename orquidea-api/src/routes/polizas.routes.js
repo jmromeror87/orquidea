@@ -15,6 +15,7 @@ import {
   registrarPago, importarPagos, agregarBeneficiario, quitarBeneficiario, cobrarAfiliacion, cobrarAfiliacionBeneficiario, firmarConsentimientoBeneficiario,
   verificarElegibilidad, ejecutar, planes, crearPlan, actualizarPlan, desactivarPlan,
   buscar, beneficiarios, transferirTitular, historialTransferencias, contratoImpresion,
+  responsablesDisponibles, actualizarResponsables,
 } from '../controllers/polizas.controller.js'
 
 const auth     = [verifyToken]
@@ -30,6 +31,7 @@ export default async function polizasRoutes(fastify) {
 
   // Pólizas
   fastify.get('/stats',                        { preHandler: auth },     stats)
+  fastify.get('/responsables',                 { preHandler: auth },     responsablesDisponibles)
   fastify.get('/buscar',                       { preHandler: auth },     buscar)
   fastify.get('/',                             { preHandler: auth },     listar)
   fastify.get('/:id',                          { preHandler: auth },     obtener)
@@ -49,6 +51,7 @@ export default async function polizasRoutes(fastify) {
   fastify.delete('/:id/beneficiarios/:benId',  { preHandler: editores }, quitarBeneficiario)
   fastify.post('/beneficiarios/:benId/firmar-consentimiento', { preHandler: editores }, firmarConsentimientoBeneficiario)
   fastify.post('/:id/ejecutar',                { preHandler: editores }, ejecutar)
+  fastify.patch('/:id/responsables',           { preHandler: editores }, actualizarResponsables)
   fastify.patch('/:id/titular',                { preHandler: admins },   transferirTitular)
   fastify.get('/:id/transferencias',           { preHandler: auth },     historialTransferencias)
 }

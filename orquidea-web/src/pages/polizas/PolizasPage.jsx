@@ -36,6 +36,7 @@ import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
 import BuscadorBeneficiario from '../../components/polizas/BuscadorBeneficiario.jsx'
 import TablaPagosPoliza from '../../components/polizas/TablaPagosPoliza.jsx'
+import ResponsablesPoliza from '../../components/polizas/ResponsablesPoliza.jsx'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
          diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
@@ -1563,10 +1564,29 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                       <PldField label="Documento" value={data.titular_doc}/>
                     </div>
                     <div className="pld-grid2" style={{ marginBottom:10 }}>
-                      <PldField label="Teléfono" value={data.titular_tel}/>
+                      <PldField label="Fecha de nacimiento" value={data.titular_fecha_nacimiento
+                        ? new Date(String(data.titular_fecha_nacimiento).slice(0,10) + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })
+                        : null}/>
+                      <PldField label="Edad" value={data.titular_edad != null ? `${data.titular_edad} años` : null}
+                        color={data.titular_edad > 75 ? '#B45309' : undefined}/>
+                    </div>
+                    <div className="pld-grid2" style={{ marginBottom:10 }}>
+                      <PldField label="Teléfono" value={[data.titular_tel, data.titular_tel_alt].filter(Boolean).join(' · ')}/>
                       <PldField label="Email" value={data.titular_email}/>
                     </div>
-                    <PldField label="Asesor" value={data.asesor_nombre}/>
+                    <div className="pld-grid2" style={{ marginBottom:10 }}>
+                      <PldField label="Dirección" value={data.titular_direccion}/>
+                      <PldField label="Barrio / vereda · municipio" value={[data.titular_barrio, data.titular_municipio].filter(Boolean).join(' · ')}/>
+                    </div>
+                    <div className="pld-field">
+                      <span className="pld-label">Zona de recaudo</span>
+                      {data.titular_zona_recaudo ? (
+                        <span className="pld-value" style={{ display:'flex', alignItems:'center', gap:7 }}>
+                          <span style={{ width:10, height:10, borderRadius:'50%', background:data.titular_zona_recaudo_color || '#9CA3AF', flexShrink:0 }}/>
+                          {data.titular_zona_recaudo}
+                        </span>
+                      ) : <span className="pld-value muted">Sin zona asignada (se define en el tercero)</span>}
+                    </div>
                     {historialTransf.length > 0 && (
                       <div style={{ marginTop:12, paddingTop:10, borderTop:'1px dashed #D1FAE5' }}>
                         <span className="pld-label">Historial de transferencias</span>
@@ -1614,6 +1634,11 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                     </div>
                   </PldCard>
                 </div>
+
+                <PldCard icon="🤝" title="Venta y recaudo">
+                  <ResponsablesPoliza data={data} puedeEditar={esEditor && !['CANCELADA','EJECUTADA'].includes(data.estado)}
+                    onCambio={() => api.get(`/polizas/${id}`).then(r => setData(r.data.data)).catch(() => {})}/>
+                </PldCard>
 
                 {esAdmin && !['CANCELADA','EJECUTADA'].includes(data.estado) && (
                   <div style={{ display:'flex', gap:10 }}>
@@ -2177,6 +2202,9 @@ export default function PolizasPage() {
   const [loading, setLoading]   = useState(false)
   const [q, setQ]               = useState('')
   const [estado, setEstado]     = useState('')
+  const [recaudador, setRecaudador] = useState('')
+  const [recaudadores, setRecaudadores] = useState([])
+  useEffect(() => { api.get('/polizas/responsables').then(r => setRecaudadores(r.data.data || [])).catch(() => {}) }, [])
   const [page, setPage]         = useState(1)
   const [modal, setModal]       = useState(null)  // 'form' | 'ficha' | 'pago'
   const [selected, setSelected] = useState(null)
@@ -2191,11 +2219,12 @@ export default function PolizasPage() {
       const params = new URLSearchParams({ page:pg, limit:20 })
       if (q)      params.set('q', q)
       if (estado) params.set('estado', estado)
+      if (recaudador) params.set('recaudador', recaudador)
       const r = await api.get(`/polizas?${params}`)
       setRows(r.data.data)
       setMeta(r.data.meta)
     } finally { setLoading(false) }
-  }, [q, estado, page])
+  }, [q, estado, recaudador, page])
 
   const cargarKpis = useCallback(async () => {
     const [kRes, plRes] = await Promise.all([
@@ -2207,7 +2236,7 @@ export default function PolizasPage() {
   }, [])
 
   useEffect(() => { cargarKpis() }, [cargarKpis])
-  useEffect(() => { setPage(1); cargar(1) }, [q, estado])
+  useEffect(() => { setPage(1); cargar(1) }, [q, estado, recaudador])
   useEffect(() => { cargar() }, [page])
 
   const cancelarPoliza = async (id) => {
@@ -2304,6 +2333,14 @@ export default function PolizasPage() {
               <option value="">Todos los estados</option>
               {Object.entries(ESTADO_META).map(([k,v]) => (
                 <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+            <select className="pl-select" value={recaudador} onChange={e => setRecaudador(e.target.value)}
+              title="Ver las pólizas que cobra cada recaudador">
+              <option value="">Todos los recaudadores</option>
+              <option value="sin">Sin recaudador asignado</option>
+              {recaudadores.filter(u => u.polizas_recaudo > 0 || u.rutas).map(u => (
+                <option key={u.id} value={u.id}>{u.nombre} ({u.polizas_recaudo})</option>
               ))}
             </select>
             <button className="pl-btn pl-btn-ghost" onClick={() => { cargar(); cargarKpis() }}>
