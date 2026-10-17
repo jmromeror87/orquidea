@@ -35,6 +35,7 @@ const BLANK = {
   servicios_ids: [],
   valor_afiliacion: 20000,
   valor_beneficiario_adicional: 0,
+  valor_cambio_beneficiario: 0,
   edad_min_beneficiario: 0,
   edad_max_beneficiario: 65,
 }
@@ -467,7 +468,18 @@ export default function PlanesPolizaPage() {
                       placeholder="20000"
                     />
                     <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>
-                      Solo se cobra una vez, en la primera póliza del titular.
+                      Se cobra una sola vez, al titular, cuando compra la póliza. Los beneficiarios dentro del cupo no pagan.
+                    </div>
+                  </div>
+                  <div className="pp-field">
+                    <label>Valor por cambio de beneficiario (COP)</label>
+                    <CurrencyInput
+                      value={form.valor_cambio_beneficiario}
+                      onChange={v => set('valor_cambio_beneficiario', v)}
+                      placeholder="0"
+                    />
+                    <div style={{ fontSize:11, color:'#94a3b8', marginTop:4 }}>
+                      Solo cuando ya se usaron todos los cupos y se saca a alguien para meter a otro. Si un beneficiario fallece, su cupo se libera sin cobro. 0 = no se cobra.
                     </div>
                   </div>
                   <div className="pp-field">

@@ -58,7 +58,8 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa }) {
 
   // ── Título + N° recibo ────────────────────────────────────────────────
   doc.setFont('helvetica','bold'); doc.setFontSize(11.5); doc.setTextColor(...BLACK)
-  doc.text(pago.tipo === 'AFILIACION' ? 'RECIBO DE AFILIACIÓN' : 'RECIBO DE PAGO', PL, y)
+  const esCambio = pago.tipo === 'AFILIACION' && (pago.beneficiario_id || pago.beneficiario_nombre)
+  doc.text(esCambio ? 'RECIBO — CAMBIO DE BENEFICIARIO' : pago.tipo === 'AFILIACION' ? 'RECIBO DE AFILIACIÓN' : 'RECIBO DE PAGO', PL, y)
   doc.setFontSize(10)
   doc.text(`N.° ${String(pago.numero_recibo).padStart(6,'0')}`, W - PR, y, { align:'right' })
   y += 2
@@ -76,7 +77,7 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa }) {
   fila('Póliza N.°', poliza.numero_legado || poliza.numero)
   fila('Titular', poliza.titular_nombre)
   if (pago.tipo === 'AFILIACION') {
-    fila('Concepto', `Afiliación${pago.beneficiario_nombre ? ' — ' + pago.beneficiario_nombre : ' del titular'}`)
+    fila('Concepto', esCambio ? `Cambio de beneficiario — ${pago.beneficiario_nombre || ''}` : 'Afiliación del titular')
   } else {
     // Periodo contado desde el día de afiliación: "Jun–Jul 2026 (15 jun 2026 - 14 jul 2026)"
     const per = normalizarInicio(pago.mes_correspondiente, diaAncla(poliza))

@@ -461,7 +461,7 @@ export async function crear(req, reply) {
 async function registrarAfiliacion(req, reply, { pol, beneficiario = null }) {
   const { metodo_pago = 'efectivo', referencia = null } = req.body || {}
   const monto = Number(beneficiario ? beneficiario.costo_afiliacion : pol.costo_afiliacion)
-  if (!(monto > 0)) return reply.code(400).send({ error: 'No hay costo de afiliación pendiente' })
+  if (!(monto > 0)) return reply.code(400).send({ error: beneficiario ? 'Este beneficiario no tiene cobro pendiente' : 'No hay costo de afiliación pendiente' })
   if (beneficiario ? beneficiario.afiliacion_pagada : pol.afiliacion_pagada)
     return reply.code(400).send({ error: 'La afiliación ya fue pagada' })
 
@@ -474,7 +474,7 @@ async function registrarAfiliacion(req, reply, { pol, beneficiario = null }) {
       VALUES ($1,'AFILIACION',$2,CURRENT_DATE,CURRENT_DATE,$3,$4,$5,CURRENT_DATE,$6,$6,$7)
       RETURNING *, numero_recibo`,
       [pol.id, beneficiario?.id || null, monto, metodo_pago, referencia || null, req.user.id,
-       beneficiario ? `Afiliación de beneficiario: ${beneficiario.nombre}` : 'Afiliación del titular']
+       beneficiario ? `Cambio de beneficiario: ${beneficiario.nombre}` : 'Afiliación del titular']
     )
     if (beneficiario) {
       await db.query(`UPDATE poliza_beneficiarios SET afiliacion_pagada = TRUE WHERE id = $1`, [beneficiario.id])
@@ -488,7 +488,7 @@ async function registrarAfiliacion(req, reply, { pol, beneficiario = null }) {
       evento_codigo: 'AFILIACION_POLIZA',
       montos: { total: monto },
       forma_pago_codigo: metodo_pago,
-      concepto: `Afiliación póliza N.° ${pol.numero}${beneficiario ? ' — ' + beneficiario.nombre : ' — titular'}`,
+      concepto: beneficiario ? `Cambio de beneficiario póliza N.° ${pol.numero} — ${beneficiario.nombre}` : `Afiliación póliza N.° ${pol.numero} — titular`,
       tercero_id: pol.titular_id,
       sede_id: pol.sede_id,
       documento_origen_tipo: 'pagos_poliza',
@@ -988,10 +988,17 @@ export async function agregarBeneficiario(req, reply) {
   // Un beneficiario ejecutado (falleció y ya usó su cobertura) no ocupa cupo
   // — libera el puesto para que la familia pueda registrar un reemplazo.
   const pol = await pool.query(`
-    SELECT p.max_beneficiarios, p.fecha_inicio, pl.meses_carencia, pl.valor_afiliacion,
+    SELECT p.max_beneficiarios, p.fecha_inicio, pl.meses_carencia, pl.valor_cambio_beneficiario,
       (CURRENT_DATE > p.fecha_inicio) AS entra_despues,
+      -- Cupos libres SIN costo = máximo − activos − (retirados vivos − cambios ya
+      -- cobrados). Un fallecido libera su puesto gratis; un vivo retirado deja un
+      -- puesto que solo se ocupa como "cambio de beneficiario".
+      (SELECT COUNT(*) FILTER (WHERE pb.activo AND NOT pb.ejecutado)
+            + GREATEST(0, COUNT(*) FILTER (WHERE NOT pb.activo AND NOT pb.ejecutado)
+                        - COUNT(*) FILTER (WHERE pb.es_cambio))
+         FROM poliza_beneficiarios pb WHERE pb.poliza_id=$1 AND pb.tercero_id <> $2) AS cupos_usados,
       (SELECT COUNT(*) FROM poliza_beneficiarios pb WHERE pb.poliza_id=$1 AND pb.activo AND NOT pb.ejecutado) AS current_count
-    FROM polizas p JOIN planes_poliza pl ON pl.id = p.plan_id WHERE p.id=$1`, [id]
+    FROM polizas p JOIN planes_poliza pl ON pl.id = p.plan_id WHERE p.id=$1`, [id, tercero_id]
   )
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (+pol.rows[0].current_count >= +pol.rows[0].max_beneficiarios)
@@ -1016,29 +1023,34 @@ export async function agregarBeneficiario(req, reply) {
   try {
     await db.query('BEGIN')
     // Beneficiario que entra DESPUÉS de la afiliación del titular: su carencia
-    // corre desde hoy y paga su propia afiliación. Si entra el mismo día que
-    // el titular, comparte su fecha/carencia y no paga afiliación aparte.
-    const { entra_despues, meses_carencia, valor_afiliacion } = pol.rows[0]
+    // corre desde hoy. La afiliación la paga SOLO el titular, una vez: dentro
+    // del cupo del plan el beneficiario no paga nada. Solo si ya se usaron todos
+    // los cupos (reemplazo de alguien que no falleció) se cobra el "cambio de
+    // beneficiario" que defina el plan (0 = gratis).
+    const { entra_despues, meses_carencia, valor_cambio_beneficiario, cupos_usados, max_beneficiarios } = pol.rows[0]
+    const esCambio = +cupos_usados >= +max_beneficiarios
+    const cobroCambio = esCambio ? +valor_cambio_beneficiario || 0 : 0
     await db.query(`
       INSERT INTO poliza_beneficiarios (poliza_id, tercero_id, parentesco, cobertura_basica,
-                                        fecha_afiliacion, fecha_fin_carencia, costo_afiliacion, afiliacion_pagada)
+                                        fecha_afiliacion, fecha_fin_carencia, costo_afiliacion, afiliacion_pagada, es_cambio)
       SELECT $1,$2,$3,$4,
         CASE WHEN $5 THEN CURRENT_DATE ELSE p.fecha_inicio END,
         CASE WHEN $5 THEN (CURRENT_DATE + make_interval(months => $6::int))::date ELSE p.fecha_fin_carencia END,
-        CASE WHEN $5 THEN $7::numeric ELSE 0 END, FALSE
+        $7::numeric, FALSE, $8
       FROM polizas p WHERE p.id = $1
       ON CONFLICT (poliza_id, tercero_id) DO UPDATE SET activo=TRUE, parentesco=$3, cobertura_basica=$4,
+        es_cambio = poliza_beneficiarios.es_cambio OR EXCLUDED.es_cambio,
         fecha_afiliacion = EXCLUDED.fecha_afiliacion, fecha_fin_carencia = EXCLUDED.fecha_fin_carencia,
         costo_afiliacion = CASE WHEN poliza_beneficiarios.afiliacion_pagada THEN poliza_beneficiarios.costo_afiliacion
                                 ELSE EXCLUDED.costo_afiliacion END`,
-      [id, tercero_id, parentesco, coberturaBasica, entra_despues, +meses_carencia || 0, +valor_afiliacion || 0]
+      [id, tercero_id, parentesco, coberturaBasica, entra_despues, +meses_carencia || 0, cobroCambio, esCambio]
     )
     await db.query(`
       INSERT INTO tercero_roles (tercero_id, rol) VALUES ($1,'BENEFICIARIO')
       ON CONFLICT (tercero_id, rol) DO UPDATE SET activo=TRUE`, [tercero_id]
     )
     await db.query('COMMIT')
-    return reply.code(201).send({ ok: true, cobertura_basica: coberturaBasica, edad })
+    return reply.code(201).send({ ok: true, cobertura_basica: coberturaBasica, edad, cobro_cambio: cobroCambio, es_cambio: esCambio })
   } catch (e) {
     await db.query('ROLLBACK'); throw e
   } finally { db.release() }
@@ -1255,6 +1267,7 @@ export async function crearPlan(req, reply) {
     servicios_ids = [],
     valor_afiliacion = 20000,
     valor_beneficiario_adicional = 0,
+    valor_cambio_beneficiario = 0,
     edad_min_beneficiario = 0,
     edad_max_beneficiario = 65,
   } = req.body
@@ -1284,8 +1297,8 @@ export async function crearPlan(req, reply) {
       cubre_ataud, cubre_velacion_h, cubre_traslado_local, cubre_traslado_nacional,
       cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida, valor_excedente,
       coberturas_extra, valor_afiliacion, valor_beneficiario_adicional,
-      edad_min_beneficiario, edad_max_beneficiario
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+      edad_min_beneficiario, edad_max_beneficiario, valor_cambio_beneficiario
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
     RETURNING *`,
     [
       nombre, codigo, descripcion||null, tipo, +max_beneficiarios, +valor_mensual, +meses_carencia,
@@ -1295,7 +1308,7 @@ export async function crearPlan(req, reply) {
       Boolean(cubre_tramites), Boolean(cubre_lapida), +valor_excedente,
       JSON.stringify(extras),
       +valor_afiliacion, +valor_beneficiario_adicional,
-      +edad_min_beneficiario, +edad_max_beneficiario,
+      +edad_min_beneficiario, +edad_max_beneficiario, +valor_cambio_beneficiario || 0,
     ]
   )
 
@@ -1319,7 +1332,7 @@ export async function actualizarPlan(req, reply) {
     cubre_traslado_local, cubre_traslado_nacional,
     cubre_flores, cubre_cremacion, cubre_tramites, cubre_lapida,
     valor_excedente, activo, coberturas_extra, servicios_ids,
-    valor_afiliacion, valor_beneficiario_adicional,
+    valor_afiliacion, valor_beneficiario_adicional, valor_cambio_beneficiario,
     edad_min_beneficiario, edad_max_beneficiario,
   } = req.body
 
@@ -1351,7 +1364,8 @@ export async function actualizarPlan(req, reply) {
       valor_afiliacion             = COALESCE($19, valor_afiliacion),
       valor_beneficiario_adicional = COALESCE($20, valor_beneficiario_adicional),
       edad_min_beneficiario        = COALESCE($21, edad_min_beneficiario),
-      edad_max_beneficiario        = COALESCE($22, edad_max_beneficiario)
+      edad_max_beneficiario        = COALESCE($22, edad_max_beneficiario),
+      valor_cambio_beneficiario    = COALESCE($23, valor_cambio_beneficiario)
     WHERE id = $18
     RETURNING *`,
     [
@@ -1375,6 +1389,7 @@ export async function actualizarPlan(req, reply) {
       valor_beneficiario_adicional != null ? +valor_beneficiario_adicional : null,
       edad_min_beneficiario != null ? +edad_min_beneficiario : null,
       edad_max_beneficiario != null ? +edad_max_beneficiario : null,
+      valor_cambio_beneficiario != null ? +valor_cambio_beneficiario : null,
     ]
   )
   if (!res.rows.length) return reply.code(404).send({ error: 'Plan no encontrado' })

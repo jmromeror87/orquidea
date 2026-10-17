@@ -92,7 +92,7 @@ function EstadoCobertura({ data }) {
 
 // Etiqueta de un pago de póliza: periodo ("Jun–Jul 2026") o afiliación
 const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
-  ? `Afiliación${pago.beneficiario_nombre ? ' · ' + pago.beneficiario_nombre : ' · titular'}`
+  ? (pago.beneficiario_id || pago.beneficiario_nombre ? `Cambio de beneficiario · ${pago.beneficiario_nombre || ''}` : 'Afiliación · titular')
   : normalizarInicio(pago.mes_correspondiente, diaAncla(poliza)).etiqueta
 import { archivoUrl } from '../../utils/archivoUrl.js'
 
@@ -1324,7 +1324,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   const cobrarAfiliacionBen = async (b) => {
     try {
       const r = await api.post(`/polizas/${id}/beneficiarios/${b.id}/cobrar-afiliacion`, { metodo_pago: 'efectivo' })
-      toast.success(`Afiliación de ${b.nombre} cobrada — recibo N° ${String(r.data.numero_recibo).padStart(6,'0')}`)
+      toast.success(`Cambio de beneficiario (${b.nombre}) cobrado — recibo N° ${String(r.data.numero_recibo).padStart(6,'0')}`)
       imprimirReciboPagoPoliza({ pago: { ...r.data.pago, tipo: 'AFILIACION', beneficiario_nombre: b.nombre }, poliza: data, empresa: empresaInfo })
       cargar()
     } catch (err) {
@@ -1338,7 +1338,9 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
       if (r.data.cobertura_basica) {
         toast.success(`Beneficiario agregado — por tener ${r.data.edad} años queda con cobertura de servicio funerario básico. Imprime el consentimiento para que el titular lo firme.`)
       } else {
-        toast.success('Beneficiario agregado con éxito')
+        toast.success(r.data.cobro_cambio > 0
+          ? `Beneficiario agregado. Ya se habían usado todos los cupos: queda pendiente el cobro por cambio de beneficiario (${fmt(r.data.cobro_cambio)}).`
+          : 'Beneficiario agregado con éxito — sin costo adicional')
       }
       setShowBen(false); cargar()
     } catch (e) {
@@ -1711,17 +1713,17 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                             </span>
                             {Number(b.costo_afiliacion) > 0 && (
                               <span style={{ color: b.afiliacion_pagada ? '#047857' : '#B91C1C', fontWeight:700 }}>
-                                Afiliación {fmt(b.costo_afiliacion)} · {b.afiliacion_pagada ? 'pagada' : 'pendiente'}
+                                Cambio de beneficiario {fmt(b.costo_afiliacion)} · {b.afiliacion_pagada ? 'pagado' : 'pendiente'}
                               </span>
                             )}
                           </div>
                         )}
                       </div>
                       {b.id && Number(b.costo_afiliacion) > 0 && !b.afiliacion_pagada && esEditor && (
-                        <button onClick={() => cobrarAfiliacionBen(b)} title="Cobrar afiliación de este beneficiario"
+                        <button onClick={() => cobrarAfiliacionBen(b)} title="Cobrar el cambio de beneficiario"
                           style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700, color:'#B45309',
                             background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:8, padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
-                          <DollarSign size={12}/> Cobrar afiliación
+                          <DollarSign size={12}/> Cobrar cambio
                         </button>
                       )}
                       {b.cobertura_basica && (
