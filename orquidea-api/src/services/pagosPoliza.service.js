@@ -25,10 +25,11 @@
  * pago_hasta = hasta qué día queda cubierta la póliza (incluye esos días).
  */
 import { contabilizarEvento } from './contabilidad.service.js'
-import { iso, planDePago, diasQueCubre } from '../utils/periodosPoliza.js'
+import { iso, planDePago, diasQueCubre, tarifaDe } from '../utils/periodosPoliza.js'
+import { configIncremento, tarifasDePoliza } from './incrementoPolizas.service.js'
 
 // Qué periodos están completos y cuánto llevan abonado los incompletos
-export async function estadoPagos(client, pol) {
+export async function estadoPagos(client, pol, cuotaFn = null) {
   const { rows } = await client.query(`
     SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-DD') AS ini,
            BOOL_OR(NOT parcial) AS tiene_completa,
@@ -36,17 +37,25 @@ export async function estadoPagos(client, pol) {
     FROM pagos_poliza
     WHERE poliza_id = $1 AND tipo = 'CUOTA' AND NOT anulado
     GROUP BY 1`, [pol.id])
-  const cuota = Number(pol.valor_cuota)
+  // Cada periodo se compara con SU tarifa (el incremento anual la cambia)
+  const cuotaDe = ini => cuotaFn ? cuotaFn({ iso: ini }) : Number(pol.valor_cuota)
   const completos = new Set(), abonado = new Map()
   for (const r of rows) {
-    if (r.tiene_completa || Number(r.abonado) >= cuota - 0.5) completos.add(r.ini)
+    if (r.tiene_completa || Number(r.abonado) >= cuotaDe(r.ini) - 0.5) completos.add(r.ini)
     else abonado.set(r.ini, Number(r.abonado))
   }
   return { completos, abonado }
 }
 
+// Tarifa de cada periodo según el incremento anual (aniversario o 1 de enero)
+export async function cuotaDePoliza(client, pol) {
+  return tarifasDePoliza(pol, await configIncremento(client))
+}
+
 export async function calcularPlan(client, pol, modo) {
-  return planDePago(pol, Number(pol.valor_cuota), await estadoPagos(client, pol), modo)
+  const { cuotaFn, tarifas } = await cuotaDePoliza(client, pol)
+  const plan = planDePago(pol, cuotaFn, await estadoPagos(client, pol, cuotaFn), modo)
+  return { ...plan, cuotaFn, tarifas }
 }
 
 /**
@@ -59,10 +68,10 @@ export async function registrarPlan(client, pol, plan, {
   descuento = 0, recargo_mora = 0, formaContable = null, concepto = null,
 }) {
   if (!plan.items.length) throw Object.assign(new Error('No hay periodos pendientes para aplicar este pago'), { httpCode: 400 })
-  const cuota = Number(pol.valor_cuota)
   const filas = []
   for (let i = 0; i < plan.items.length; i++) {
     const it = plan.items[i]
+    const cuota = tarifaDe(plan.cuotaFn || pol.valor_cuota, it.periodo)
     const esUltimo = i === plan.items.length - 1
     const nota = it.completa
       ? (it.abonado_antes > 0 ? `Completa el periodo ${it.periodo.etiqueta} (ya tenía abonado $${it.abonado_antes.toLocaleString('es-CO')})` : notas)
@@ -126,8 +135,8 @@ export function resumenPlan(plan, filas, cuota) {
     periodos_pagados: completas.map(i => ({ inicio: i.periodo.iso, fin: i.periodo.fin_iso, etiqueta: i.periodo.etiqueta, monto: i.monto })),
     abono_parcial: abono ? {
       id: filas[filas.length - 1].id, monto: abono.monto, mes: abono.periodo.iso, periodo: abono.periodo.etiqueta,
-      falta: Math.round((Number(cuota) - abono.abonado_antes - abono.monto) * 100) / 100,
-      dias: diasQueCubre(abono.abonado_antes + abono.monto, Number(cuota), abono.periodo),
+      falta: Math.round((tarifaDe(plan.cuotaFn || cuota, abono.periodo) - abono.abonado_antes - abono.monto) * 100) / 100,
+      dias: diasQueCubre(abono.abonado_antes + abono.monto, tarifaDe(plan.cuotaFn || cuota, abono.periodo), abono.periodo),
       cubre_hasta: iso(plan.cubre_hasta),
     } : null,
     total: plan.total,

@@ -137,11 +137,12 @@ export function finCobertura(p, abonado, cuota) {
  * Devuelve { items: [{ periodo, monto, completa, parcial, abonado_antes }], total, cubre_hasta }
  */
 export function planDePago(pol, cuota, estado, modo, hoy) {
+  // `cuota` puede ser un número o una función periodo → tarifa (incremento anual)
   const dia = diaAncla(pol)
-  const falta = p => estado.completos.has(p.iso) ? 0 : Math.max(0, Math.round((cuota - (estado.abonado.get(p.iso) || 0)) * 100) / 100)
+  const falta = p => estado.completos.has(p.iso) ? 0 : Math.max(0, Math.round((tarifaDe(cuota, p) - (estado.abonado.get(p.iso) || 0)) * 100) / 100)
   const item = (p, monto) => {
     const antes = estado.abonado.get(p.iso) || 0
-    const completa = antes + monto >= cuota - 0.5
+    const completa = antes + monto >= tarifaDe(cuota, p) - 0.5
     return { periodo: p, monto: Math.round(monto * 100) / 100, completa, parcial: !(completa && antes === 0), abonado_antes: antes }
   }
   const items = []
@@ -175,6 +176,57 @@ export function planDePago(pol, cuota, estado, modo, hoy) {
   }
 
   const ult = items[items.length - 1]
-  const cubre_hasta = ult ? finCobertura(ult.periodo, ult.abonado_antes + ult.monto, cuota) : null
+  const cubre_hasta = ult ? finCobertura(ult.periodo, ult.abonado_antes + ult.monto, tarifaDe(cuota, ult.periodo)) : null
   return { items, total: Math.round(items.reduce((s, i) => s + i.monto, 0) * 100) / 100, cubre_hasta }
+}
+
+// ── Incremento anual (renovación con el salario mínimo) ─────────────────────
+// La cuota sube cada año: en el aniversario de la póliza o el 1 de enero
+// (parámetro incremento_modo). Cada periodo se cobra con la tarifa vigente el
+// día en que EMPIEZA. Si el % del año aún no está decretado, se usa el %
+// proyectado que registre la gerencia; si no hay ninguno, la cuota no cambia
+// (y la tarifa queda marcada como pendiente).
+
+export const tarifaDe = (cuota, p) => typeof cuota === 'function' ? cuota(p) : Number(cuota)
+
+// Fechas (iso) en que sube la cuota, posteriores a `desdeIso`
+export function cortesIncremento(pol, modo, desdeIso, n = 6) {
+  const out = []
+  const ini = ymd(pol.fecha_inicio)
+  let y = ymd(desdeIso).y
+  for (let g = 0; out.length < n && g < n + 3; g++, y++) {
+    const corte = modo === 'ENERO' ? { y, m: 0, d: 1 } : inicioEnMes(y, ini.m, ini.d)
+    const c = iso(corte)
+    if (c > desdeIso && c > iso(ini)) out.push(c)
+  }
+  return out
+}
+
+export const redondearCuota = (v, r = 100) => r > 1 ? Math.round(v / r) * r : Math.round(v)
+
+/**
+ * Tarifas de la póliza: [{ desde, cuota, anio, porcentaje, proyectado, pendiente }]
+ *   porcentajes = { 2027: { porcentaje: 9.5, proyectado: false }, … }
+ */
+export function construirTarifas(pol, { modo = 'ANIVERSARIO', redondeo = 100, porcentajes = {} } = {}, n = 6) {
+  const desde = iso(ymd(pol.tarifa_desde || pol.fecha_inicio))
+  const tarifas = [{ desde, cuota: Number(pol.valor_cuota), anio: null, porcentaje: 0, proyectado: false, pendiente: false, actual: true }]
+  let cuota = Number(pol.valor_cuota)
+  for (const c of cortesIncremento(pol, modo, desde, n)) {
+    const anio = +c.slice(0, 4)
+    const info = porcentajes[anio]
+    if (info && info.porcentaje != null) cuota = redondearCuota(cuota * (1 + Number(info.porcentaje) / 100), redondeo)
+    tarifas.push({ desde: c, cuota, anio, porcentaje: info ? Number(info.porcentaje) : null,
+      proyectado: !!info?.proyectado, pendiente: !info || info.porcentaje == null })
+  }
+  return tarifas
+}
+
+// Función periodo → tarifa (para planDePago / finCobertura)
+export function cuotaPorPeriodo(tarifas) {
+  return p => {
+    let t = tarifas[0]
+    for (const x of tarifas) if (x.desde <= p.iso) t = x
+    return t.cuota
+  }
 }

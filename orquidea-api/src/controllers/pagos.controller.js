@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { resolverSede, polizaPermitida, contratoPermitido } from '../utils/sede.js'
 import { contabilizarEvento, reversarComprobante } from '../services/contabilidad.service.js'
 import { diaAncla, normalizarInicio, ymd, finCobertura, periodoQueInicia, iso as isoFecha } from '../utils/periodosPoliza.js'
-import { calcularPlan, registrarPlan, resumenPlan, recalcularMora as recalcularMoraPoliza } from '../services/pagosPoliza.service.js'
+import { calcularPlan, registrarPlan, resumenPlan, cuotaDePoliza, recalcularMora as recalcularMoraPoliza } from '../services/pagosPoliza.service.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SOPORTES_DIR = path.join(__dirname, '..', 'uploads', 'soportes')
@@ -511,7 +511,7 @@ export async function anularPagoPoliza(req, reply) {
   if (motivo.length < 5) return reply.status(400).send({ error: 'Escribe el motivo de la anulación (mínimo 5 caracteres)' })
 
   const pago = await pool.query(`
-    SELECT pp.*, p.valor_cuota, p.meses_mora, p.sede_id, p.fecha_inicio
+    SELECT pp.*, p.valor_cuota, p.meses_mora, p.sede_id, p.fecha_inicio, p.tarifa_desde
     FROM pagos_poliza pp JOIN polizas p ON p.id = pp.poliza_id
     WHERE pp.id = $1`, [id])
 
@@ -559,7 +559,8 @@ export async function anularPagoPoliza(req, reply) {
       FROM pagos_poliza WHERE poliza_id = $1 AND mes_correspondiente = $2 AND tipo = 'CUOTA' AND NOT anulado`,
       [pg.poliza_id, pg.mes_correspondiente])
     const per = periodoQueInicia(ymd(pg.mes_correspondiente), diaAncla(pg))
-    const finPer = rest.rows[0]?.completa ? per.fin : finCobertura(per, Number(rest.rows[0]?.abonado || 0), Number(pg.valor_cuota))
+    const { cuotaFn } = await cuotaDePoliza(client, { ...pg, id: pg.poliza_id })
+    const finPer = rest.rows[0]?.completa ? per.fin : finCobertura(per, Number(rest.rows[0]?.abonado || 0), cuotaFn(per))
     // ultimo_pago: la fecha del último pago que SIGUE vigente (sin él, el listado
     // seguía mostrando como "último pago" la fecha del pago recién anulado)
     await client.query(`

@@ -38,9 +38,10 @@ import BuscadorBeneficiario from '../../components/polizas/BuscadorBeneficiario.
 import TablaPagosPoliza from '../../components/polizas/TablaPagosPoliza.jsx'
 import ResponsablesPoliza from '../../components/polizas/ResponsablesPoliza.jsx'
 import CoberturaPlan from '../../components/polizas/CoberturaPlan.jsx'
+import RenovacionPoliza from '../../components/polizas/RenovacionPoliza.jsx'
 import Bitacora from '../../components/bitacora/Bitacora.jsx'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
-         diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
+         diasQueCubre, tarifaDiaria, cuotaPorPeriodo, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
 // ── Cobertura según los pagos: hasta qué día está cubierta y si está en mora ──
 function EstadoCobertura({ data }) {
@@ -642,7 +643,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
     referencia: '',
     fecha_pago: hoy.toISOString().split('T')[0],
   })
-  const [montoTotal, setMontoTotal] = useState(poliza.valor_cuota || '')
+  const [montoTotal, setMontoTotal] = useState(Number(poliza.valor_cuota) || '')
   const [archivo,      setArchivo]      = useState(null)
   const [archivoNombre,setArchivoNombre]= useState('')
   const [saving, setSaving] = useState(false)
@@ -654,9 +655,16 @@ function ModalPago({ poliza, onClose, onSaved }) {
   const [estadoPagos, setEstadoPagos] = useState({ completos: new Set(), abonado: new Map() })
   const [mesesActivos, setMesesActivos] = useState(new Set())
   const usuarioTocoMeses = useRef(false)
+  // Tarifa de cada periodo (incremento anual): un periodo del año siguiente se
+  // cobra con la cuota de ese año. Mismo cálculo que el servidor.
+  const [tarifas, setTarifas] = useState(null)
+  const cuotaFn = tarifas ? cuotaPorPeriodo(tarifas) : () => cuota
 
   useEffect(() => {
     api.get(`/polizas/${poliza.id}`).then(res => {
+      const tar = res.data?.data?.tarifas || null
+      setTarifas(tar)
+      const cuotaDe = tar ? cuotaPorPeriodo(tar) : () => cuota
       const pagos = (res.data?.data?.pagos || []).filter(p => !p.anulado && p.tipo !== 'AFILIACION')
       const completos = new Set(), suma = new Map()
       for (const p of pagos) {
@@ -665,17 +673,27 @@ function ModalPago({ poliza, onClose, onSaved }) {
         else suma.set(k, (suma.get(k) || 0) + Number(p.monto))
       }
       const abonado = new Map()
-      for (const [k, v] of suma) { if (v >= cuota - 0.5) completos.add(k); else if (!completos.has(k)) abonado.set(k, v) }
+      for (const [k, v] of suma) { if (v >= cuotaDe({ iso: k }) - 0.5) completos.add(k); else if (!completos.has(k)) abonado.set(k, v) }
       setEstadoPagos({ completos, abonado })
     }).catch(() => {})
   }, [poliza.id])
 
   const formaSel = formas.find(f => f.codigo === form.metodo_pago) || null
 
+  // "Un periodo": el monto sugerido es lo que le falta a ESE periodo con SU
+  // tarifa (un periodo del año siguiente ya trae el incremento)
+  useEffect(() => {
+    if (!form.mes_correspondiente) return
+    const per = normalizarInicio(form.mes_correspondiente, dia)
+    const falta = Math.max(0, cuotaFn(per) - (estadoPagos.abonado.get(per.iso) || 0))
+    setForm(f => ({ ...f, monto: Math.round(falta * 100) / 100 }))
+  }, [form.mes_correspondiente, tarifas, estadoPagos])
+
   // Candidatos: próximos periodos pendientes; uno con abono muestra lo que le falta
   const candidatos = listarPeriodos(primerPeriodo, 24, dia, estadoPagos.completos).map(p => {
     const abonado = estadoPagos.abonado.get(p.iso) || 0
-    return { iso: p.iso, label: p.etiqueta, periodo: p, abonado, falta: Math.round((cuota - abonado) * 100) / 100 }
+    const tarifa = cuotaFn(p)
+    return { iso: p.iso, label: p.etiqueta, periodo: p, abonado, tarifa, falta: Math.round((tarifa - abonado) * 100) / 100 }
   })
 
   const total = Number(montoTotal)
@@ -706,7 +724,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
   // Vista previa del reparto = planDePago, el MISMO cálculo que hace el servidor
   const preview = (() => {
     if (!(total > 0) || !(cuota > 0)) return null
-    const plan = planDePago(poliza, cuota, estadoPagos, { elegidos: candidatos.filter(c => mesesActivos.has(c.iso)).map(c => c.iso), monto: total })
+    const plan = planDePago(poliza, cuotaFn, estadoPagos, { elegidos: candidatos.filter(c => mesesActivos.has(c.iso)).map(c => c.iso), monto: total })
     const completas = plan.items.filter(it => it.completa)
     const abono = plan.items.find(it => !it.completa) || null
     const repartido = plan.total
@@ -719,9 +737,9 @@ function ModalPago({ poliza, onClose, onSaved }) {
       sobrante: abono ? abono.monto : 0,
       abono: abono && {
         ...abono,
-        dias: diasQueCubre(abono.abonado_antes + abono.monto, cuota, abono.periodo),
-        tarifa: tarifaDiaria(cuota, abono.periodo),
-        falta: Math.round((cuota - abono.abonado_antes - abono.monto) * 100) / 100,
+        dias: diasQueCubre(abono.abonado_antes + abono.monto, cuotaFn(abono.periodo), abono.periodo),
+        tarifa: tarifaDiaria(cuotaFn(abono.periodo), abono.periodo),
+        falta: Math.round((cuotaFn(abono.periodo) - abono.abonado_antes - abono.monto) * 100) / 100,
       },
       mesAbono: abono ? { iso: abono.periodo.iso, label: abono.periodo.etiqueta } : null,
       cubreHasta: plan.cubre_hasta ? isoFecha(plan.cubre_hasta) : null,
@@ -841,8 +859,8 @@ function ModalPago({ poliza, onClose, onSaved }) {
           ) : (
             <div className="pl-field">
               <label>Monto total a pagar <span className="pl-req">*</span></label>
-              <input type="number" min="0" value={montoTotal}
-                onChange={e => setMontoTotal(e.target.value)}
+              <CurrencyInput value={montoTotal}
+                onChange={v => setMontoTotal(v)}
                 placeholder={`Ej: ${cuota * 3} para pagar 3 meses`}/>
 
               {candidatos.length > 0 && (
@@ -862,13 +880,24 @@ function ModalPago({ poliza, onClose, onSaved }) {
                             background: activo ? '#EEF2FF' : esAbono ? '#FFFBEB' : '#fff',
                             color: activo ? '#4338CA' : esAbono ? '#B45309' : '#9CA3AF',
                           }}>
-                          {activo ? '✓ ' : ''}{m.label}{m.abonado > 0 ? ` · falta ${fmt(m.falta)}` : ''}
+                          {activo ? '✓ ' : ''}{m.label}{m.abonado > 0 ? ` · falta ${fmt(m.falta)}` : m.tarifa !== cuota ? ` · ${fmt(m.tarifa)}` : ''}
                         </button>
                       )
                     })}
                   </div>
                 </div>
               )}
+
+              {tarifas && tarifas.length > 1 && candidatos.some(c => c.tarifa !== cuota) && (() => {
+                const t = tarifas.find(x => x.desde > tarifas[0].desde)
+                return (
+                  <div style={{ marginTop:8, padding:'8px 12px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:9, fontSize:12, color:'#92400E', lineHeight:1.5 }}>
+                    📈 Desde el <strong>{new Date(t.desde + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })}</strong> la cuota sube a <strong>{fmt(t.cuota)}</strong>
+                    {t.pendiente ? ' (aún sin % del salario mínimo registrado: se cobra con la tarifa actual)' : ` (+${String(t.porcentaje).replace('.', ',')} %${t.proyectado ? ' proyectado' : ' del salario mínimo'})`}.
+                    {' '}Los periodos de ese año se liquidan con la tarifa nueva.
+                  </div>
+                )
+              })()}
 
               {preview && (
                 <div style={{ marginTop:10, padding:'10px 12px', background:'#F5F3FF', border:'1px solid #DDD6FE',
@@ -1684,6 +1713,10 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                     </div>
                   </PldCard>
                 </div>
+
+                <PldCard icon="📈" title="Vigencia y renovación anual">
+                  <RenovacionPoliza data={data}/>
+                </PldCard>
 
                 <PldCard icon="📝" title="Observaciones de la póliza">
                   {data.observaciones?.trim()

@@ -16,7 +16,8 @@ import { enviarSMS } from '../utils/sms.js'
 import { contabilizarEvento } from '../services/contabilidad.service.js'
 import { ejecutarInventarioPendiente } from './servicios.controller.js'
 import { ymd, diaAncla, normalizarInicio, finCobertura, iso as isoFecha } from '../utils/periodosPoliza.js'
-import { recalcularMora as recalcularMoraPoliza } from '../services/pagosPoliza.service.js'
+import { recalcularMora as recalcularMoraPoliza, cuotaDePoliza } from '../services/pagosPoliza.service.js'
+import { configIncremento, tarifasDePoliza, renovarPolizas, proximasRenovaciones } from '../services/incrementoPolizas.service.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ const SELECT_LIST = `
     p.id, p.numero, p.numero_legado, p.estado, p.valor_cuota, p.dia_cobro,
     p.meses_mora, p.ultimo_pago, p.fecha_inicio, p.fecha_fin_carencia,
     p.fecha_cancelacion, p.motivo_cancelacion, p.observaciones, p.creado_en,
-    p.pago_hasta, p.titular_fallecido_en,
+    p.pago_hasta, p.titular_fallecido_en, p.tarifa_desde,
     p.costo_afiliacion, p.afiliacion_pagada, p.afiliacion_fecha_pago, p.afiliacion_metodo_pago,
     -- Titular
     t.id   AS titular_id,
@@ -304,8 +305,16 @@ export async function obtener(req, reply) {
     })
   }
 
+  // Tarifas por año (incremento anual) e historial de renovaciones
+  const cfgInc = await configIncremento(pool)
+  const { tarifas } = tarifasDePoliza(pol, cfgInc, 4)
+  const renov = await pool.query(`
+    SELECT r.*, u.nombre AS usuario_nombre FROM poliza_renovaciones r LEFT JOIN usuarios u ON u.id = r.usuario_id
+    WHERE r.poliza_id = $1 ORDER BY r.fecha DESC`, [id])
+
   return reply.send({
-    data: { ...pol, beneficiarios: benRes.rows, pagos: pagosRes.rows },
+    data: { ...pol, beneficiarios: benRes.rows, pagos: pagosRes.rows,
+      tarifas, incremento_modo: cfgInc.modo, renovaciones: renov.rows },
   })
 }
 
@@ -451,8 +460,8 @@ export async function crear(req, reply) {
       INSERT INTO polizas (
         titular_id, plan_id, valor_cuota, dia_cobro,
         fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion,
-        servicios_incluidos, numero_legado, asesor_id, cobrador_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)
+        servicios_incluidos, numero_legado, asesor_id, cobrador_id, tarifa_desde
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13, GREATEST($5::date, CURRENT_DATE))
       RETURNING id, numero, costo_afiliacion, fecha_inicio, fecha_fin_carencia`,
       [
         // Periodos desde el día de afiliación: el día de cobro ES ese día
@@ -643,6 +652,7 @@ export async function actualizar(req, reply) {
     UPDATE polizas SET
       plan_id                 = COALESCE($1, plan_id),
       valor_cuota             = COALESCE($2, valor_cuota),
+      tarifa_desde            = CASE WHEN $2::numeric IS NOT NULL THEN CURRENT_DATE ELSE tarifa_desde END,
       dia_cobro               = COALESCE($3, dia_cobro),
       observaciones           = COALESCE($4, observaciones),
       max_beneficiarios       = COALESCE($6, max_beneficiarios),
@@ -887,11 +897,12 @@ export async function historialCancelaciones(req, reply) {
 // módulo de Recaudo (pagos.controller.js) para sus propios pagos.
 async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id, historico = false }) {
   const fechaPagoDate = fecha_pago || new Date().toISOString().split('T')[0]
-  const cuota = Number(poliza.valor_cuota)
 
   // El pago cubre un PERIODO contado desde el día de afiliación (no un mes de
   // calendario): cualquier fecha que llegue se ubica en su periodo.
   const periodo = normalizarInicio(mes_correspondiente, diaAncla(poliza))
+  // Tarifa de ESE periodo (incremento anual); la carga histórica usa la de hoy como referencia
+  const cuota = historico ? Number(poliza.valor_cuota) : (await cuotaDePoliza(client, poliza)).cuotaFn(periodo)
 
   // Lo que ya tiene pagado ese periodo (cuota completa o abonos)
   const prev = (await client.query(`
@@ -1545,4 +1556,74 @@ export async function actualizarResponsables(req, reply) {
   } catch (e) {
     await db.query('ROLLBACK'); throw e
   } finally { db.release() }
+}
+
+// ── Incremento anual (salario mínimo) ─────────────────────────────────────
+
+export async function incrementoResumen(req, reply) {
+  const cfg = await configIncremento(pool)
+  const proximas = await proximasRenovaciones(pool, Number(req.query.dias) || 60)
+  const anioSig = new Date().getFullYear() + 1
+  return reply.send({ data: { modo: cfg.modo, redondeo: cfg.redondeo, anios: cfg.anios, proximas,
+    falta_anio_siguiente: !cfg.porcentajes[anioSig], anio_siguiente: anioSig } })
+}
+
+export async function incrementoConfig(req, reply) {
+  const { modo, redondeo } = req.body || {}
+  if (modo && !['ANIVERSARIO', 'ENERO'].includes(modo)) return reply.code(400).send({ error: 'Modo no válido' })
+  if (redondeo != null && ![1, 50, 100, 500, 1000].includes(+redondeo)) return reply.code(400).send({ error: 'Redondeo no válido' })
+  await pool.query(`UPDATE parametros_sistema SET incremento_modo = COALESCE($1, incremento_modo),
+    incremento_redondeo = COALESCE($2, incremento_redondeo)`, [modo || null, redondeo != null ? +redondeo : null])
+  return reply.send({ ok: true })
+}
+
+// Registrar / corregir un año: valor del SMMLV (decreto) o % proyectado
+export async function incrementoGuardarAnio(req, reply) {
+  const anio = +req.params.anio
+  if (!(anio >= 2000 && anio <= 2100)) return reply.code(400).send({ error: 'Año no válido' })
+  const { valor, porcentaje_aplicar, proyectado = false, decreto } = req.body || {}
+  if (!proyectado && !(+valor > 0)) return reply.code(400).send({ error: 'Indique el valor del salario mínimo decretado' })
+  if (proyectado && !(+porcentaje_aplicar > 0)) return reply.code(400).send({ error: 'Indique el % proyectado' })
+  let pctSmmlv = null
+  if (!proyectado) {
+    const prev = await pool.query('SELECT valor FROM salario_minimo WHERE anio = $1 AND valor IS NOT NULL', [anio - 1])
+    if (prev.rows.length) pctSmmlv = Math.round((+valor / +prev.rows[0].valor - 1) * 100000) / 1000
+  }
+  const pctAplicar = porcentaje_aplicar === '' || porcentaje_aplicar == null ? null : +porcentaje_aplicar
+  if (!proyectado && pctSmmlv == null && pctAplicar == null)
+    return reply.code(400).send({ error: `Falta el salario mínimo de ${anio - 1} para calcular el %: regístrelo o indique el % a aplicar` })
+  const { rows } = await pool.query(`
+    INSERT INTO salario_minimo (anio, valor, porcentaje_smmlv, porcentaje_aplicar, proyectado, decreto, actualizado_por, actualizado_en)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+    ON CONFLICT (anio) DO UPDATE SET valor=$2, porcentaje_smmlv=$3, porcentaje_aplicar=$4, proyectado=$5, decreto=$6,
+      actualizado_por=$7, actualizado_en=NOW()
+    RETURNING *`,
+    [anio, proyectado ? null : +valor, pctSmmlv, pctAplicar, !!proyectado, decreto || null, req.user.id])
+  return reply.send({ data: rows[0] })
+}
+
+export async function incrementoRenovar(req, reply) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const r = await renovarPolizas(client, { usuario_id: req.user.id })
+    await client.query('COMMIT')
+    return reply.send({ data: r })
+  } catch (e) { await client.query('ROLLBACK'); throw e } finally { client.release() }
+}
+
+// Sube también la tarifa de los PLANES (para las pólizas nuevas que se vendan)
+export async function incrementoPlanes(req, reply) {
+  const anio = +req.body?.anio
+  const cfg = await configIncremento(pool)
+  const info = cfg.porcentajes[anio]
+  if (!info) return reply.code(400).send({ error: `No hay % registrado para ${anio}` })
+  const { rows } = await pool.query(`SELECT id, nombre, valor_mensual FROM planes_poliza WHERE activo`)
+  const cambios = []
+  for (const p of rows) {
+    const nuevo = Math.round(+p.valor_mensual * (1 + info.porcentaje / 100) / (cfg.redondeo || 1)) * (cfg.redondeo || 1)
+    await pool.query('UPDATE planes_poliza SET valor_mensual = $2 WHERE id = $1', [p.id, nuevo])
+    cambios.push({ plan: p.nombre, antes: +p.valor_mensual, ahora: nuevo })
+  }
+  return reply.send({ data: { porcentaje: info.porcentaje, cambios } })
 }

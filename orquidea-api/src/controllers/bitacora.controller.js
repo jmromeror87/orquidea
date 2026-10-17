@@ -116,7 +116,7 @@ const fCorta = d => d ? new Date(d).toISOString().slice(0, 10).split('-').revers
 // Lo que el sistema ya registró sobre la póliza, como eventos de bitácora
 async function eventosPoliza(polizaId) {
   const q = (sql) => pool.query(sql, [polizaId]).then(r => r.rows)
-  const [pol, pagos, bens, transf, react, servs] = await Promise.all([
+  const [pol, pagos, bens, transf, react, servs, renov] = await Promise.all([
     q(`SELECT p.creado_en, u.nombre AS usuario, pl.nombre AS plan, p.valor_cuota, p.numero, p.observaciones
          FROM polizas p JOIN planes_poliza pl ON pl.id = p.plan_id LEFT JOIN usuarios u ON u.id = p.usuario_id
         WHERE p.id = $1`),
@@ -140,6 +140,7 @@ async function eventosPoliza(polizaId) {
     q(`SELECT sf.id, sf.numero, sf.estado, sf.creado_en, sf.fecha_recogida,
               COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS difunto
          FROM servicios_funerarios sf LEFT JOIN terceros t ON t.id = sf.difunto_id WHERE sf.poliza_id = $1`),
+    q(`SELECT r.*, u.nombre AS usuario FROM poliza_renovaciones r LEFT JOIN usuarios u ON u.id = r.usuario_id WHERE r.poliza_id = $1`),
   ])
 
   const ev = []
@@ -171,6 +172,9 @@ async function eventosPoliza(polizaId) {
     add(`srv-${s.id}`, s.creado_en, 'SERVICIO', 'servicio', `Servicio funerario N° ${s.numero ?? ''} abierto`, `Difunto: ${s.difunto || '—'} · estado ${s.estado}`, null)
     if (s.fecha_recogida) add(`rec-${s.id}`, s.fecha_recogida, 'SERVICIO', 'servicio', 'Recogida del cuerpo', `Servicio N° ${s.numero ?? ''} · ${s.difunto || ''}`, null)
   }
+  for (const r of renov) add(`ren-${r.id}`, r.fecha, 'RENOVACION', 'renovacion', 'Renovación anual de la póliza',
+    `Cuota ${pesos(r.cuota_anterior)} → ${pesos(r.cuota_nueva)} (+${String(+r.porcentaje).replace('.', ',')} % salario mínimo ${r.anio_smmlv}${r.proyectado ? ', proyectado' : ''})`,
+    r.usuario || 'Automática')
   return ev
 }
 

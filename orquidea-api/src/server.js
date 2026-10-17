@@ -64,6 +64,7 @@ import publicoRoutes       from './routes/publico.routes.js'
 import memorialesRoutes    from './routes/memoriales.routes.js'
 import bitacoraRoutes      from './routes/bitacora.routes.js'
 import { normalizarCuerpo } from './utils/normalizarTextos.js'
+import { renovarPolizas } from './services/incrementoPolizas.service.js'
 import leadsRoutes         from './routes/leads.routes.js'
 import notificacionesRoutes from './routes/notificaciones.routes.js'
 import contabilidadRoutes   from './routes/contabilidad.routes.js'
@@ -194,6 +195,23 @@ app.register(contabilidadRoutes,   { prefix: '/api/contabilidad' })
 app.register(tesoreriaRoutes,      { prefix: '/api/tesoreria' })
 app.register(auditoriaRoutes,      { prefix: '/api/auditoria' })
 
+// ── Renovación anual de pólizas: sube la cuota en el aniversario o el 1 de
+// enero (según Parámetros) con el % del salario mínimo. Corre cada noche y al
+// arrancar el servidor (por si estuvo apagado el día del corte).
+async function renovarPolizasHoy() {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const r = await renovarPolizas(client)
+    await client.query('COMMIT')
+    if (r.aplicadas.length) console.log(`[CRON] Renovación anual: ${r.aplicadas.length} póliza(s) con cuota nueva`)
+    if (r.pendientes.length) console.warn(`[CRON] Renovación anual: ${r.pendientes.length} póliza(s) esperan el % del salario mínimo de ${[...new Set(r.pendientes.map(p => p.anio))].join(', ')}`)
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {})
+    console.error('[CRON] Error en la renovación anual:', e.message)
+  } finally { client.release() }
+}
+
 // ── Cron: recalcular mora de pólizas cada noche a las 2:00 AM ────────
 function programarCronMora() {
   const ahora    = new Date()
@@ -203,6 +221,8 @@ function programarCronMora() {
   const msHasta2am = proximas2am - ahora
 
   const recalcularMora = async () => {
+    // Antes de la mora: renovación anual de pólizas (incremento del salario mínimo)
+    await renovarPolizasHoy()
     try {
       await pool.query('SELECT fn_recalcular_mora_polizas()')
       await pool.query('SELECT fn_recalcular_mora_contratos()')
@@ -245,6 +265,7 @@ try {
   console.log(`🌸 Orquídea API corriendo en http://localhost:${env.port}`)
   programarCronMora()
   programarCronRecordatorios()
+  renovarPolizasHoy()
 } catch (err) {
   app.log.error(err)
   process.exit(1)

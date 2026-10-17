@@ -16,6 +16,7 @@ import {
   verificarElegibilidad, ejecutar, planes, crearPlan, actualizarPlan, desactivarPlan,
   buscar, beneficiarios, transferirTitular, historialTransferencias, contratoImpresion,
   responsablesDisponibles, actualizarResponsables,
+  incrementoResumen, incrementoConfig, incrementoGuardarAnio, incrementoRenovar, incrementoPlanes,
 } from '../controllers/polizas.controller.js'
 
 const auth     = [verifyToken]
@@ -31,6 +32,11 @@ export default async function polizasRoutes(fastify) {
 
   // Pólizas
   fastify.get('/stats',                        { preHandler: auth },     stats)
+  fastify.get('/incremento',                   { preHandler: auth },     incrementoResumen)
+  fastify.put('/incremento/config',            { preHandler: admins },   incrementoConfig)
+  fastify.put('/incremento/anio/:anio',        { preHandler: admins },   incrementoGuardarAnio)
+  fastify.post('/incremento/renovar',          { preHandler: admins },   incrementoRenovar)
+  fastify.post('/incremento/planes',           { preHandler: admins },   incrementoPlanes)
   fastify.get('/responsables',                 { preHandler: auth },     responsablesDisponibles)
   fastify.get('/buscar',                       { preHandler: auth },     buscar)
   fastify.get('/',                             { preHandler: auth },     listar)

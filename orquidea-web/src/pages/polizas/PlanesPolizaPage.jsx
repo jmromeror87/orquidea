@@ -14,6 +14,7 @@ import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import ListaDoble from '../../components/ui/ListaDoble.jsx'
 import { toast } from '../../store/toast.store.js'
+import IncrementoAnual from '../../components/polizas/IncrementoAnual.jsx'
 
 const CATEGORIAS_SERVICIO = [
   'ATAUD','URNA','TRASLADO','SALA_VELACION','DOCUMENTOS',
@@ -357,6 +358,8 @@ export default function PlanesPolizaPage() {
             ))}
           </div>
         )}
+
+        <IncrementoAnual onPlanesActualizados={cargar}/>
       </div>
 
       {modal && (

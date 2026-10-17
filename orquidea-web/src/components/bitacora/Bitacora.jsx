@@ -50,7 +50,7 @@ export const CATEGORIAS = {
 }
 const EVENTOS = {
   POLIZA:'🛡️', PAGO:'💳', ANULACION:'⛔', BENEFICIARIO:'👤', EJECUCION:'🕊️', TRANSFERENCIA:'🔄',
-  CANCELACION:'⛔', REACTIVACION:'✅', SERVICIO:'⚱️', OBSERVACION:'📝',
+  CANCELACION:'⛔', REACTIVACION:'✅', SERVICIO:'⚱️', OBSERVACION:'📝', RENOVACION:'📈',
 }
 const ADMINS = ['superadmin', 'administrador']
 
