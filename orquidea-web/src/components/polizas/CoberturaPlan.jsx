@@ -101,7 +101,8 @@ export default function CoberturaPlan({ data }) {
   ]
   const incluidos = items.filter(i => i.ok).length
   const conInventario = items.filter(i => i.inv).length
-  const [cerrados, setCerrados] = useState(() => new Set())
+  // Por defecto todos recogidos: se ve el índice de grupos y se abre lo que interese
+  const [cerrados, setCerrados] = useState(() => new Set([...GRUPOS, OTROS].map(g => g.k)))
   const buscando = !!q.trim()
   const toggle = k => setCerrados(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
   const visibles = items.filter(i => !q.trim() || norm(i.nombre).includes(norm(q.trim())))
