@@ -27,6 +27,7 @@ import autoTable from 'jspdf-autotable'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
+import { verPDF } from '../../store/visorPdf.store.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtNum = (n) => new Intl.NumberFormat('es-CO').format(n || 0)
@@ -419,7 +420,7 @@ export default function ReportesPage() {
         rows = data.servicios_por_estado.map(s => [s.estado, s.cantidad])
       }
       autoTable(doc, { startY: 28, head, body: rows, headStyles: { fillColor: [3, 105, 161] } })
-      doc.save(`reporte-${tab}.pdf`)
+      verPDF(doc, `Reporte — ${tab}`, `reporte-${tab}`)
       toast.success('Reporte exportado a PDF con éxito')
     } catch (e) {
       toast.error('Error al exportar el reporte')

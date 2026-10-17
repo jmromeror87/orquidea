@@ -32,6 +32,7 @@ import {
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import { ventanaDocumento } from '../../store/visorPdf.store.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtFecha = (d) => d ? new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -46,8 +47,7 @@ const ESTADO_INFO = {
 
 // ── Impresión del comprobante — tamaño carta, para archivar en soportes ────
 function imprimirComprobante(comp, empresa) {
-  const w = window.open('', '_blank', 'width=800,height=900')
-  if (!w) return
+  const w = ventanaDocumento(`Comprobante ${comp.numero || ''}`)
   const esIngreso = comp.tipo === 'RECAUDO'
   const emp = empresa || {}
 

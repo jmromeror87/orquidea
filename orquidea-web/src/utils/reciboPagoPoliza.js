@@ -19,6 +19,7 @@
 import { jsPDF } from 'jspdf'
 import { getLogoDataUrl, dibujarLogoPDF } from './logo.js'
 import { diaAncla, normalizarInicio } from './periodosPoliza.js'
+import { verPDF } from '../store/visorPdf.store.js'
 
 const fmtCOP = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(v || 0)
 const fmtFecha = d => d ? new Date(d).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric', timeZone:'UTC' }) : '—'
@@ -131,5 +132,5 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa }) {
   doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...LGRAY)
   doc.text('Documento generado por Orquídea ERP', W/2, y, { align:'center' })
 
-  doc.save(`Recibo-${String(pago.numero_recibo).padStart(6,'0')}.pdf`)
+  verPDF(doc, `Recibo de pago N° ${String(pago.numero_recibo).padStart(6,'0')}`, `Recibo-${String(pago.numero_recibo).padStart(6,'0')}`)
 }

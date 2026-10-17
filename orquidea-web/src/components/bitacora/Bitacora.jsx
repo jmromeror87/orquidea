@@ -34,6 +34,7 @@ import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import EditorTexto from './EditorTexto.jsx'
 import { CSS_PROSA, conImagenesAbsolutas } from './prosa.js'
+import { verHTML } from '../../store/visorPdf.store.js'
 
 export const CATEGORIAS = {
   NOTA:          { label:'Nota general',        icon:'📝', color:'#475569', bg:'#f1f5f9' },
@@ -276,8 +277,6 @@ export default function Bitacora({ tipo = 'poliza', entidadId, titulo = '', pued
   }
 
   const imprimir = () => {
-    const w = window.open('', '_blank')
-    if (!w) { toast.error('El navegador bloqueó la ventana de impresión'); return }
     const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
     const filas = [...fijadas, ...resto].map(it => it.clase === 'nota' ? `
       <div class="n${it.nota.eliminado ? ' del' : ''}">
@@ -290,7 +289,7 @@ export default function Bitacora({ tipo = 'poliza', entidadId, titulo = '', pued
       </div>` : `
       <div class="e">${esc(EVENTOS[it.ev.tipo] || '•')} <b>${esc(it.ev.titulo)}</b> — ${esc(it.ev.detalle)}
         <span>${esc(fechaHora(it.ev.fecha))}${it.ev.usuario ? ` · ${esc(it.ev.usuario)}` : ''}</span></div>`).join('')
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bitácora — ${esc(titulo)}</title>
+    verHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Bitácora — ${esc(titulo)}</title>
       <style>
         body { font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color:#111827; margin:28px; }
         header { border-bottom:3px solid #059669; padding-bottom:10px; margin-bottom:18px; }
@@ -306,9 +305,7 @@ export default function Bitacora({ tipo = 'poliza', entidadId, titulo = '', pued
       <header><h1>Bitácora — ${esc(titulo)}</h1>
         <p>Impresa el ${esc(fechaHora(new Date()))} por ${esc(usuario?.nombre || '')} · ${items.length} registro(s)${q || categoria || filtro !== 'TODO' ? ' (filtrados)' : ''}</p></header>
       ${filas || '<p>Sin registros.</p>'}
-      <script>window.onload = () => setTimeout(() => window.print(), 300)<\/script>
-      </body></html>`)
-    w.document.close()
+      </body></html>`, `Bitácora — ${titulo}`)
   }
 
   const Nota = ({ n }) => {

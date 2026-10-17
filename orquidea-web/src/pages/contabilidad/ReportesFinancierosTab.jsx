@@ -28,6 +28,7 @@ import autoTable from 'jspdf-autotable'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
+import { verPDF } from '../../store/visorPdf.store.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtPct = (n) => n == null ? '—' : `${n.toFixed(1)}%`
@@ -236,7 +237,7 @@ export default function ReportesFinancierosTab() {
       }
     }
 
-    doc.save(`${reporte}-${hasta}.pdf`)
+    verPDF(doc, `${reporte} — corte ${hasta}`, `${reporte}-${hasta}`)
     toast.success('Reporte exportado a PDF con éxito')
   }
 

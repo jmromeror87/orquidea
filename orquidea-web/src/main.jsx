@@ -21,6 +21,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import ToastContainer from './components/ui/ToastContainer.jsx'
+import VisorPdf from './components/ui/VisorPdf.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 import './index.css'
 
@@ -30,6 +31,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <App />
         <ToastContainer />
+        <VisorPdf />
       </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>

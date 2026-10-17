@@ -10,13 +10,13 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import { archivoUrl } from './archivoUrl.js'
+import { ventanaDocumento } from '../store/visorPdf.store.js'
 // Abre una ventana nueva angosta (como en una impresora térmica 3nstar
 // RPT004 80mm) con el ticket formateado y dispara el diálogo de impresión.
 // El navegador se encarga de mandarlo a la impresora térmica configurada
 // como impresora del sistema — no requiere driver ESC/POS aparte.
 export function imprimirReciboPOS(recibo) {
-  const w = window.open('', '_blank', 'width=340,height=700,toolbar=0,menubar=0,scrollbars=1')
-  if (!w) return
+  const w = ventanaDocumento(`Recibo N° ${recibo.numero_recibo ?? recibo.numero ?? ''}`)
 
   const fmt = n => Number(n ?? 0).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
   const fecha = new Date(recibo.creado_en ?? Date.now())

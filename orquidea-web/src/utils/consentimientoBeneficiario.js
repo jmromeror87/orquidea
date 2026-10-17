@@ -22,9 +22,9 @@
  * conoce y acepta esa condición.
  */
 import { archivoUrl } from './archivoUrl.js'
+import { ventanaDocumento } from '../store/visorPdf.store.js'
 export function imprimirConsentimientoBeneficiario({ poliza, titular, beneficiario, empresa }) {
-  const w = window.open('', '_blank', 'width=800,height=900')
-  if (!w) return
+  const w = ventanaDocumento(`Consentimiento — ${beneficiario?.nombre || 'beneficiario'}`)
 
   const emp = empresa || {}
   const hoy = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })

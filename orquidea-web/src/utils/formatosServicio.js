@@ -27,6 +27,7 @@
  */
 import { jsPDF } from 'jspdf'
 import { dibujarLogoPDF } from './logo.js'
+import { verPDF } from '../store/visorPdf.store.js'
 
 // Márgenes del formato original de la funeraria (A4, mm)
 const PL = 29, PR = 182, CX = (PL + PR) / 2
@@ -174,7 +175,7 @@ export function generarAsistenciaNovenarios(datos, logoDataUrl, campos = {}) {
     y += 9
   }
 
-  doc.save(`Asistencia_Novenarios_${s.codigo || s.numero || 'servicio'}.pdf`)
+  verPDF(doc, `Asistencia a Novenarios — Servicio ${s.codigo || s.numero || ''}`, `Asistencia_Novenarios_${s.codigo || s.numero || 'servicio'}`)
 }
 
 // ── Formato: Atención y acompañamientos ──────────────────────────────────
@@ -306,7 +307,7 @@ export function generarAtencionAcompanamientos(datos, logoDataUrl, campos = {}) 
   fechaCorta('Finaliza:', 236.7, fmtEntrada(campos.fin_novenario))
   for (let i = 0; i < 3; i++) filaTurno(i + 1, 247.5 + i * 7.3)
 
-  doc.save(`Atencion_Acompanamientos_${s.codigo || s.numero || 'servicio'}.pdf`)
+  verPDF(doc, `Atención y Acompañamientos — Servicio ${s.codigo || s.numero || ''}`, `Atencion_Acompanamientos_${s.codigo || s.numero || 'servicio'}`)
 }
 
 // "VEREDA LA SIERRA" + "LA SIERRA" → no repetir el barrio si ya viene en la dirección

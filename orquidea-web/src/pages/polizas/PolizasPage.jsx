@@ -99,6 +99,7 @@ const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
   ? (pago.beneficiario_id || pago.beneficiario_nombre ? `Cambio de beneficiario · ${pago.beneficiario_nombre || ''}` : 'Afiliación · titular')
   : normalizarInicio(pago.mes_correspondiente, diaAncla(poliza)).etiqueta
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import { verPDF } from '../../store/visorPdf.store.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1145,7 +1146,7 @@ function generarContratoPDF(data, logoDataUrl) {
   doc.text(p.titular_doc ? `C.C. ${p.titular_doc}` : '', PL, y)
   doc.text(empresa.representante_legal || '', W-PR-70, y)
 
-  doc.save(`Contrato-Poliza-${p.numero}.pdf`)
+  verPDF(doc, `Contrato de póliza ${p.numero_legado || '#' + p.numero}`, `Contrato-Poliza-${p.numero}`)
 }
 
 // ── Modal: Enviar mensaje manual (WhatsApp / SMS) al titular ───────────────

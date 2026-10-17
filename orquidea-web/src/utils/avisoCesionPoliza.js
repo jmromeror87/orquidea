@@ -24,6 +24,7 @@
 import { jsPDF } from 'jspdf'
 import { getLogoDataUrl, dibujarLogoPDF } from './logo.js'
 import { archivoUrl } from './archivoUrl.js'
+import { verPDF, ventanaDocumento } from '../store/visorPdf.store.js'
 
 // PDF nativo (texto/cajas dibujadas con jsPDF), no HTML convertido — la
 // conversión vía html2canvas resultaba en páginas en blanco. Mismo diseño
@@ -153,7 +154,7 @@ export async function imprimirAvisoCesionPoliza({ poliza, titularFallecido, bene
   doc.text('Recibido por (familiar)', PL + colW/2, y + 5, { align:'center' })
   doc.text('Entregado por / Funeraria', PL + colW + 20 + colW/2, y + 5, { align:'center' })
 
-  doc.save(`aviso-cesion-poliza-${poliza.numero_legado || poliza.numero}.pdf`)
+  verPDF(doc, `Aviso de cesión — Póliza ${poliza.numero_legado || poliza.numero}`, `aviso-cesion-poliza-${poliza.numero_legado || poliza.numero}`)
 }
 
 /**
@@ -164,8 +165,7 @@ export async function imprimirAvisoCesionPoliza({ poliza, titularFallecido, bene
  * solo queda imprimirla y hacerla firmar/huellar en el momento.
  */
 export function imprimirAutorizacionCambioTitular({ poliza, autoriza, nuevoTitular, motivo, empresa }) {
-  const w = window.open('', '_blank', 'width=800,height=1000')
-  if (!w) return
+  const w = ventanaDocumento(`Autorización de cambio de titular — Póliza ${poliza.numero_legado || poliza.numero}`)
 
   const emp = empresa || {}
   const hoy = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })

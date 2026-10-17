@@ -40,6 +40,7 @@ import { toast } from '../../store/toast.store.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { FORMATOS_SERVICIO } from '../../utils/formatosServicio.js'
+import { verPDF } from '../../store/visorPdf.store.js'
 
 // ── Carroza fúnebre SVG ───────────────────────────────────────────────────────
 const HearseIcon = ({ size = 22, color = '#374151' }) => (
@@ -5852,7 +5853,7 @@ function generarPDF(data, logoDataUrl) {
     doc.text(`Página ${p} de ${total}`, W-PR, 290, { align:'right' })
   }
 
-  doc.save(`OSF-${s.codigo||s.numero}.pdf`)
+  verPDF(doc, `Orden de servicio ${s.codigo||s.numero}`, `OSF-${s.codigo||s.numero}`)
 }
 
 // ── Página principal ──────────────────────────────────────────────────────
