@@ -34,7 +34,8 @@ import { imprimirConsentimientoBeneficiario } from '../../utils/consentimientoBe
 import { imprimirAvisoCesionPoliza, imprimirAutorizacionCambioTitular } from '../../utils/avisoCesionPoliza.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
-import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio } from '../../utils/periodosPoliza.js'
+import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
+         diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
 // Etiqueta de un pago de póliza: periodo ("Jun–Jul 2026") o afiliación
 const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
@@ -585,35 +586,50 @@ function ModalPago({ poliza, onClose, onSaved }) {
   const [err, setErr]       = useState('')
   const fileRef = useRef(null)
 
-  // Meses que ya tienen un pago registrado en esta póliza (para no ofrecerlos
-  // ni chocar con ellos) y los que el usuario activó/desactivó manualmente.
-  const [mesesPagadosSet, setMesesPagadosSet] = useState(new Set())
+  // Estado de pagos de la póliza: periodos completos y lo abonado a los incompletos
+  // (mismo cálculo que el servidor — services/pagosPoliza.service.js)
+  const [estadoPagos, setEstadoPagos] = useState({ completos: new Set(), abonado: new Map() })
   const [mesesActivos, setMesesActivos] = useState(new Set())
   const usuarioTocoMeses = useRef(false)
 
   useEffect(() => {
     api.get(`/polizas/${poliza.id}`).then(res => {
-      const pagos = res.data?.data?.pagos || []
-      setMesesPagadosSet(new Set(pagos.filter(p => !p.anulado && p.tipo !== 'AFILIACION').map(p => p.mes_correspondiente.slice(0,10))))
+      const pagos = (res.data?.data?.pagos || []).filter(p => !p.anulado && p.tipo !== 'AFILIACION')
+      const completos = new Set(), suma = new Map()
+      for (const p of pagos) {
+        const k = p.mes_correspondiente.slice(0,10)
+        if (!p.parcial) completos.add(k)
+        else suma.set(k, (suma.get(k) || 0) + Number(p.monto))
+      }
+      const abonado = new Map()
+      for (const [k, v] of suma) { if (v >= cuota - 0.5) completos.add(k); else if (!completos.has(k)) abonado.set(k, v) }
+      setEstadoPagos({ completos, abonado })
     }).catch(() => {})
   }, [poliza.id])
 
   const formaSel = formas.find(f => f.codigo === form.metodo_pago) || null
 
-  // Candidatos: próximos periodos libres (saltando los ya pagados)
-  const candidatos = listarPeriodos(primerPeriodo, 24, dia, mesesPagadosSet).map(p => ({ iso: p.iso, label: p.etiqueta }))
+  // Candidatos: próximos periodos pendientes; uno con abono muestra lo que le falta
+  const candidatos = listarPeriodos(primerPeriodo, 24, dia, estadoPagos.completos).map(p => {
+    const abonado = estadoPagos.abonado.get(p.iso) || 0
+    return { iso: p.iso, label: p.etiqueta, periodo: p, abonado, falta: Math.round((cuota - abonado) * 100) / 100 }
+  })
 
-  // Previsualización del reparto: cuántos meses completos cubre + abono parcial sobrante.
   const total = Number(montoTotal)
-  const mesesCompletosSugeridos = (total > 0 && cuota > 0) ? Math.floor((total + 0.005) / cuota) : 0
+  // Sugerencia: los primeros periodos que el monto alcanza a completar
+  const sugeridos = (() => {
+    const out = []; let resto = total
+    for (const c of candidatos) { if (resto + 0.005 < c.falta) break; out.push(c.iso); resto -= c.falta }
+    return out
+  })()
 
-  // Inicializa/ajusta la selección activa a los primeros N candidatos cuando cambia el monto,
-  // pero respeta lo que el usuario haya desactivado manualmente después.
+  // Inicializa/ajusta la selección activa cuando cambia el monto, pero respeta
+  // lo que el usuario haya desactivado manualmente después.
   useEffect(() => {
     if (!candidatos.length) return
     if (usuarioTocoMeses.current) return // el usuario ya ajustó manualmente, no pisarlo
-    setMesesActivos(new Set(candidatos.slice(0, mesesCompletosSugeridos).map(c => c.iso)))
-  }, [mesesCompletosSugeridos, candidatos.length])
+    setMesesActivos(new Set(sugeridos))
+  }, [sugeridos.join(','), candidatos.length])
 
   const toggleMes = (iso) => {
     usuarioTocoMeses.current = true
@@ -624,16 +640,30 @@ function ModalPago({ poliza, onClose, onSaved }) {
     })
   }
 
+  // Vista previa del reparto = planDePago, el MISMO cálculo que hace el servidor
   const preview = (() => {
     if (!(total > 0) || !(cuota > 0)) return null
-    const seleccionados = candidatos.filter(c => mesesActivos.has(c.iso))
-    let sobrante = Math.round((total - seleccionados.length * cuota) * 100) / 100
-    if (sobrante < 0.5) sobrante = 0
-    // Si lo que sobra alcanza para otra cuota completa, no es un "abono parcial":
-    // el usuario debe activar un mes más en la lista (evita mostrar un "falta" negativo).
-    const sobranteAlcanzaOtroMes = sobrante >= cuota
-    const mesAbono = (sobrante > 0 && !sobranteAlcanzaOtroMes) ? candidatos.find(c => !mesesActivos.has(c.iso)) : null
-    return { mesesCompletos: seleccionados.length, sobrante, sobranteAlcanzaOtroMes, mesesCubiertos: seleccionados, mesAbono }
+    const plan = planDePago(poliza, cuota, estadoPagos, { elegidos: candidatos.filter(c => mesesActivos.has(c.iso)).map(c => c.iso), monto: total })
+    const completas = plan.items.filter(it => it.completa)
+    const abono = plan.items.find(it => !it.completa) || null
+    const repartido = plan.total
+    return {
+      plan, completas,
+      mesesCompletos: completas.length,
+      mesesCubiertos: candidatos.filter(c => mesesActivos.has(c.iso)),
+      // Un periodo que se completa sin estar marcado = el sobrante alcanzaba para él
+      sobranteAlcanzaOtroMes: completas.some(it => !mesesActivos.has(it.periodo.iso)),
+      sobrante: abono ? abono.monto : 0,
+      abono: abono && {
+        ...abono,
+        dias: diasQueCubre(abono.abonado_antes + abono.monto, cuota, abono.periodo),
+        tarifa: tarifaDiaria(cuota, abono.periodo),
+        falta: Math.round((cuota - abono.abonado_antes - abono.monto) * 100) / 100,
+      },
+      mesAbono: abono ? { iso: abono.periodo.iso, label: abono.periodo.etiqueta } : null,
+      cubreHasta: plan.cubre_hasta ? isoFecha(plan.cubre_hasta) : null,
+      noRepartido: Math.round((total - repartido) * 100) / 100,
+    }
   })()
 
   const onArchivoChange = e => {
@@ -670,13 +700,10 @@ function ModalPago({ poliza, onClose, onSaved }) {
           })
         }
         const p = res.data
-        if (p.meses_pagados > 0 && p.abono_parcial) {
-          toast.success(`Pago registrado: ${p.meses_pagados} periodo(s) completo(s) + abono parcial de ${fmt(p.abono_parcial.monto)} para ${p.abono_parcial.periodo}`)
-        } else if (p.meses_pagados > 0) {
-          toast.success(`Pago registrado: ${(p.periodos_pagados || []).map(x => x.etiqueta).join(', ') || p.meses_pagados + ' periodo(s)'}`)
-        } else {
-          toast.success(`Abono parcial de ${fmt(p.abono_parcial.monto)} registrado para ${p.abono_parcial.periodo}`)
-        }
+        const hasta = p.cubre_hasta ? new Date(p.cubre_hasta + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }) : ''
+        const periodos = (p.periodos_pagados || []).map(x => x.etiqueta).join(', ')
+        const abono = p.abono_parcial ? `abono de ${fmt(p.abono_parcial.monto)} (${p.abono_parcial.dias} días de ${p.abono_parcial.periodo})` : ''
+        toast.success(`Pago registrado: ${[periodos, abono].filter(Boolean).join(' + ')}${hasta ? ` — cubierto hasta el ${hasta}` : ''}`)
       } else {
         res = await api.post(`/polizas/${poliza.id}/pagos`, form)
         if (archivo && res.data?.pago?.id) {
@@ -772,7 +799,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
                             background: activo ? '#EEF2FF' : esAbono ? '#FFFBEB' : '#fff',
                             color: activo ? '#4338CA' : esAbono ? '#B45309' : '#9CA3AF',
                           }}>
-                          {activo ? '✓ ' : ''}{m.label}
+                          {activo ? '✓ ' : ''}{m.label}{m.abonado > 0 ? ` · falta ${fmt(m.falta)}` : ''}
                         </button>
                       )
                     })}
@@ -785,21 +812,34 @@ function ModalPago({ poliza, onClose, onSaved }) {
                   borderRadius:9, fontSize:12.5, color:'#5B21B6', lineHeight:1.6 }}>
                   {preview.mesesCompletos > 0 ? (
                     <div>
-                      ✅ Se pagarán <strong>{preview.mesesCompletos} periodo{preview.mesesCompletos>1?'s':''}</strong> ({fmt(cuota)} c/u = {fmt(preview.mesesCompletos*cuota)})
+                      ✅ Se pagarán <strong>{preview.mesesCompletos} periodo{preview.mesesCompletos>1?'s':''}</strong>: {preview.completas.map(it =>
+                        it.abonado_antes > 0 ? `${it.periodo.etiqueta} (completa: faltaban ${fmt(it.monto)})` : it.periodo.etiqueta).join(', ')}
                     </div>
                   ) : (
-                    <div>Ningún periodo activo — todo el monto se registrará como abono parcial</div>
+                    <div>Ningún periodo completo — todo el monto se registrará como abono</div>
                   )}
-                  {preview.sobrante > 0 && preview.sobranteAlcanzaOtroMes ? (
+                  {preview.sobranteAlcanzaOtroMes ? (
                     <div style={{ marginTop:6, color:'#B45309' }}>
-                      ⚠️ Sobran <strong>{fmt(preview.sobrante)}</strong> — eso alcanza para otro periodo completo. Actívalo en la lista de arriba.
+                      ⚠️ El sobrante alcanza para otro periodo completo. Actívalo en la lista de arriba.
                     </div>
-                  ) : preview.sobrante > 0 && preview.mesAbono && (
+                  ) : preview.abono && (
                     <div style={{ marginTop:6 }}>
-                      💰 Sobran <strong>{fmt(preview.sobrante)}</strong> — abono parcial para <strong>{preview.mesAbono.label}</strong> (faltarían {fmt(cuota - preview.sobrante)} para completar esa cuota)
+                      💰 Sobran <strong>{fmt(preview.abono.monto)}</strong> → abono a <strong>{preview.abono.periodo.etiqueta}</strong>
+                      {' '}= <strong>{preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''} de cobertura</strong>
+                      {' '}({fmt(Math.round(preview.abono.tarifa))}/día). Faltarían {fmt(preview.abono.falta)} para completar ese periodo.
                     </div>
                   )}
-                  {preview.mesesCompletos === 0 && preview.sobrante === 0 && (
+                  {preview.cubreHasta && (
+                    <div style={{ marginTop:6, fontWeight:800, color:'#065F46' }}>
+                      📅 Queda cubierto hasta el {new Date(preview.cubreHasta + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })}
+                    </div>
+                  )}
+                  {preview.noRepartido > 0.5 && (
+                    <div style={{ marginTop:6, color:'#DC2626' }}>
+                      ⚠️ {fmt(preview.noRepartido)} no se pueden aplicar con los periodos marcados.
+                    </div>
+                  )}
+                  {preview.plan.items.length === 0 && (
                     <div style={{ color:'#DC2626' }}>El monto no alcanza ni para un abono parcial</div>
                   )}
                 </div>

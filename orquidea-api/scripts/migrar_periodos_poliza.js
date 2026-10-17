@@ -127,7 +127,7 @@ try {
       FROM m WHERE x.id = m.id`, [p.id])
   }
   await db.query(`CREATE UNIQUE INDEX uq_pago_poliza_periodo_vigente ON pagos_poliza (poliza_id, mes_correspondiente)
-                  WHERE tipo = 'CUOTA' AND NOT anulado`)
+                  WHERE tipo = 'CUOTA' AND NOT anulado AND NOT parcial`)
   await db.query('COMMIT')
   console.log('\n✅ Conversión aplicada.')
 } catch (e) {

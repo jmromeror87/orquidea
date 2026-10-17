@@ -15,7 +15,8 @@ import { enviarWhatsApp } from '../utils/whatsapp.js'
 import { enviarSMS } from '../utils/sms.js'
 import { contabilizarEvento } from '../services/contabilidad.service.js'
 import { ejecutarInventarioPendiente } from './servicios.controller.js'
-import { ymd, diaAncla, normalizarInicio, iso as isoFecha } from '../utils/periodosPoliza.js'
+import { ymd, diaAncla, normalizarInicio, finCobertura, iso as isoFecha } from '../utils/periodosPoliza.js'
+import { recalcularMora as recalcularMoraPoliza } from '../services/pagosPoliza.service.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -818,59 +819,59 @@ export async function historialCancelaciones(req, reply) {
 // pero invisible en Contabilidad). Ahora ambos caminos pasan por aquí y
 // ambos generan su comprobante PAGO_CUOTA_POLIZA, igual que ya hacía el
 // módulo de Recaudo (pagos.controller.js) para sus propios pagos.
-async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id }) {
+async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id, historico = false }) {
   const fechaPagoDate = fecha_pago || new Date().toISOString().split('T')[0]
+  const cuota = Number(poliza.valor_cuota)
 
   // El pago cubre un PERIODO contado desde el día de afiliación (no un mes de
   // calendario): cualquier fecha que llegue se ubica en su periodo.
   const periodo = normalizarInicio(mes_correspondiente, diaAncla(poliza))
-  mes_correspondiente = periodo.iso
 
-  const pagoRes = await client.query(`
-    INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, metodo_pago, referencia, fecha_pago, usuario_id)
-    VALUES ($1,$2,$8,$3,$4,$5,$6,$7)
-    ON CONFLICT (poliza_id, mes_correspondiente) WHERE tipo = 'CUOTA' AND NOT anulado DO UPDATE SET
-      monto = EXCLUDED.monto, metodo_pago = EXCLUDED.metodo_pago,
-      referencia = EXCLUDED.referencia, fecha_pago = EXCLUDED.fecha_pago
-    RETURNING id, numero_recibo`,
-    [poliza.id, mes_correspondiente, monto, metodo_pago, referencia || null, fechaPagoDate, usuario_id, periodo.fin_iso]
-  )
+  // Lo que ya tiene pagado ese periodo (cuota completa o abonos)
+  const prev = (await client.query(`
+    SELECT BOOL_OR(NOT parcial) AS completa, COALESCE(SUM(monto) FILTER (WHERE parcial), 0) AS abonado
+    FROM pagos_poliza WHERE poliza_id = $1 AND mes_correspondiente = $2 AND tipo = 'CUOTA' AND NOT anulado`,
+    [poliza.id, periodo.iso])).rows[0]
+  const antes = Number(prev?.abonado || 0)
+  if (!historico && (prev?.completa || antes >= cuota - 0.5)) {
+    // Antes esto SOBRESCRIBÍA en silencio el pago existente (cambiaba un recibo ya emitido)
+    throw Object.assign(new Error(`El periodo ${periodo.etiqueta} ya está pagado`), { httpCode: 409 })
+  }
+  // Carga histórica: la fila es una cuota completa de su época aunque la cuota de hoy sea mayor
+  const parcial = historico ? false : !(+monto >= cuota - 0.5 && antes === 0)
 
-  // Releído con FOR UPDATE porque en la carga masiva esta función se llama
-  // muchas veces seguidas en la misma transacción: cada pago debe ver el
-  // resultado del pago anterior del lote, no el valor de la póliza al
-  // arrancar el lote completo.
-  const actual = await client.query(
-    `SELECT pago_hasta, fecha_inicio, meses_mora FROM polizas WHERE id=$1 FOR UPDATE`, [poliza.id]
-  )
-  const pol = actual.rows[0]
+  const pagoRes = historico
+    ? await client.query(`
+        INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, parcial, metodo_pago, referencia, fecha_pago, usuario_id)
+        VALUES ($1,$2,$3,$4,FALSE,$5,$6,$7,$8)
+        ON CONFLICT (poliza_id, mes_correspondiente) WHERE tipo = 'CUOTA' AND NOT anulado AND NOT parcial DO UPDATE SET
+          monto = EXCLUDED.monto, metodo_pago = EXCLUDED.metodo_pago,
+          referencia = EXCLUDED.referencia, fecha_pago = EXCLUDED.fecha_pago
+        RETURNING id, numero_recibo`,
+        [poliza.id, periodo.iso, periodo.fin_iso, monto, metodo_pago, referencia || null, fechaPagoDate, usuario_id])
+    : await client.query(`
+        INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, parcial, metodo_pago, referencia, fecha_pago, usuario_id, notas)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING id, numero_recibo`,
+        [poliza.id, periodo.iso, periodo.fin_iso, monto, parcial, metodo_pago, referencia || null, fechaPagoDate, usuario_id,
+         parcial ? `Abono parcial a cuenta de la cuota (${periodo.etiqueta})` : null])
 
-  // El pago cubre hasta el último día de su periodo — nunca retrocede
-  // pago_hasta si ya estaba más adelante (pago adelantado o filas fuera de orden).
-  const finMesCubierto = periodo.fin_iso
-  const pagoHastaActual = pol.pago_hasta || pol.fecha_inicio
-  const nuevaMora = Math.max(0, pol.meses_mora - 1)
-
-  // Bug real: antes esto ponía la póliza en VIGENTE con solo recibir un pago,
-  // aunque quedaran meses anteriores sin cubrir. Ahora el estado sale de la
-  // mora que realmente queda (fn_estado_poliza), igual que hace el módulo de
-  // Recaudo — y pago_hasta por fin avanza (antes esta función ni lo tocaba).
+  // Cobertura: el periodo entero si quedó completo; si no, los días que alcanza el abono.
+  // Nunca retrocede pago_hasta (pagos adelantados o filas fuera de orden).
+  const cubreHasta = historico ? periodo.fin : finCobertura(periodo, antes + Number(monto), cuota)
   await client.query(`
     UPDATE polizas SET
       ultimo_pago = GREATEST(COALESCE(ultimo_pago, '1970-01-01'::date), $2::date),
-      pago_hasta  = GREATEST($3::date, $4::date),
-      meses_mora  = $5::int,
-      saldo_mora  = $5::int * valor_cuota,
-      estado      = CASE WHEN estado IN ('CANCELADA','EJECUTADA') THEN estado ELSE fn_estado_poliza($5::int) END,
+      pago_hasta  = GREATEST(COALESCE(pago_hasta, $3::date), $3::date),
       actualizado = NOW()
-    WHERE id = $1`, [poliza.id, fechaPagoDate, pagoHastaActual, finMesCubierto, nuevaMora]
-  )
+    WHERE id = $1`, [poliza.id, fechaPagoDate, isoFecha(cubreHasta)])
+  await recalcularMoraPoliza(client, poliza.id)
 
   await contabilizarEvento(client, {
     evento_codigo: 'PAGO_CUOTA_POLIZA',
     montos: { total: +monto },
     forma_pago_codigo: metodo_pago,
-    concepto: `Pago póliza N.° ${poliza.numero} — periodo ${periodo.etiqueta}`,
+    concepto: `Pago póliza N.° ${poliza.numero} — periodo ${periodo.etiqueta}${parcial ? ' (abono)' : ''}`,
     tercero_id: poliza.titular_id,
     sede_id: poliza.sede_id,
     fecha: fechaPagoDate,
@@ -880,7 +881,7 @@ async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, 
     usuario_id,
   })
 
-  return pagoRes.rows[0]
+  return { ...pagoRes.rows[0], periodo: periodo.etiqueta, cubre_hasta: isoFecha(cubreHasta) }
 }
 
 export async function registrarPago(req, reply) {
@@ -890,7 +891,7 @@ export async function registrarPago(req, reply) {
   if (!mes_correspondiente) return reply.code(400).send({ error: 'mes_correspondiente es obligatorio (YYYY-MM-DD)' })
   if (!monto || +monto <= 0) return reply.code(400).send({ error: 'monto debe ser mayor a 0' })
 
-  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio FROM polizas WHERE id=$1', [id])
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio, valor_cuota FROM polizas WHERE id=$1', [id])
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
 
@@ -905,7 +906,8 @@ export async function registrarPago(req, reply) {
     return reply.code(201).send({ ok: true, pago })
   } catch (e) {
     await db.query('ROLLBACK')
-    if (e.code === '23505') return reply.code(409).send({ error: 'Ya existe un pago para ese mes' })
+    if (e.code === '23505') return reply.code(409).send({ error: 'Ya existe un pago para ese periodo' })
+    if (e.httpCode) return reply.code(e.httpCode).send({ error: e.message })
     throw e
   } finally { db.release() }
 }
@@ -924,7 +926,7 @@ export async function importarPagos(req, reply) {
   if (pagos.length > 500)
     return reply.code(400).send({ error: 'Máximo 500 filas por carga — divide el archivo en lotes más pequeños' })
 
-  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio FROM polizas WHERE id=$1', [id])
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio, valor_cuota FROM polizas WHERE id=$1', [id])
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
 
@@ -955,6 +957,7 @@ export async function importarPagos(req, reply) {
         referencia: p.referencia || null,
         fecha_pago: p.fecha_pago || p.mes_correspondiente,
         usuario_id: req.user.id,
+        historico: true,   // carga del sistema anterior: cuotas completas de su época
       })
       procesados.push(pago)
     }

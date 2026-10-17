@@ -109,3 +109,72 @@ export function listarPeriodos(desde, n, dia, pagados = new Set()) {
 
 // Periodo al que pertenece una fecha cualquiera (p. ej. mes_correspondiente que manda un cliente viejo)
 export const normalizarInicio = (fecha, dia) => periodoQueContiene(ymd(fecha), dia)
+
+
+// ── Abonos por días ─────────────────────────────────────────────────────────
+// Un abono que no completa la cuota da días de cobertura proporcionales:
+// tarifa diaria = cuota ÷ días del periodo (un periodo de 31 días cuesta lo
+// mismo que uno de 28: cambia la tarifa diaria, no la cuota).
+export const diasDelPeriodo = p =>
+  Math.round((Date.UTC(p.fin.y, p.fin.m, p.fin.d) - Date.UTC(p.inicio.y, p.inicio.m, p.inicio.d)) / 86400000) + 1
+export const tarifaDiaria = (cuota, p) => cuota / diasDelPeriodo(p)
+export const diasQueCubre = (monto, cuota, p) =>
+  Math.max(0, Math.min(diasDelPeriodo(p), Math.floor((monto + 0.005) / tarifaDiaria(cuota, p))))
+
+// Hasta qué día queda cubierto un periodo con `abonado` pagado (fin del periodo si está completo)
+export function finCobertura(p, abonado, cuota) {
+  if (abonado >= cuota - 0.5) return p.fin
+  const d = diasQueCubre(abonado, cuota, p)
+  return addDias(p.inicio, d - 1)   // d = 0 → el día anterior al periodo (sin cobertura)
+}
+
+/**
+ * Reparte un pago entre periodos. Orden: completa lo que FALTE del primer
+ * periodo pendiente (si tenía un abono), luego periodos completos y lo que
+ * sobra queda como abono del siguiente, con sus días de cobertura.
+ *   estado: { completos: Set(iso inicio), abonado: Map(iso inicio → abonos parciales) }
+ *   modo:   { monto } | { periodos: n } | { elegidos: [iso…], monto }
+ * Devuelve { items: [{ periodo, monto, completa, parcial, abonado_antes }], total, cubre_hasta }
+ */
+export function planDePago(pol, cuota, estado, modo, hoy) {
+  const dia = diaAncla(pol)
+  const falta = p => estado.completos.has(p.iso) ? 0 : Math.max(0, Math.round((cuota - (estado.abonado.get(p.iso) || 0)) * 100) / 100)
+  const item = (p, monto) => {
+    const antes = estado.abonado.get(p.iso) || 0
+    const completa = antes + monto >= cuota - 0.5
+    return { periodo: p, monto: Math.round(monto * 100) / 100, completa, parcial: !(completa && antes === 0), abonado_antes: antes }
+  }
+  const items = []
+  let p = primerPeriodoAPagar(pol, hoy)
+  const siguientesPendientes = function* (excluir = new Set()) {
+    for (let g = 0; g < 600; g++, p = siguientePeriodo(p, dia)) if (falta(p) > 0 && !excluir.has(p.iso)) yield p
+  }
+
+  if (modo.elegidos?.length) {
+    const elegidos = [...new Map(modo.elegidos.map(x => { const q = normalizarInicio(x, dia); return [q.iso, q] })).values()]
+      .sort((a, b) => a.iso.localeCompare(b.iso))
+    let resto = modo.monto != null ? Number(modo.monto) : Infinity
+    for (const q of elegidos) {
+      const f = falta(q)
+      if (f > 0 && resto > 0.004) { const m = Math.min(f, resto); items.push(item(q, m)); resto -= m }
+    }
+    if (resto > 0.004 && resto !== Infinity) {
+      const q = siguientesPendientes(new Set(elegidos.map(e => e.iso))).next().value
+      if (q) items.push(item(q, Math.min(resto, falta(q))))
+    }
+  } else {
+    let resto = modo.periodos != null ? Infinity : Number(modo.monto || 0)
+    let n = modo.periodos != null ? Number(modo.periodos) : Infinity
+    for (const q of siguientesPendientes()) {
+      if (n <= 0 || resto <= 0.004) break
+      const f = falta(q)
+      const m = Math.min(f, resto)
+      items.push(item(q, m)); resto -= m
+      if (m >= f - 0.004) n--
+    }
+  }
+
+  const ult = items[items.length - 1]
+  const cubre_hasta = ult ? finCobertura(ult.periodo, ult.abonado_antes + ult.monto, cuota) : null
+  return { items, total: Math.round(items.reduce((s, i) => s + i.monto, 0) * 100) / 100, cubre_hasta }
+}

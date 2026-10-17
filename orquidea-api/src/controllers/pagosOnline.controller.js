@@ -14,7 +14,7 @@
  */
 import pool from '../config/database.js'
 import { wompiConfigurado, construirUrlCheckout, verificarFirmaEvento } from '../utils/wompi.js'
-import { diaAncla, primerPeriodoAPagar, listarPeriodos } from '../utils/periodosPoliza.js'
+import { calcularPlan, registrarPlan } from '../services/pagosPoliza.service.js'
 import { contabilizarEvento } from '../services/contabilidad.service.js'
 
 const SYSTEM_EMAIL = 'pagos.online@sistema.local'
@@ -156,55 +156,15 @@ async function aplicarPagoOnline(registro, tx) {
       const { rows } = await client.query('SELECT * FROM polizas WHERE id = $1 FOR UPDATE', [registro.entidad_id])
       const pol = rows[0]
       if (!pol) throw new Error('Póliza no encontrada al aplicar pago online')
-      const valorCuota = Number(pol.valor_cuota)
-      const mesesAPagar = Math.max(1, Math.round(Number(registro.monto) / valorCuota))
-
-      const yaPagados = await client.query(
-        `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-DD') AS ini FROM pagos_poliza
-         WHERE poliza_id=$1 AND tipo='CUOTA' AND NOT anulado`,
-        [registro.entidad_id]
-      )
-      const setPagados = new Set(yaPagados.rows.map(r => r.ini))
-
-      // Periodos desde el día de afiliación (utils/periodosPoliza.js)
-      const dia = diaAncla(pol)
-      const periodos = listarPeriodos(primerPeriodoAPagar(pol), mesesAPagar, dia, setPagados)
-
-      let primerPagoId = null
-      for (const p of periodos) {
-        const ins = await client.query(`
-          INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, metodo_pago, referencia, fecha_pago, usuario_id, notas)
-          VALUES ($1,$2,$7,$3,'pse_online',$4,CURRENT_DATE,$5,$6) RETURNING id
-        `, [registro.entidad_id, p.iso, valorCuota, referencia, usuario_id, notas, p.fin_iso])
-        primerPagoId = primerPagoId || ins.rows[0].id
+      // Mismo reparto por periodos/días que Cartera (services/pagosPoliza.service.js);
+      // se guarda como 'pse_online' y se contabiliza con la forma 'pse' (banco)
+      const plan = await calcularPlan(client, pol, { monto: Number(registro.monto) })
+      if (plan.items.length) {
+        await registrarPlan(client, pol, plan, {
+          metodo_pago: 'pse_online', referencia, usuario_id, notas, formaContable: 'pse',
+          concepto: `Pago en línea póliza N.° ${pol.numero} — ${plan.items.map(i => i.periodo.etiqueta + (i.completa ? '' : ' (abono)')).join(', ')}`,
+        })
       }
-      // Antes los pagos en línea no se contabilizaban: entraban al banco sin asiento
-      await contabilizarEvento(client, {
-        evento_codigo: 'PAGO_CUOTA_POLIZA',
-        montos: { total: valorCuota * periodos.length },
-        forma_pago_codigo: 'pse',
-        concepto: `Pago en línea póliza N.° ${pol.numero} — ${periodos.map(p => p.etiqueta).join(', ')}`,
-        tercero_id: pol.titular_id, sede_id: pol.sede_id,
-        documento_origen_tipo: 'pagos_poliza', documento_origen_id: primerPagoId, usuario_id,
-      })
-
-      const nuevaMora = Math.max(0, Number(pol.meses_mora) - periodos.length)
-      const nuevoPagoHasta = periodos[periodos.length - 1].fin_iso
-
-      await client.query(`
-        UPDATE polizas SET
-          pago_hasta = GREATEST(COALESCE(pago_hasta, $1::date), $1::date),
-          ultimo_pago = CURRENT_DATE,
-          meses_mora = $2,
-          saldo_mora = $2 * valor_cuota,
-          estado = CASE WHEN estado IN ('CANCELADA','EJECUTADA') THEN estado ELSE fn_estado_poliza($2::INT) END,
-          actualizado = NOW()
-        WHERE id = $3
-      `, [
-        nuevoPagoHasta,
-        nuevaMora,
-        registro.entidad_id,
-      ])
     } else {
       const { rows } = await client.query('SELECT * FROM contratos WHERE id = $1 FOR UPDATE', [registro.entidad_id])
       const cont = rows[0]
