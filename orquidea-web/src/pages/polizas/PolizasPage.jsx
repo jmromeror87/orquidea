@@ -35,6 +35,7 @@ import { imprimirAvisoCesionPoliza, imprimirAutorizacionCambioTitular } from '..
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
 import BuscadorBeneficiario from '../../components/polizas/BuscadorBeneficiario.jsx'
+import TablaPagosPoliza from '../../components/polizas/TablaPagosPoliza.jsx'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
          diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
@@ -1265,9 +1266,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   const [cobrandoAfiliacion, setCobrandoAfiliacion] = useState(false)
   const [empresaInfo, setEmpresaInfo] = useState({})
   const [showImportPagos, setShowImportPagos] = useState(false)
-  const [pagosPage, setPagosPage] = useState(1)
   const [anularPago, setAnularPago] = useState(null)   // pago que se va a anular
-  const PAGOS_POR_PAGINA = 10
   const { usuario } = useAuthStore()
   const { label: fmtMetodo } = useFormasPago()
   const esEditor = ['superadmin','administrador','operador','asesor_comercial'].includes(usuario?.rol)
@@ -1795,102 +1794,9 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                     <span>Use "Pagar cuota" para registrar el primer pago</span>
                   </div>
                 ) : (
-                  (data.pagos||[])
-                    .slice((pagosPage-1)*PAGOS_POR_PAGINA, pagosPage*PAGOS_POR_PAGINA)
-                    .map(p => (
-                    <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px',
-                      background: p.anulado ? '#F8FAFC' : '#F0FDF4',
-                      border:`1.5px solid ${p.anulado ? '#E2E8F0' : '#A7F3D0'}`,
-                      borderRadius:12, marginBottom:8, flexWrap:'wrap' }}>
-                      <div style={{ width:38, height:38, borderRadius:10, flexShrink:0,
-                        background: p.anulado ? 'linear-gradient(135deg,#9CA3AF,#6B7280)' : 'linear-gradient(135deg,#059669,#10B981)',
-                        display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        <CreditCard size={16} color="#fff"/>
-                      </div>
-                      <div style={{ flex:1, minWidth:160 }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <span style={{ fontSize:14, fontWeight:800,
-                            color: p.anulado ? '#9CA3AF' : '#065F46',
-                            textDecoration: p.anulado ? 'line-through' : 'none' }}>
-                            {fmt(p.monto)}
-                          </span>
-                          {p.anulado && <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6, background:'#FEE2E2', color:'#EF4444' }}>ANULADO</span>}
-                          <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6, background:'#D1FAE5', color:'#059669', marginLeft:'auto' }}>
-                            N° {String(p.numero_recibo).padStart(6,'0')}
-                          </span>
-                        </div>
-                        <div style={{ fontSize:11.5, color:'#6B7280', marginTop:3, display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
-                          <span style={{ background:'#EEF2FF', color:'#4F46E5', fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6 }}>
-                            {periodoLabel(p, data)}
-                          </span>
-                          <span>{fmtMetodo(p.metodo_pago)}</span>
-                          <span>·</span>
-                          <span>{fmtDate(p.fecha_pago)}</span>
-                          {p.cajero && <><span>·</span><span>{p.cajero}</span></>}
-                          {p.referencia && <span style={{ background:'#F3F4F6', padding:'1px 6px', borderRadius:5, fontSize:10.5, color:'#374151', fontWeight:600 }}>Ref: {p.referencia}</span>}
-                        </div>
-                        {p.anulado && (
-                          <div style={{ marginTop:6, fontSize:11.5, color:'#B91C1C', background:'#FEF2F2', border:'1px solid #FECACA',
-                            borderRadius:8, padding:'6px 9px', lineHeight:1.5 }}>
-                            <strong>Anulado</strong>
-                            {p.anulado_por_nombre && <> por <strong>{p.anulado_por_nombre}</strong></>}
-                            {' el '}{p.anulado_en
-                              ? new Date(p.anulado_en).toLocaleString('es-CO', { dateStyle:'medium', timeStyle:'short' })
-                              : fmtDate(p.fecha_anulacion)}
-                            {p.motivo_anulacion && <> — <em>{p.motivo_anulacion}</em></>}
-                            {(p.comprobante_numero || p.reverso_numero) && (
-                              <div style={{ marginTop:3, fontSize:11, color:'#7F1D1D' }}>
-                                Contabilidad: {p.comprobante_numero && <>comprobante <strong>{p.comprobante_numero}</strong> anulado</>}
-                                {p.reverso_numero && <> · nota de reverso <strong>{p.reverso_numero}</strong></>}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {!p.anulado && (
-                        <button onClick={() => imprimirReciboPagoPoliza({ pago: p, poliza: data, empresa: empresaInfo })}
-                          title="Imprimir recibo"
-                          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
-                            color:'#059669', background:'#ECFDF5', border:'1.5px solid #A7F3D0',
-                            borderRadius:8, padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
-                          <Printer size={12}/> Recibo
-                        </button>
-                      )}
-                      {!p.anulado && esAdmin && (
-                        <button onClick={() => setAnularPago(p)} title="Anular este pago"
-                          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
-                            color:'#DC2626', background:'#FEF2F2', border:'1.5px solid #FECACA',
-                            borderRadius:8, padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
-                          <Ban size={12}/> Anular
-                        </button>
-                      )}
-                      {p.soporte_url && (
-                        <a href={archivoUrl(p.soporte_url)} target="_blank" rel="noreferrer"
-                          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700,
-                            color:'#4F46E5', background:'#EEF2FF', border:'1.5px solid #C7D2FE',
-                            borderRadius:8, padding:'5px 10px', textDecoration:'none', flexShrink:0 }}>
-                          <Eye size={12}/> Ver soporte
-                        </a>
-                      )}
-                    </div>
-                  ))
-                )}
-                {(data.pagos||[]).length > PAGOS_POR_PAGINA && (
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10 }}>
-                    <span style={{ fontSize:11.5, color:'#6B7280' }}>
-                      {data.pagos.length} pagos · página {pagosPage} de {Math.ceil(data.pagos.length/PAGOS_POR_PAGINA)}
-                    </span>
-                    <div style={{ display:'flex', gap:6 }}>
-                      <button className="pl-pag-btn" disabled={pagosPage<=1}
-                        onClick={() => setPagosPage(p => p-1)}>
-                        <ChevronLeft size={14}/>
-                      </button>
-                      <button className="pl-pag-btn" disabled={pagosPage>=Math.ceil(data.pagos.length/PAGOS_POR_PAGINA)}
-                        onClick={() => setPagosPage(p => p+1)}>
-                        <ChevronRight size={14}/>
-                      </button>
-                    </div>
-                  </div>
+                  <TablaPagosPoliza pagos={data.pagos} poliza={data} fmtMetodo={fmtMetodo} puedeAnular={esAdmin}
+                    onRecibo={p => imprimirReciboPagoPoliza({ pago: p, poliza: data, empresa: empresaInfo })}
+                    onAnular={p => setAnularPago(p)}/>
                 )}
               </PldCard>
               </>
