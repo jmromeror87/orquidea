@@ -14,6 +14,8 @@
  */
 import pool from '../config/database.js'
 import { wompiConfigurado, construirUrlCheckout, verificarFirmaEvento } from '../utils/wompi.js'
+import { diaAncla, primerPeriodoAPagar, listarPeriodos } from '../utils/periodosPoliza.js'
+import { contabilizarEvento } from '../services/contabilidad.service.js'
 
 const SYSTEM_EMAIL = 'pagos.online@sistema.local'
 let systemUserId = null
@@ -158,33 +160,36 @@ async function aplicarPagoOnline(registro, tx) {
       const mesesAPagar = Math.max(1, Math.round(Number(registro.monto) / valorCuota))
 
       const yaPagados = await client.query(
-        `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_poliza WHERE poliza_id=$1 AND NOT anulado`,
+        `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-DD') AS ini FROM pagos_poliza
+         WHERE poliza_id=$1 AND tipo='CUOTA' AND NOT anulado`,
         [registro.entidad_id]
       )
-      const setPagados = new Set(yaPagados.rows.map(r => r.mes))
+      const setPagados = new Set(yaPagados.rows.map(r => r.ini))
 
-      const cursor = new Date(pol.pago_hasta || pol.fecha_inicio); cursor.setDate(1)
-      const hoyMes = new Date(); hoyMes.setDate(1)
-      if (cursor <= hoyMes) cursor.setFullYear(hoyMes.getFullYear(), hoyMes.getMonth(), 1)
+      // Periodos desde el día de afiliación (utils/periodosPoliza.js)
+      const dia = diaAncla(pol)
+      const periodos = listarPeriodos(primerPeriodoAPagar(pol), mesesAPagar, dia, setPagados)
 
-      const meses = []
-      while (meses.length < mesesAPagar) {
-        const iso = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-01`
-        if (!setPagados.has(iso)) meses.push(iso)
-        cursor.setMonth(cursor.getMonth() + 1)
-      }
-
-      for (const mes of meses) {
-        await client.query(`
+      let primerPagoId = null
+      for (const p of periodos) {
+        const ins = await client.query(`
           INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, metodo_pago, referencia, fecha_pago, usuario_id, notas)
-          VALUES ($1,$2,$2,$3,'pse_online',$4,CURRENT_DATE,$5,$6)
-        `, [registro.entidad_id, mes, valorCuota, referencia, usuario_id, notas])
+          VALUES ($1,$2,$7,$3,'pse_online',$4,CURRENT_DATE,$5,$6) RETURNING id
+        `, [registro.entidad_id, p.iso, valorCuota, referencia, usuario_id, notas, p.fin_iso])
+        primerPagoId = primerPagoId || ins.rows[0].id
       }
+      // Antes los pagos en línea no se contabilizaban: entraban al banco sin asiento
+      await contabilizarEvento(client, {
+        evento_codigo: 'PAGO_CUOTA_POLIZA',
+        montos: { total: valorCuota * periodos.length },
+        forma_pago_codigo: 'pse',
+        concepto: `Pago en línea póliza N.° ${pol.numero} — ${periodos.map(p => p.etiqueta).join(', ')}`,
+        tercero_id: pol.titular_id, sede_id: pol.sede_id,
+        documento_origen_tipo: 'pagos_poliza', documento_origen_id: primerPagoId, usuario_id,
+      })
 
-      const nuevaMora = Math.max(0, Number(pol.meses_mora) - meses.length)
-      const nuevoPagoHasta = new Date(meses[meses.length - 1])
-      nuevoPagoHasta.setMonth(nuevoPagoHasta.getMonth() + 1)
-      nuevoPagoHasta.setDate(0)
+      const nuevaMora = Math.max(0, Number(pol.meses_mora) - periodos.length)
+      const nuevoPagoHasta = periodos[periodos.length - 1].fin_iso
 
       await client.query(`
         UPDATE polizas SET
@@ -196,7 +201,7 @@ async function aplicarPagoOnline(registro, tx) {
           actualizado = NOW()
         WHERE id = $3
       `, [
-        `${nuevoPagoHasta.getFullYear()}-${String(nuevoPagoHasta.getMonth() + 1).padStart(2, '0')}-${String(nuevoPagoHasta.getDate()).padStart(2, '0')}`,
+        nuevoPagoHasta,
         nuevaMora,
         registro.entidad_id,
       ])
@@ -208,7 +213,7 @@ async function aplicarPagoOnline(registro, tx) {
       const mesesAPagar = Math.max(1, Math.round(Number(registro.monto) / valorCuota))
 
       const yaPagados = await client.query(
-        `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_contrato WHERE contrato_id=$1`,
+        `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_contrato WHERE contrato_id=$1 AND tipo='CUOTA' AND NOT anulado`,
         [registro.entidad_id]
       )
       const setPagados = new Set(yaPagados.rows.map(r => r.mes))
@@ -224,11 +229,23 @@ async function aplicarPagoOnline(registro, tx) {
         cursor.setMonth(cursor.getMonth() + 1)
       }
 
+      let primerPagoId = null
       for (const mes of meses) {
-        await client.query(`
+        const ins = await client.query(`
           INSERT INTO pagos_contrato (contrato_id, mes_correspondiente, periodo_hasta, monto, metodo_pago, referencia, fecha_pago, usuario_id, notas)
-          VALUES ($1,$2,$2,$3,'pse_online',$4,CURRENT_DATE,$5,$6)
+          VALUES ($1,$2,$2,$3,'pse_online',$4,CURRENT_DATE,$5,$6) RETURNING id
         `, [registro.entidad_id, mes, valorCuota, referencia, usuario_id, notas])
+        primerPagoId = primerPagoId || ins.rows[0].id
+      }
+      if (meses.length) {
+        await contabilizarEvento(client, {
+          evento_codigo: 'CONTRATO_PAGO_CUOTA',
+          montos: { total: valorCuota * meses.length },
+          forma_pago_codigo: 'pse',
+          concepto: `Pago en línea contrato ${cont.numero} — ${meses.join(', ')}`,
+          tercero_id: cont.contratante_id, sede_id: cont.sede_id,
+          documento_origen_tipo: 'pagos_contrato', documento_origen_id: primerPagoId, usuario_id,
+        })
       }
 
       const nuevaMora = Math.max(0, Number(cont.meses_mora) - meses.length)

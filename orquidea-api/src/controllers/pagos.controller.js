@@ -15,6 +15,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolverSede, polizaPermitida, contratoPermitido } from '../utils/sede.js'
 import { contabilizarEvento, reversarComprobante } from '../services/contabilidad.service.js'
+import { diaAncla, normalizarInicio, primerPeriodoAPagar, listarPeriodos, siguientePeriodo } from '../utils/periodosPoliza.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SOPORTES_DIR = path.join(__dirname, '..', 'uploads', 'soportes')
@@ -140,6 +141,7 @@ export async function listar(req, reply) {
   if (tipo === 'POLIZA') {
     const res = await pool.query(`
       SELECT
+        pp.tipo, pp.beneficiario_id, p.fecha_inicio AS poliza_fecha_inicio,
         pp.id,
         pp.numero_recibo,
         pp.fecha_pago,
@@ -191,7 +193,13 @@ export async function listar(req, reply) {
         AND ($5::uuid[] IS NULL OR p.sede_id = ANY($5::uuid[]))
     `, [busca, desde, hasta, incAnulados, sedeIds])
 
-    return reply.send({ data: res.rows, total: Number(cnt.rows[0].count) })
+    // Periodo de cada pago contado desde la afiliación ("Jun–Jul 2026")
+    const data = res.rows.map(r => ({
+      ...r,
+      periodo: r.tipo === 'AFILIACION' ? 'Afiliación'
+        : normalizarInicio(r.mes_correspondiente, diaAncla({ fecha_inicio: r.poliza_fecha_inicio })).etiqueta,
+    }))
+    return reply.send({ data, total: Number(cnt.rows[0].count) })
   }
 
   // tipo = CONTRATO
@@ -258,75 +266,59 @@ export async function registrarPagoPoliza(req, reply) {
   if (pol.estado === 'EJECUTADA') return reply.status(400).send({ error: 'La póliza fue ejecutada (servicio prestado)' })
 
   const valorCuota = Number(pol.valor_cuota)
+  const dia = diaAncla(pol)
 
-  // Meses que ya tienen un pago registrado — para nunca duplicar ni chocar
-  // con la restricción única (poliza_id, mes_correspondiente).
+  // Periodos que ya tienen una cuota vigente — para nunca duplicar ni chocar
+  // con el índice único (poliza_id, mes_correspondiente) de cuotas.
   const yaPagados = await pool.query(
-    `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-01') AS mes FROM pagos_poliza WHERE poliza_id=$1 AND NOT anulado`,
+    `SELECT TO_CHAR(mes_correspondiente,'YYYY-MM-DD') AS ini FROM pagos_poliza
+     WHERE poliza_id=$1 AND tipo='CUOTA' AND NOT anulado`,
     [poliza_id]
   )
-  const setPagados = new Set(yaPagados.rows.map(r => r.mes))
+  const setPagados = new Set(yaPagados.rows.map(r => r.ini))
 
-  // ── Modo "meses_seleccionados": el usuario activó/desactivó meses puntuales
-  // desde el frontend (checkboxes) — el servidor solo valida que ninguno de
-  // los elegidos esté ya pagado y calcula el sobrante contra monto_total.
-  let mesesAPagar = []
+  // Los pagos cubren PERIODOS contados desde el día de afiliación (ver
+  // utils/periodosPoliza.js), no meses de calendario.
+  let periodosAPagar = []
   let sobrante = 0
 
   if (Array.isArray(meses_seleccionados) && meses_seleccionados.length) {
-    const normalizados = meses_seleccionados.map(m => m.slice(0, 7) + '-01')
-    const chocan = normalizados.filter(m => setPagados.has(m))
+    // ── Selección manual desde el frontend (lista de periodos marcados)
+    const elegidos = new Map()
+    for (const m of meses_seleccionados) { const p = normalizarInicio(m, dia); elegidos.set(p.iso, p) }
+    const chocan = [...elegidos.values()].filter(p => setPagados.has(p.iso))
     if (chocan.length) {
-      return reply.status(409).send({ error: `Ya existe un pago para: ${chocan.join(', ')}. Actualiza la lista e inténtalo de nuevo.` })
+      return reply.status(409).send({ error: `Ya existe un pago para: ${chocan.map(p => p.etiqueta).join(', ')}. Actualiza la lista e inténtalo de nuevo.` })
     }
-    mesesAPagar = [...new Set(normalizados)].sort()
-    const total = monto_total != null ? Number(monto_total) : mesesAPagar.length * valorCuota
-    sobrante = Math.round((total - mesesAPagar.length * valorCuota) * 100) / 100
+    periodosAPagar = [...elegidos.values()].sort((a, b) => a.iso.localeCompare(b.iso))
+    const total = monto_total != null ? Number(monto_total) : periodosAPagar.length * valorCuota
+    sobrante = Math.round((total - periodosAPagar.length * valorCuota) * 100) / 100
     if (sobrante < 0.5) sobrante = 0
   } else if (monto_total != null) {
-    // ── Modo automático: sin selección manual, se calculan los siguientes
-    // meses libres a partir de pago_hasta, saltando cualquiera ya pagado.
+    // ── Por monto: los siguientes periodos libres desde el primero a pagar
     const total = Number(monto_total)
     if (!(total > 0)) return reply.status(400).send({ error: 'monto_total debe ser mayor a 0' })
-    const mesesCompletos = Math.floor((total + 0.005) / valorCuota)
-    sobrante = Math.round((total - mesesCompletos * valorCuota) * 100) / 100
+    const completos = Math.floor((total + 0.005) / valorCuota)
+    sobrante = Math.round((total - completos * valorCuota) * 100) / 100
     if (sobrante < 0.5) sobrante = 0
-
-    const pagoHastaActual = pol.pago_hasta || pol.fecha_inicio
-    const cursor = new Date(pagoHastaActual)
-    cursor.setDate(1)
-    const hoyMes = new Date(); hoyMes.setDate(1)
-    if (cursor <= hoyMes) cursor.setFullYear(hoyMes.getFullYear(), hoyMes.getMonth(), 1)
-
-    while (mesesAPagar.length < mesesCompletos) {
-      const iso = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-01`
-      if (!setPagados.has(iso)) mesesAPagar.push(iso)
-      cursor.setMonth(cursor.getMonth() + 1)
-    }
-    if (mesesCompletos < 1 && sobrante === 0) {
+    periodosAPagar = listarPeriodos(primerPeriodoAPagar(pol), completos, dia, setPagados)
+    if (completos < 1 && sobrante === 0) {
       return reply.status(400).send({ error: `El monto no alcanza para cubrir ni un abono parcial (cuota: $${valorCuota.toLocaleString('es-CO')})` })
     }
   } else {
-    // ── Modo legado: N meses contiguos desde pago_hasta (compatibilidad)
-    const pagoHastaActual = pol.pago_hasta || pol.fecha_inicio
-    const cursor = new Date(pagoHastaActual)
-    cursor.setDate(1)
-    const hoyMes = new Date(); hoyMes.setDate(1)
-    if (cursor <= hoyMes) cursor.setFullYear(hoyMes.getFullYear(), hoyMes.getMonth(), 1)
-    const n = Number(meses || 1)
-    for (let i = 0; i < n; i++) {
-      mesesAPagar.push(`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-01`)
-      cursor.setMonth(cursor.getMonth() + 1)
-    }
+    // ── N periodos seguidos (Cartera)
+    periodosAPagar = listarPeriodos(primerPeriodoAPagar(pol), Number(meses || 1), dia, setPagados)
   }
+  const mesesAPagar = periodosAPagar.map(p => p.iso)
 
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
 
     let primerRecibo = null
-    for (let i = 0; i < mesesAPagar.length; i++) {
-      const mes = mesesAPagar[i]
+    for (let i = 0; i < periodosAPagar.length; i++) {
+      const periodo = periodosAPagar[i]
+      const mes = periodo.iso
       // El descuento/recargo de mora se aplica UNA sola vez (última cuota del
       // lote) — repetirlo en cada mes multiplicaría el descuento real pagado
       // por la cantidad de meses cubiertos en este mismo recibo.
@@ -336,12 +328,12 @@ export async function registrarPagoPoliza(req, reply) {
           poliza_id, mes_correspondiente, periodo_hasta, monto,
           descuento, recargo_mora, metodo_pago, referencia,
           fecha_pago, cobrador_id, usuario_id, notas
-        ) VALUES ($1,$2,$2,$3,$4,$5,$6,$7,CURRENT_DATE,$8,$8,$9)
+        ) VALUES ($1,$2,$10,$3,$4,$5,$6,$7,CURRENT_DATE,$8,$8,$9)
         RETURNING *, numero_recibo
       `, [
         poliza_id, mes, valorCuota,
         esUltimo ? descuento : 0, esUltimo ? recargo_mora : 0,
-        metodo_pago, referencia || null, usuario_id, notas || null,
+        metodo_pago, referencia || null, usuario_id, notas || null, periodo.fin_iso,
       ])
       if (!primerRecibo) primerRecibo = ins.rows[0]
     }
@@ -351,10 +343,7 @@ export async function registrarPagoPoliza(req, reply) {
 
     let nuevoPagoHasta = null
     if (mesesCompletos >= 1) {
-      const ultimoMes = mesesAPagar[mesesAPagar.length - 1]
-      nuevoPagoHasta = new Date(ultimoMes)
-      nuevoPagoHasta.setMonth(nuevoPagoHasta.getMonth() + 1)
-      nuevoPagoHasta.setDate(0) // último día del mes cubierto más reciente
+      nuevoPagoHasta = periodosAPagar[periodosAPagar.length - 1].fin_iso   // fin del último periodo pagado
 
       // Actualizar póliza — regla PREPAGO (fn_estado_poliza): 0=VIGENTE, 1+=SUSPENDIDA, 6+=VENCIDA
       await client.query(`
@@ -370,7 +359,7 @@ export async function registrarPagoPoliza(req, reply) {
           actualizado = NOW()
         WHERE id = $3
       `, [
-        `${nuevoPagoHasta.getFullYear()}-${String(nuevoPagoHasta.getMonth()+1).padStart(2,'0')}-${String(nuevoPagoHasta.getDate()).padStart(2,'0')}`,
+        nuevoPagoHasta,
         nuevaMora,
         poliza_id,
         nuevaMora,
@@ -382,48 +371,48 @@ export async function registrarPagoPoliza(req, reply) {
     // descuenta meses_mora, porque esa cuota sigue incompleta).
     let abonoParcial = null
     if (sobrante > 0) {
-      let mesAbonoIso = mes_abono ? mes_abono.slice(0,7) + '-01' : null
-      if (!mesAbonoIso) {
-        const cursor = mesesAPagar.length
-          ? new Date(mesesAPagar[mesesAPagar.length - 1])
-          : (() => { const d = new Date(pol.pago_hasta || pol.fecha_inicio); d.setDate(1); return d })()
-        if (mesesAPagar.length) cursor.setMonth(cursor.getMonth() + 1)
-        while (setPagados.has(`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-01`)) {
-          cursor.setMonth(cursor.getMonth() + 1)
-        }
-        mesAbonoIso = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-01`
-      }
+      // A cuenta del siguiente periodo libre (o el que eligió el cajero)
+      const pAbono = mes_abono
+        ? normalizarInicio(mes_abono, dia)
+        : listarPeriodos(
+            periodosAPagar.length ? siguientePeriodo(periodosAPagar[periodosAPagar.length - 1], dia) : primerPeriodoAPagar(pol),
+            1, dia, setPagados)[0]
+      const mesAbonoIso = pAbono.iso
       if (setPagados.has(mesAbonoIso) || mesesAPagar.includes(mesAbonoIso)) {
         await client.query('ROLLBACK')
-        return reply.status(409).send({ error: `El mes de abono parcial (${mesAbonoIso}) ya tiene un pago registrado.` })
+        return reply.status(409).send({ error: `El periodo de abono parcial (${pAbono.etiqueta}) ya tiene un pago registrado.` })
       }
 
       const abonoIns = await client.query(`
         INSERT INTO pagos_poliza (
           poliza_id, mes_correspondiente, periodo_hasta, monto,
           metodo_pago, referencia, fecha_pago, cobrador_id, usuario_id, notas
-        ) VALUES ($1,$2,$2,$3,$4,$5,CURRENT_DATE,$6,$6,$7)
+        ) VALUES ($1,$2,$8,$3,$4,$5,CURRENT_DATE,$6,$6,$7)
         RETURNING *, numero_recibo
       `, [
         poliza_id, mesAbonoIso, sobrante, metodo_pago, referencia || null, usuario_id,
         `Abono parcial a cuenta de la cuota (faltan $${(valorCuota - sobrante).toLocaleString('es-CO')} de $${valorCuota.toLocaleString('es-CO')})${notas ? ' — ' + notas : ''}`,
+        pAbono.fin_iso,
       ])
-      abonoParcial = { ...abonoIns.rows[0], mes: mesAbonoIso, falta: valorCuota - sobrante }
+      abonoParcial = { ...abonoIns.rows[0], mes: mesAbonoIso, periodo: pAbono.etiqueta, falta: valorCuota - sobrante }
     }
 
     const montoMeses = valorCuota * mesesCompletos
     const totalRecibido = montoMeses + sobrante - Number(descuento) + Number(recargo_mora)
 
-    if (totalRecibido > 0 && primerRecibo) {
+    // Antes solo se contabilizaba si hubo al menos una cuota completa: un
+    // abono parcial solo entraba a caja sin asiento.
+    const reciboContable = primerRecibo || abonoParcial
+    if (totalRecibido > 0 && reciboContable) {
       await contabilizarEvento(client, {
         evento_codigo: 'PAGO_CUOTA_POLIZA',
         montos: { total: totalRecibido },
         forma_pago_codigo: metodo_pago,
-        concepto: `Pago póliza ${pol.numero} — ${mesesAPagar.length ? mesesAPagar.join(', ') : 'abono parcial'}`,
+        concepto: `Pago póliza ${pol.numero} — ${periodosAPagar.length ? periodosAPagar.map(p => p.etiqueta).join(', ') : 'abono parcial ' + abonoParcial.periodo}`,
         tercero_id: pol.titular_id,
         sede_id: pol.sede_id,
         documento_origen_tipo: 'pagos_poliza',
-        documento_origen_id: primerRecibo.id,
+        documento_origen_id: reciboContable.id,
         usuario_id,
       })
     }
@@ -435,6 +424,7 @@ export async function registrarPagoPoliza(req, reply) {
       numero_recibo: primerRecibo?.numero_recibo || null,
       meses_pagados: mesesCompletos,
       meses_pagados_lista: mesesAPagar,
+      periodos_pagados: periodosAPagar.map(p => ({ inicio: p.iso, fin: p.fin_iso, etiqueta: p.etiqueta })),
       monto: montoMeses,
       abono_parcial: abonoParcial,
       descuento, recargo_mora,
@@ -686,6 +676,17 @@ export async function anularPagoPoliza(req, reply) {
     )
     if (comprobante.rows.length) {
       await reversarComprobante(client, comprobante.rows[0].id, { motivo: motivo || 'Anulación de pago', usuario_id: req.user.id })
+    }
+
+    // Afiliación anulada: vuelve a quedar pendiente; no mueve periodos ni mora
+    if (pg.tipo === 'AFILIACION') {
+      if (pg.beneficiario_id) {
+        await client.query(`UPDATE poliza_beneficiarios SET afiliacion_pagada = FALSE WHERE id = $1`, [pg.beneficiario_id])
+      } else {
+        await client.query(`UPDATE polizas SET afiliacion_pagada = FALSE, afiliacion_fecha_pago = NULL, actualizado = NOW() WHERE id = $1`, [pg.poliza_id])
+      }
+      await client.query('COMMIT')
+      return reply.send({ ok: true })
     }
 
     // Revertir pago_hasta al día anterior al mes de la cuota anulada (nunca lo

@@ -18,6 +18,7 @@
  */
 import { jsPDF } from 'jspdf'
 import { getLogoDataUrl, dibujarLogoPDF } from './logo.js'
+import { diaAncla, normalizarInicio } from './periodosPoliza.js'
 
 const fmtCOP = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(v || 0)
 const fmtFecha = d => d ? new Date(d).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric', timeZone:'UTC' }) : '—'
@@ -57,7 +58,7 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa }) {
 
   // ── Título + N° recibo ────────────────────────────────────────────────
   doc.setFont('helvetica','bold'); doc.setFontSize(11.5); doc.setTextColor(...BLACK)
-  doc.text('RECIBO DE PAGO', PL, y)
+  doc.text(pago.tipo === 'AFILIACION' ? 'RECIBO DE AFILIACIÓN' : 'RECIBO DE PAGO', PL, y)
   doc.setFontSize(10)
   doc.text(`N.° ${String(pago.numero_recibo).padStart(6,'0')}`, W - PR, y, { align:'right' })
   y += 2
@@ -74,9 +75,13 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa }) {
   }
   fila('Póliza N.°', poliza.numero_legado || poliza.numero)
   fila('Titular', poliza.titular_nombre)
-  fila('Período cubierto', pago.periodo_hasta && pago.mes_correspondiente
-    ? `${fmtFecha(pago.mes_correspondiente)}  -  ${fmtFecha(pago.periodo_hasta)}`
-    : fmtFecha(pago.mes_correspondiente))
+  if (pago.tipo === 'AFILIACION') {
+    fila('Concepto', `Afiliación${pago.beneficiario_nombre ? ' — ' + pago.beneficiario_nombre : ' del titular'}`)
+  } else {
+    // Periodo contado desde el día de afiliación: "Jun–Jul 2026 (15 jun 2026 - 14 jul 2026)"
+    const per = normalizarInicio(pago.mes_correspondiente, diaAncla(poliza))
+    fila('Período cubierto', `${per.etiqueta}  (${fmtFecha(per.iso)}  -  ${fmtFecha(per.fin_iso)})`)
+  }
 
   y += 2
 

@@ -34,6 +34,12 @@ import { imprimirConsentimientoBeneficiario } from '../../utils/consentimientoBe
 import { imprimirAvisoCesionPoliza, imprimirAutorizacionCambioTitular } from '../../utils/avisoCesionPoliza.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
 import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
+import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio } from '../../utils/periodosPoliza.js'
+
+// Etiqueta de un pago de póliza: periodo ("Jun–Jul 2026") o afiliación
+const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
+  ? `Afiliación${pago.beneficiario_nombre ? ' · ' + pago.beneficiario_nombre : ' · titular'}`
+  : normalizarInicio(pago.mes_correspondiente, diaAncla(poliza)).etiqueta
 import { archivoUrl } from '../../utils/archivoUrl.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -46,30 +52,6 @@ const mesLabel= (d) => { if (!d) return '—'; const f=new Date(d); return `${ME
 // Replica la misma regla del backend (pagos.controller.js → registrarPagoPoliza)
 // para saber desde qué mes empieza a aplicar el próximo pago: si la póliza ya
 // está al día o adelantada, arranca desde el mes actual; si no, desde pago_hasta.
-function calcularMesDesde(poliza) {
-  const base = poliza?.pago_hasta || poliza?.fecha_inicio
-  if (!base) return null
-  const d = new Date(base)
-  let anio = d.getUTCFullYear()
-  let mes  = d.getUTCMonth()
-  const hoy = new Date()
-  const ts    = anio*12 + mes
-  const tsHoy = hoy.getFullYear()*12 + hoy.getMonth()
-  if (ts <= tsHoy) { anio = hoy.getFullYear(); mes = hoy.getMonth() }
-  return { anio, mes }
-}
-
-function listarMesesDesde(start, n) {
-  if (!start) return []
-  let { anio, mes } = start
-  const out = []
-  for (let i = 0; i < n; i++) {
-    out.push({ iso: `${anio}-${String(mes+1).padStart(2,'0')}-01`, label: `${MESES[mes]} ${anio}` })
-    mes++; if (mes > 11) { mes = 0; anio++ }
-  }
-  return out
-}
-
 const ESTADO_META = {
   VIGENTE:    { label:'Vigente',    color:'#059669', bg:'#D1FAE5' },
   SUSPENDIDA: { label:'Suspendida', color:'#F59E0B', bg:'#FEF3C7' },
@@ -582,9 +564,11 @@ function ModalPago({ poliza, onClose, onSaved }) {
   const { formas, label: fmtMetodo } = useFormasPago()
 
   const cuota = Number(poliza.valor_cuota) || 0
-  const mesDesde = calcularMesDesde(poliza)
-  const mesesPendientes = listarMesesDesde(mesDesde, 18)
-  const mesSugerido = mesesPendientes[0]?.iso || `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`
+  // Periodos contados desde el día de afiliación ("Jun–Jul 2026": 15 jun → 14 jul)
+  const dia = diaAncla(poliza)
+  const primerPeriodo = primerPeriodoAPagar(poliza)
+  const mesesPendientes = listarPeriodos(primerPeriodo, 18, dia).map(p => ({ iso: p.iso, label: `${p.etiqueta} (${p.iso.slice(8)}/${p.iso.slice(5,7)} → ${p.fin_iso.slice(8)}/${p.fin_iso.slice(5,7)})` }))
+  const mesSugerido = mesesPendientes[0]?.iso
 
   const [modo, setModo] = useState('mes') // 'mes' | 'monto'
   const [form, setForm] = useState({
@@ -610,24 +594,14 @@ function ModalPago({ poliza, onClose, onSaved }) {
   useEffect(() => {
     api.get(`/polizas/${poliza.id}`).then(res => {
       const pagos = res.data?.data?.pagos || []
-      setMesesPagadosSet(new Set(pagos.filter(p => !p.anulado).map(p => p.mes_correspondiente.slice(0,10))))
+      setMesesPagadosSet(new Set(pagos.filter(p => !p.anulado && p.tipo !== 'AFILIACION').map(p => p.mes_correspondiente.slice(0,10))))
     }).catch(() => {})
   }, [poliza.id])
 
   const formaSel = formas.find(f => f.codigo === form.metodo_pago) || null
 
-  // Candidatos: próximos meses libres (saltando los ya pagados) a partir de mesDesde
-  const candidatos = (() => {
-    if (!mesDesde) return []
-    const out = []
-    let { anio, mes } = mesDesde
-    while (out.length < 24) {
-      const iso = `${anio}-${String(mes+1).padStart(2,'0')}-01`
-      if (!mesesPagadosSet.has(iso)) out.push({ iso, label: `${MESES[mes]} ${anio}` })
-      mes++; if (mes>11){mes=0;anio++}
-    }
-    return out
-  })()
+  // Candidatos: próximos periodos libres (saltando los ya pagados)
+  const candidatos = listarPeriodos(primerPeriodo, 24, dia, mesesPagadosSet).map(p => ({ iso: p.iso, label: p.etiqueta }))
 
   // Previsualización del reparto: cuántos meses completos cubre + abono parcial sobrante.
   const total = Number(montoTotal)
@@ -678,7 +652,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
       let res
       if (modo === 'monto') {
         if (!(Number(montoTotal) > 0)) { setSaving(false); return setErr('Ingresa un monto mayor a 0') }
-        if (preview?.sobranteAlcanzaOtroMes) { setSaving(false); return setErr('El sobrante alcanza para otro mes completo — actívalo en la lista antes de registrar el pago.') }
+        if (preview?.sobranteAlcanzaOtroMes) { setSaving(false); return setErr('El sobrante alcanza para otro periodo completo — actívalo en la lista antes de registrar el pago.') }
         res = await api.post('/pagos/poliza', {
           poliza_id: poliza.id,
           monto_total: Number(montoTotal),
@@ -697,11 +671,11 @@ function ModalPago({ poliza, onClose, onSaved }) {
         }
         const p = res.data
         if (p.meses_pagados > 0 && p.abono_parcial) {
-          toast.success(`Pago registrado: ${p.meses_pagados} mes(es) completo(s) + abono parcial de ${fmt(p.abono_parcial.monto)} para ${mesLabel(p.abono_parcial.mes)}`)
+          toast.success(`Pago registrado: ${p.meses_pagados} periodo(s) completo(s) + abono parcial de ${fmt(p.abono_parcial.monto)} para ${p.abono_parcial.periodo}`)
         } else if (p.meses_pagados > 0) {
-          toast.success(`Pago registrado: ${p.meses_pagados} mes(es) completo(s) cubierto(s)`)
+          toast.success(`Pago registrado: ${(p.periodos_pagados || []).map(x => x.etiqueta).join(', ') || p.meses_pagados + ' periodo(s)'}`)
         } else {
-          toast.success(`Abono parcial de ${fmt(p.abono_parcial.monto)} registrado para ${mesLabel(p.abono_parcial.mes)}`)
+          toast.success(`Abono parcial de ${fmt(p.abono_parcial.monto)} registrado para ${p.abono_parcial.periodo}`)
         }
       } else {
         res = await api.post(`/polizas/${poliza.id}/pagos`, form)
@@ -727,7 +701,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
         <div className="pl-mhead">
           <div>
             <div className="pl-mtitle">Registrar pago — Póliza #{poliza.numero}</div>
-            <div className="pl-msub">{poliza.titular_nombre} · Cuota: {fmt(poliza.valor_cuota)}/mes</div>
+            <div className="pl-msub">{poliza.titular_nombre} · Cuota: {fmt(poliza.valor_cuota)}/periodo</div>
           </div>
           <button className="pl-mclose" onClick={onClose}><X size={16}/></button>
         </div>
@@ -745,20 +719,20 @@ function ModalPago({ poliza, onClose, onSaved }) {
               style={{ flex:1, padding:'9px 12px', borderRadius:10, cursor:'pointer', fontSize:12.5, fontWeight:700,
                 border: modo==='mes' ? '1.5px solid #6366F1' : '1.5px solid #E2E5F0',
                 background: modo==='mes' ? '#EEF2FF' : '#fff', color: modo==='mes' ? '#4338CA' : '#6B7280' }}>
-              Un mes específico
+              Un periodo
             </button>
             <button type="button" onClick={() => setModo('monto')}
               style={{ flex:1, padding:'9px 12px', borderRadius:10, cursor:'pointer', fontSize:12.5, fontWeight:700,
                 border: modo==='monto' ? '1.5px solid #6366F1' : '1.5px solid #E2E5F0',
                 background: modo==='monto' ? '#EEF2FF' : '#fff', color: modo==='monto' ? '#4338CA' : '#6B7280' }}>
-              Monto total (varios meses)
+              Monto total (varios periodos)
             </button>
           </div>
 
           {modo === 'mes' ? (
             <div className="pl-grid2">
               <div className="pl-field">
-                <label>Mes que cubre <span className="pl-req">*</span></label>
+                <label>Periodo que cubre <span className="pl-req">*</span></label>
                 <select value={form.mes_correspondiente}
                   onChange={e => setForm(p => ({...p, mes_correspondiente: e.target.value}))}>
                   {mesesPendientes.map((m, i) => (
@@ -784,7 +758,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
               {candidatos.length > 0 && (
                 <div style={{ marginTop:10 }}>
                   <div style={{ fontSize:11.5, color:'#6B7280', fontWeight:700, marginBottom:6 }}>
-                    Activa o desactiva los meses a pagar:
+                    Activa o desactiva los periodos a pagar:
                   </div>
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6, maxHeight:130, overflowY:'auto', padding:2 }}>
                     {candidatos.map(m => {
@@ -811,14 +785,14 @@ function ModalPago({ poliza, onClose, onSaved }) {
                   borderRadius:9, fontSize:12.5, color:'#5B21B6', lineHeight:1.6 }}>
                   {preview.mesesCompletos > 0 ? (
                     <div>
-                      ✅ Se pagarán <strong>{preview.mesesCompletos} mes{preview.mesesCompletos>1?'es':''}</strong> ({fmt(cuota)} c/u = {fmt(preview.mesesCompletos*cuota)})
+                      ✅ Se pagarán <strong>{preview.mesesCompletos} periodo{preview.mesesCompletos>1?'s':''}</strong> ({fmt(cuota)} c/u = {fmt(preview.mesesCompletos*cuota)})
                     </div>
                   ) : (
-                    <div>Ningún mes activo — todo el monto se registrará como abono parcial</div>
+                    <div>Ningún periodo activo — todo el monto se registrará como abono parcial</div>
                   )}
                   {preview.sobrante > 0 && preview.sobranteAlcanzaOtroMes ? (
                     <div style={{ marginTop:6, color:'#B45309' }}>
-                      ⚠️ Sobran <strong>{fmt(preview.sobrante)}</strong> — eso alcanza para otro mes completo. Actívalo en la lista de arriba.
+                      ⚠️ Sobran <strong>{fmt(preview.sobrante)}</strong> — eso alcanza para otro periodo completo. Actívalo en la lista de arriba.
                     </div>
                   ) : preview.sobrante > 0 && preview.mesAbono && (
                     <div style={{ marginTop:6 }}>
@@ -1286,13 +1260,26 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
   const cobrarAfiliacion = async () => {
     setCobrandoAfiliacion(true)
     try {
-      await api.post(`/polizas/${id}/cobrar-afiliacion`, { metodo_pago: 'efectivo' })
-      toast.success('Costo de afiliación cobrado')
+      const r = await api.post(`/polizas/${id}/cobrar-afiliacion`, { metodo_pago: 'efectivo' })
+      toast.success(`Afiliación cobrada — recibo N° ${String(r.data.numero_recibo).padStart(6,'0')}`)
+      imprimirReciboPagoPoliza({ pago: { ...r.data.pago, tipo: 'AFILIACION' }, poliza: data, empresa: empresaInfo })
       cargar()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error al cobrar la afiliación')
     } finally {
       setCobrandoAfiliacion(false)
+    }
+  }
+
+  // Afiliación de un beneficiario que entró después del titular
+  const cobrarAfiliacionBen = async (b) => {
+    try {
+      const r = await api.post(`/polizas/${id}/beneficiarios/${b.id}/cobrar-afiliacion`, { metodo_pago: 'efectivo' })
+      toast.success(`Afiliación de ${b.nombre} cobrada — recibo N° ${String(r.data.numero_recibo).padStart(6,'0')}`)
+      imprimirReciboPagoPoliza({ pago: { ...r.data.pago, tipo: 'AFILIACION', beneficiario_nombre: b.nombre }, poliza: data, empresa: empresaInfo })
+      cargar()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al cobrar la afiliación')
     }
   }
 
@@ -1709,7 +1696,27 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                           )}
                           {b.ejecutado && <span style={{ color:'#EF4444', fontWeight:700 }}>✓ Ejecutado {fmtDate(b.fecha_ejecucion)}</span>}
                         </div>
+                        {b.fecha_afiliacion && !b.ejecutado && (
+                          <div style={{ fontSize:11, color:'#6B7280', marginTop:4, display:'flex', gap:8, flexWrap:'wrap' }}>
+                            <span>Afiliado: {fmtDate(b.fecha_afiliacion)}</span>
+                            <span style={{ color: b.en_carencia ? '#B45309' : '#047857', fontWeight:700 }}>
+                              {b.en_carencia ? `En carencia hasta ${fmtDate(b.fecha_fin_carencia)}` : '✓ Cubierto'}
+                            </span>
+                            {Number(b.costo_afiliacion) > 0 && (
+                              <span style={{ color: b.afiliacion_pagada ? '#047857' : '#B91C1C', fontWeight:700 }}>
+                                Afiliación {fmt(b.costo_afiliacion)} · {b.afiliacion_pagada ? 'pagada' : 'pendiente'}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
+                      {b.id && Number(b.costo_afiliacion) > 0 && !b.afiliacion_pagada && esEditor && (
+                        <button onClick={() => cobrarAfiliacionBen(b)} title="Cobrar afiliación de este beneficiario"
+                          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, fontWeight:700, color:'#B45309',
+                            background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:8, padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
+                          <DollarSign size={12}/> Cobrar afiliación
+                        </button>
+                      )}
                       {b.cobertura_basica && (
                         <button onClick={() => imprimirConsentimiento(b)} title="Imprimir consentimiento para firma del titular"
                           style={{ width:30, height:30, borderRadius:8, border:'1.5px solid #FDE68A',
@@ -1805,9 +1812,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                         </div>
                         <div style={{ fontSize:11.5, color:'#6B7280', marginTop:3, display:'flex', flexWrap:'wrap', gap:6, alignItems:'center' }}>
                           <span style={{ background:'#EEF2FF', color:'#4F46E5', fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6 }}>
-                            {p.periodo_hasta && (new Date(p.periodo_hasta) - new Date(p.mes_correspondiente)) > 45*86400000
-                              ? `${fmtDate(p.mes_correspondiente)} → ${fmtDate(p.periodo_hasta)}`
-                              : mesLabel(p.mes_correspondiente)}
+                            {periodoLabel(p, data)}
                           </span>
                           <span>{fmtMetodo(p.metodo_pago)}</span>
                           <span>·</span>
@@ -2067,7 +2072,7 @@ function ModalAnularPago({ pago, poliza, onClose, onAnulado }) {
               <AlertTriangle size={14}/> Esta acción no se puede deshacer
             </div>
             Se anulará el pago de <strong>{new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(pago.monto)}</strong>
-            {' '}del mes <strong>{new Date(pago.mes_correspondiente).toLocaleDateString('es-CO',{ month:'long', year:'numeric', timeZone:'UTC' })}</strong>.
+            {' '}de <strong>{periodoLabel(pago, poliza)}</strong>.
             Se reversa su registro contable y la póliza vuelve a deber ese mes. El pago queda en el historial como anulado, con tu nombre y el motivo.
           </div>
           <div className="pl-field" style={{ marginBottom:14 }}>

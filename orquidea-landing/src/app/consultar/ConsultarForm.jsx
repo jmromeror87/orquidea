@@ -327,7 +327,7 @@ export default function ConsultarForm({ waNumero = '573158786701' }) {
                   <thead className="bg-stone-50 text-stone-500">
                     <tr>
                       <th className="px-4 py-2 font-semibold">Recibo</th>
-                      <th className="px-4 py-2 font-semibold">Mes</th>
+                      <th className="px-4 py-2 font-semibold">Periodo</th>
                       <th className="px-4 py-2 font-semibold">Fecha de pago</th>
                       <th className="px-4 py-2 font-semibold">Método</th>
                       <th className="px-4 py-2 text-right font-semibold">Monto</th>
@@ -338,7 +338,7 @@ export default function ConsultarForm({ waNumero = '573158786701' }) {
                       <tr key={i}>
                         <td className="px-4 py-2 text-stone-600">#{p.numero_recibo}</td>
                         <td className="px-4 py-2 text-stone-600">
-                          {new Date(p.mes_correspondiente).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}
+                          {p.periodo || new Date(p.mes_correspondiente).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}
                         </td>
                         <td className="px-4 py-2 text-stone-600">{fmtFecha(p.fecha_pago)}</td>
                         <td className="px-4 py-2 text-stone-600">{METODO_LABEL[p.metodo_pago] || p.metodo_pago}</td>

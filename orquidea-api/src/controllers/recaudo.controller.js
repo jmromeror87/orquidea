@@ -16,6 +16,7 @@
  */
 import pool from '../config/database.js'
 import { resolverSede, rutaPermitida, ordenRecaudoPermitida } from '../utils/sede.js'
+import { aplicarPagoPolizaPorMonto } from '../services/pagosPoliza.service.js'
 
 // GET /api/recaudo/rutas-del-dia?fecha=YYYY-MM-DD
 // Lista las rutas que tienen cobro programado para esa fecha
@@ -444,6 +445,7 @@ export async function registrarVisitaDetalle(req, reply) {
 
     // 3. Si hubo cobro real → crear recibo + actualizar póliza + insertar en pagos_poliza
     let recibo = null
+    let aplicado = null
     if (['COBRADO', 'PARCIAL', 'PROMESA'].includes(resultado)) {
       const saldo_anterior = Number(valor_cuota) * Number(meses_mora || 0)
       const saldo_nuevo    = Math.max(0, saldo_anterior - Number(valor_cobrado))
@@ -463,12 +465,13 @@ export async function registrarVisitaDetalle(req, reply) {
       ])
       recibo = rRes.rows[0]
 
-      // 4. Pago real → fn_aplicar_pago_poliza (fuente única de verdad)
+      // 4. Pago real → mismo cálculo por periodos que Cartera, con contabilidad
+      //    (la función SQL fn_aplicar_pago_poliza no movía pago_hasta ni contabilizaba)
       if (['COBRADO', 'PARCIAL'].includes(resultado) && Number(valor_cobrado) > 0) {
-        await client.query(
-          `SELECT fn_aplicar_pago_poliza($1,$2,$3,$4,$4,$5)`,
-          [poliza_id, valor_cobrado, metodo_pago, recaudador_id, observaciones || null]
-        )
+        aplicado = await aplicarPagoPolizaPorMonto(client, {
+          poliza_id, monto: valor_cobrado, metodo_pago, usuario_id: recaudador_id,
+          cobrador_id: recaudador_id, notas: observaciones || null,
+        })
       }
     }
 
@@ -539,7 +542,8 @@ export async function registrarVisitaDetalle(req, reply) {
         saldo_anterior:    Number(pol.saldo_mora || 0),
         metodo_pago,
         fecha_promesa:     fecha_promesa || null,
-        pago_hasta_nuevo:  pol.pago_hasta,
+        pago_hasta_nuevo:  aplicado?.pago_hasta || pol.pago_hasta,
+        periodos_pagados:  (aplicado?.periodos || []).map(p => p.etiqueta),
         // Recaudador
         recaudador:        pol.recaudador_nombre || 'Recaudador',
         observaciones:     observaciones || null,

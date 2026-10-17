@@ -383,8 +383,10 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
             <div className="pg-recibo-row"><span>Saldo anterior</span><span>{fmt(recibo.saldo_anterior)}</span></div>
             <div className="pg-recibo-row"><span>Saldo pendiente</span><span style={{fontWeight:700}}>{fmt(recibo.saldo_restante)}</span></div>
           </> : <>
-            <div className="pg-recibo-row"><span>Período</span><span>{mesLabel(recibo.recibo?.mes_correspondiente)} – {mesLabel(recibo.recibo?.periodo_hasta)}</span></div>
-            <div className="pg-recibo-row"><span>Meses</span><span>{meses}</span></div>
+            <div className="pg-recibo-row"><span>Período</span><span>{recibo.periodos_pagados?.length
+              ? recibo.periodos_pagados.map(p => p.etiqueta).join(', ')
+              : `${mesLabel(recibo.recibo?.mes_correspondiente)} – ${mesLabel(recibo.recibo?.periodo_hasta)}`}</span></div>
+            <div className="pg-recibo-row"><span>{tipo === 'POLIZA' ? 'Periodos' : 'Meses'}</span><span>{meses}</span></div>
           </>}
           <div className="pg-recibo-row">
             <span>Forma de pago</span>
@@ -503,9 +505,9 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
             </div>
           ) : (
           <div className="pg-field">
-            <label className="pg-label">Meses a pagar</label>
+            <label className="pg-label">{tipo === 'POLIZA' ? 'Periodos a pagar' : 'Meses a pagar'}</label>
             <select className="pg-select" value={meses} onChange={e => setMeses(Number(e.target.value))}>
-              {[1,2,3,4,5,6,12].map(m => <option key={m} value={m}>{m} mes{m!==1?'es':''}</option>)}
+              {[1,2,3,4,5,6,12].map(m => <option key={m} value={m}>{m} {tipo === 'POLIZA' ? `periodo${m!==1?'s':''}` : `mes${m!==1?'es':''}`}</option>)}
             </select>
           </div>
           )}
@@ -629,7 +631,7 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
               <span className="pg-resumen-valor">{fmt(sel.valor_cuota)}</span>
             </div>
             <div className="pg-resumen-row">
-              <span className="pg-resumen-label">× {meses} mes{meses!==1?'es':''}</span>
+              <span className="pg-resumen-label">× {meses} {tipo === 'POLIZA' ? `periodo${meses!==1?'s':''}` : `mes${meses!==1?'es':''}`}</span>
               <span className="pg-resumen-valor">{fmt(monto)}</span>
             </div>
             </>}
@@ -742,7 +744,7 @@ function TabHistorial() {
                     <div style={{fontSize:11,color:'#6B7280'}}>{r.telefono}</div>
                   </td>
                   <td><span style={{color:'#6366F1',fontWeight:700}}>N°{r.poliza_numero || r.contrato_numero}</span></td>
-                  <td style={{fontSize:12}}>{mesLabel(r.mes_correspondiente)}</td>
+                  <td style={{fontSize:12}}>{r.periodo || mesLabel(r.mes_correspondiente)}</td>
                   <td>
                     <span style={{display:'flex',alignItems:'center',gap:5,fontSize:12}}>
                       {METODO_ICON[r.metodo_pago]||<DollarSign size={13}/>}

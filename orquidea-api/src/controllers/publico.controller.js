@@ -17,6 +17,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import pool from '../config/database.js'
+import { diaAncla, normalizarInicio } from '../utils/periodosPoliza.js'
 
 // Estas rutas NO llevan verifyToken — son de solo lectura y sirven a la
 // landing page pública. Cada función selecciona a mano solo las columnas
@@ -170,7 +171,7 @@ export async function consultarEstado(req, reply) {
         ORDER BY t.nombres
       `, [pol.id]),
       pool.query(`
-        SELECT numero_recibo, mes_correspondiente, monto, fecha_pago, metodo_pago
+        SELECT numero_recibo, mes_correspondiente, monto, fecha_pago, metodo_pago, tipo
         FROM pagos_poliza
         WHERE poliza_id = $1 AND anulado = FALSE
         ORDER BY fecha_pago DESC
@@ -209,7 +210,11 @@ export async function consultarEstado(req, reply) {
           nombre: b.razon_social || `${b.nombres || ''} ${b.apellidos || ''}`.trim(),
           parentesco: b.parentesco,
         })),
-        pagos: pagoRows,
+        // Periodo de cobertura de cada pago ("Jun–Jul 2026"), contado desde la afiliación
+        pagos: pagoRows.map(pg => ({
+          ...pg,
+          periodo: pg.tipo === 'AFILIACION' ? 'Afiliación' : normalizarInicio(pg.mes_correspondiente, diaAncla(pol)).etiqueta,
+        })),
       },
     })
   }

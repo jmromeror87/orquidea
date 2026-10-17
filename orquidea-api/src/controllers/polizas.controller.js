@@ -15,6 +15,7 @@ import { enviarWhatsApp } from '../utils/whatsapp.js'
 import { enviarSMS } from '../utils/sms.js'
 import { contabilizarEvento } from '../services/contabilidad.service.js'
 import { ejecutarInventarioPendiente } from './servicios.controller.js'
+import { ymd, diaAncla, normalizarInicio, iso as isoFecha } from '../utils/periodosPoliza.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ const SELECT_LIST = `
     -- Beneficiarios count
     (SELECT COUNT(*) FROM poliza_beneficiarios pb WHERE pb.poliza_id = p.id AND pb.activo) AS total_beneficiarios,
     -- Pagos al día
-    (SELECT COUNT(*) FROM pagos_poliza pp WHERE pp.poliza_id = p.id AND NOT pp.anulado) AS total_pagos
+    (SELECT COUNT(*) FROM pagos_poliza pp WHERE pp.poliza_id = p.id AND pp.tipo = 'CUOTA' AND NOT pp.anulado) AS total_pagos
 `
 
 // ── Buscar póliza por titular (autocomplete para servicios) ──────────────
@@ -208,7 +209,9 @@ export async function obtener(req, reply) {
         t.numero_documento AS documento, t.telefono,
         td.sigla AS tipo_doc_sigla,
         t.fecha_nacimiento, t.rh,
-        DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad
+        DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad,
+        pb.fecha_afiliacion, pb.fecha_fin_carencia, (CURRENT_DATE < pb.fecha_fin_carencia) AS en_carencia,
+        pb.costo_afiliacion, pb.afiliacion_pagada
       FROM poliza_beneficiarios pb
       JOIN terceros t ON t.id = pb.tercero_id
       LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
@@ -227,7 +230,9 @@ export async function obtener(req, reply) {
         t.numero_documento AS documento, t.telefono,
         td.sigla AS tipo_doc_sigla,
         t.fecha_nacimiento, t.rh,
-        DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad
+        DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad,
+        NULL::date AS fecha_afiliacion, NULL::date AS fecha_fin_carencia, FALSE AS en_carencia,
+        0::numeric AS costo_afiliacion, TRUE AS afiliacion_pagada
       FROM servicios_funerarios sf
       JOIN terceros t ON t.id = sf.difunto_id
       LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
@@ -237,6 +242,8 @@ export async function obtener(req, reply) {
       ORDER BY creado_en`, [id]),
     pool.query(`
       SELECT pp.*, u.nombre AS cajero, ua.nombre AS anulado_por_nombre,
+        (SELECT COALESCE(tb.nombres||' '||tb.apellidos, tb.razon_social) FROM poliza_beneficiarios bb
+           JOIN terceros tb ON tb.id = bb.tercero_id WHERE bb.id = pp.beneficiario_id) AS beneficiario_nombre,
         -- Trazabilidad contable de la anulación: comprobante original y su nota de reverso
         (SELECT c.numero FROM comprobantes_contables c
           WHERE c.documento_origen_tipo = 'pagos_poliza' AND c.documento_origen_id = pp.id AND c.tipo <> 'REVERSION'
@@ -385,9 +392,10 @@ export async function crear(req, reply) {
         fecha_inicio, observaciones, usuario_id, sede_id, costo_afiliacion,
         servicios_incluidos, numero_legado
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)
-      RETURNING id, numero, costo_afiliacion, fecha_fin_carencia`,
+      RETURNING id, numero, costo_afiliacion, fecha_inicio, fecha_fin_carencia`,
       [
-        titular_id, plan_id, valor_cuota, dia_cobro,
+        // Periodos desde el día de afiliación: el día de cobro ES ese día
+        titular_id, plan_id, valor_cuota, ymd(fecha_inicio || new Date().toISOString().split('T')[0]).d,
         fecha_inicio || new Date().toISOString().split('T')[0],
         observaciones || null, req.user.id, sedeParaCrear(req), costoAfiliacion,
         JSON.stringify(serviciosPlanRes.rows), numero_legado || null,
@@ -407,10 +415,11 @@ export async function crear(req, reply) {
     // Insertar beneficiarios
     for (const ben of beneficiarios) {
       await db.query(`
-        INSERT INTO poliza_beneficiarios (poliza_id, tercero_id, parentesco)
-        VALUES ($1,$2,$3)
+        INSERT INTO poliza_beneficiarios (poliza_id, tercero_id, parentesco, fecha_afiliacion, fecha_fin_carencia)
+        VALUES ($1,$2,$3,$4,$5)
         ON CONFLICT (poliza_id, tercero_id) DO NOTHING`,
-        [polizaId, ben.tercero_id, ben.parentesco]
+        // Afiliados junto con el titular: misma fecha y carencia, sin afiliación aparte
+        [polizaId, ben.tercero_id, ben.parentesco, ins.rows[0].fecha_inicio, ins.rows[0].fecha_fin_carencia]
       )
       // Asignar rol BENEFICIARIO
       await db.query(`
@@ -444,36 +453,79 @@ export async function crear(req, reply) {
   } finally { db.release() }
 }
 
-// ── Cobrar costo de afiliación (primera vez) ────────────────────────────────
+// ── Afiliación (titular o beneficiario que entra después) ──────────────────
+// Se registra como un pago (pagos_poliza.tipo='AFILIACION'): número de recibo,
+// historial, contabilidad (AFILIACION_POLIZA → ingreso 417060.31) y anulable.
+// Antes solo marcaba la póliza como "afiliación pagada", sin recibo ni asiento.
+async function registrarAfiliacion(req, reply, { pol, beneficiario = null }) {
+  const { metodo_pago = 'efectivo', referencia = null } = req.body || {}
+  const monto = Number(beneficiario ? beneficiario.costo_afiliacion : pol.costo_afiliacion)
+  if (!(monto > 0)) return reply.code(400).send({ error: 'No hay costo de afiliación pendiente' })
+  if (beneficiario ? beneficiario.afiliacion_pagada : pol.afiliacion_pagada)
+    return reply.code(400).send({ error: 'La afiliación ya fue pagada' })
+
+  const db = await pool.connect()
+  try {
+    await db.query('BEGIN')
+    const ins = await db.query(`
+      INSERT INTO pagos_poliza (poliza_id, tipo, beneficiario_id, mes_correspondiente, periodo_hasta, monto,
+                                metodo_pago, referencia, fecha_pago, usuario_id, cobrador_id, notas)
+      VALUES ($1,'AFILIACION',$2,CURRENT_DATE,CURRENT_DATE,$3,$4,$5,CURRENT_DATE,$6,$6,$7)
+      RETURNING *, numero_recibo`,
+      [pol.id, beneficiario?.id || null, monto, metodo_pago, referencia || null, req.user.id,
+       beneficiario ? `Afiliación de beneficiario: ${beneficiario.nombre}` : 'Afiliación del titular']
+    )
+    if (beneficiario) {
+      await db.query(`UPDATE poliza_beneficiarios SET afiliacion_pagada = TRUE WHERE id = $1`, [beneficiario.id])
+    } else {
+      await db.query(`
+        UPDATE polizas SET afiliacion_pagada = TRUE, afiliacion_fecha_pago = CURRENT_DATE,
+          afiliacion_metodo_pago = $1, afiliacion_usuario_id = $2, actualizado = NOW()
+        WHERE id = $3`, [metodo_pago, req.user.id, pol.id])
+    }
+    await contabilizarEvento(db, {
+      evento_codigo: 'AFILIACION_POLIZA',
+      montos: { total: monto },
+      forma_pago_codigo: metodo_pago,
+      concepto: `Afiliación póliza N.° ${pol.numero}${beneficiario ? ' — ' + beneficiario.nombre : ' — titular'}`,
+      tercero_id: pol.titular_id,
+      sede_id: pol.sede_id,
+      documento_origen_tipo: 'pagos_poliza',
+      documento_origen_id: ins.rows[0].id,
+      usuario_id: req.user.id,
+    })
+    await db.query('COMMIT')
+    return reply.code(201).send({ ok: true, pago: ins.rows[0], numero_recibo: ins.rows[0].numero_recibo })
+  } catch (e) {
+    await db.query('ROLLBACK'); throw e
+  } finally { db.release() }
+}
 
 export async function cobrarAfiliacion(req, reply) {
   const { id } = req.params
-  const { metodo_pago = 'efectivo' } = req.body
   const { sedeIds } = resolverSede(req)
-
   const res = await pool.query('SELECT * FROM polizas WHERE id = $1', [id])
   if (!res.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   const pol = res.rows[0]
-
   if (sedeIds !== null && !sedeIds.includes(pol.sede_id))
     return reply.code(403).send({ error: 'La póliza no pertenece a tu sede' })
-  if (Number(pol.costo_afiliacion) <= 0)
-    return reply.code(400).send({ error: 'Esta póliza no tiene costo de afiliación pendiente' })
-  if (pol.afiliacion_pagada)
-    return reply.code(400).send({ error: 'El costo de afiliación ya fue pagado' })
+  return registrarAfiliacion(req, reply, { pol })
+}
 
-  const upd = await pool.query(`
-    UPDATE polizas SET
-      afiliacion_pagada = TRUE,
-      afiliacion_fecha_pago = CURRENT_DATE,
-      afiliacion_metodo_pago = $1,
-      afiliacion_usuario_id = $2,
-      actualizado = NOW()
-    WHERE id = $3
-    RETURNING id, costo_afiliacion, afiliacion_pagada, afiliacion_fecha_pago, afiliacion_metodo_pago
-  `, [metodo_pago, req.user.id, id])
-
-  return reply.send({ data: upd.rows[0] })
+export async function cobrarAfiliacionBeneficiario(req, reply) {
+  const { id, benId } = req.params
+  const { sedeIds } = resolverSede(req)
+  const res = await pool.query('SELECT * FROM polizas WHERE id = $1', [id])
+  if (!res.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
+  const pol = res.rows[0]
+  if (sedeIds !== null && !sedeIds.includes(pol.sede_id))
+    return reply.code(403).send({ error: 'La póliza no pertenece a tu sede' })
+  const b = await pool.query(`
+    SELECT pb.*, COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre
+    FROM poliza_beneficiarios pb JOIN terceros t ON t.id = pb.tercero_id
+    WHERE pb.id = $1 AND pb.poliza_id = $2`, [benId, id])
+  if (!b.rows.length) return reply.code(404).send({ error: 'Beneficiario no encontrado en esta póliza' })
+  return registrarAfiliacion(req, reply, { pol, beneficiario: b.rows[0] })
 }
 
 // ── Actualizar ────────────────────────────────────────────────────────────
@@ -769,14 +821,19 @@ export async function historialCancelaciones(req, reply) {
 async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id }) {
   const fechaPagoDate = fecha_pago || new Date().toISOString().split('T')[0]
 
+  // El pago cubre un PERIODO contado desde el día de afiliación (no un mes de
+  // calendario): cualquier fecha que llegue se ubica en su periodo.
+  const periodo = normalizarInicio(mes_correspondiente, diaAncla(poliza))
+  mes_correspondiente = periodo.iso
+
   const pagoRes = await client.query(`
-    INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7)
-    ON CONFLICT (poliza_id, mes_correspondiente) WHERE NOT anulado DO UPDATE SET
+    INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, metodo_pago, referencia, fecha_pago, usuario_id)
+    VALUES ($1,$2,$8,$3,$4,$5,$6,$7)
+    ON CONFLICT (poliza_id, mes_correspondiente) WHERE tipo = 'CUOTA' AND NOT anulado DO UPDATE SET
       monto = EXCLUDED.monto, metodo_pago = EXCLUDED.metodo_pago,
       referencia = EXCLUDED.referencia, fecha_pago = EXCLUDED.fecha_pago
     RETURNING id, numero_recibo`,
-    [poliza.id, mes_correspondiente, monto, metodo_pago, referencia || null, fechaPagoDate, usuario_id]
+    [poliza.id, mes_correspondiente, monto, metodo_pago, referencia || null, fechaPagoDate, usuario_id, periodo.fin_iso]
   )
 
   // Releído con FOR UPDATE porque en la carga masiva esta función se llama
@@ -788,10 +845,9 @@ async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, 
   )
   const pol = actual.rows[0]
 
-  // El pago cubre hasta el último día del mes de la cuota — nunca retrocede
+  // El pago cubre hasta el último día de su periodo — nunca retrocede
   // pago_hasta si ya estaba más adelante (pago adelantado o filas fuera de orden).
-  const [anio, mesNum] = mes_correspondiente.split('-').map(Number)
-  const finMesCubierto = new Date(Date.UTC(anio, mesNum, 0)).toISOString().slice(0, 10)
+  const finMesCubierto = periodo.fin_iso
   const pagoHastaActual = pol.pago_hasta || pol.fecha_inicio
   const nuevaMora = Math.max(0, pol.meses_mora - 1)
 
@@ -814,7 +870,7 @@ async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, 
     evento_codigo: 'PAGO_CUOTA_POLIZA',
     montos: { total: +monto },
     forma_pago_codigo: metodo_pago,
-    concepto: `Pago póliza N.° ${poliza.numero} — cuota ${mes_correspondiente}`,
+    concepto: `Pago póliza N.° ${poliza.numero} — periodo ${periodo.etiqueta}`,
     tercero_id: poliza.titular_id,
     sede_id: poliza.sede_id,
     fecha: fechaPagoDate,
@@ -834,7 +890,7 @@ export async function registrarPago(req, reply) {
   if (!mes_correspondiente) return reply.code(400).send({ error: 'mes_correspondiente es obligatorio (YYYY-MM-DD)' })
   if (!monto || +monto <= 0) return reply.code(400).send({ error: 'monto debe ser mayor a 0' })
 
-  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id FROM polizas WHERE id=$1', [id])
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio FROM polizas WHERE id=$1', [id])
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
 
@@ -868,7 +924,7 @@ export async function importarPagos(req, reply) {
   if (pagos.length > 500)
     return reply.code(400).send({ error: 'Máximo 500 filas por carga — divide el archivo en lotes más pequeños' })
 
-  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id FROM polizas WHERE id=$1', [id])
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio FROM polizas WHERE id=$1', [id])
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
 
@@ -929,9 +985,10 @@ export async function agregarBeneficiario(req, reply) {
   // Un beneficiario ejecutado (falleció y ya usó su cobertura) no ocupa cupo
   // — libera el puesto para que la familia pueda registrar un reemplazo.
   const pol = await pool.query(`
-    SELECT p.max_beneficiarios,
+    SELECT p.max_beneficiarios, p.fecha_inicio, pl.meses_carencia, pl.valor_afiliacion,
+      (CURRENT_DATE > p.fecha_inicio) AS entra_despues,
       (SELECT COUNT(*) FROM poliza_beneficiarios pb WHERE pb.poliza_id=$1 AND pb.activo AND NOT pb.ejecutado) AS current_count
-    FROM polizas p WHERE p.id=$1`, [id]
+    FROM polizas p JOIN planes_poliza pl ON pl.id = p.plan_id WHERE p.id=$1`, [id]
   )
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (+pol.rows[0].current_count >= +pol.rows[0].max_beneficiarios)
@@ -955,11 +1012,23 @@ export async function agregarBeneficiario(req, reply) {
   const db = await pool.connect()
   try {
     await db.query('BEGIN')
+    // Beneficiario que entra DESPUÉS de la afiliación del titular: su carencia
+    // corre desde hoy y paga su propia afiliación. Si entra el mismo día que
+    // el titular, comparte su fecha/carencia y no paga afiliación aparte.
+    const { entra_despues, meses_carencia, valor_afiliacion } = pol.rows[0]
     await db.query(`
-      INSERT INTO poliza_beneficiarios (poliza_id, tercero_id, parentesco, cobertura_basica)
-      VALUES ($1,$2,$3,$4)
-      ON CONFLICT (poliza_id, tercero_id) DO UPDATE SET activo=TRUE, parentesco=$3, cobertura_basica=$4`,
-      [id, tercero_id, parentesco, coberturaBasica]
+      INSERT INTO poliza_beneficiarios (poliza_id, tercero_id, parentesco, cobertura_basica,
+                                        fecha_afiliacion, fecha_fin_carencia, costo_afiliacion, afiliacion_pagada)
+      SELECT $1,$2,$3,$4,
+        CASE WHEN $5 THEN CURRENT_DATE ELSE p.fecha_inicio END,
+        CASE WHEN $5 THEN (CURRENT_DATE + make_interval(months => $6::int))::date ELSE p.fecha_fin_carencia END,
+        CASE WHEN $5 THEN $7::numeric ELSE 0 END, FALSE
+      FROM polizas p WHERE p.id = $1
+      ON CONFLICT (poliza_id, tercero_id) DO UPDATE SET activo=TRUE, parentesco=$3, cobertura_basica=$4,
+        fecha_afiliacion = EXCLUDED.fecha_afiliacion, fecha_fin_carencia = EXCLUDED.fecha_fin_carencia,
+        costo_afiliacion = CASE WHEN poliza_beneficiarios.afiliacion_pagada THEN poliza_beneficiarios.costo_afiliacion
+                                ELSE EXCLUDED.costo_afiliacion END`,
+      [id, tercero_id, parentesco, coberturaBasica, entra_despues, +meses_carencia || 0, +valor_afiliacion || 0]
     )
     await db.query(`
       INSERT INTO tercero_roles (tercero_id, rol) VALUES ($1,'BENEFICIARIO')
@@ -1010,11 +1079,17 @@ export async function verificarElegibilidad(req, reply) {
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   const p = pol.rows[0]
 
-  // Comparación de carencia 100% en servidor (sin timezone JS)
+  // Carencia de la PERSONA: la del beneficiario (corre desde que entró a la
+  // póliza); para el titular, la de la póliza. Comparación en servidor (sin TZ JS).
   const { rows: fechaRows } = await pool.query(
-    `SELECT (CURRENT_DATE < $1::date) AS en_carencia`, [p.fecha_fin_carencia]
+    `SELECT (CURRENT_DATE < fin)::boolean AS en_carencia, fin FROM (
+       SELECT COALESCE(
+         (SELECT pb.fecha_fin_carencia FROM poliza_beneficiarios pb
+           WHERE pb.poliza_id = $1 AND pb.tercero_id = $2 AND pb.activo AND NOT pb.ejecutado LIMIT 1),
+         $3::date) AS fin) x`, [id, tercero_id, p.fecha_fin_carencia]
   )
   const enCarencia = fechaRows[0]?.en_carencia ?? true
+  p.fecha_fin_carencia = p.es_titular ? p.fecha_fin_carencia : (fechaRows[0]?.fin || p.fecha_fin_carencia)
 
   const checks = {
     poliza_vigente:   p.estado === 'VIGENTE',
@@ -1057,8 +1132,13 @@ export async function ejecutar(req, reply) {
 
   // Verificar elegibilidad ANTES de ejecutar
   const eligRes = await pool.query(`
-    SELECT p.estado, p.meses_mora, p.fecha_fin_carencia,
-      (CURRENT_DATE < p.fecha_fin_carencia) AS en_carencia,
+    SELECT p.estado, p.meses_mora,
+      COALESCE((SELECT pb.fecha_fin_carencia FROM poliza_beneficiarios pb
+                 WHERE pb.poliza_id=p.id AND pb.tercero_id=$2 AND pb.activo AND NOT pb.ejecutado LIMIT 1),
+               p.fecha_fin_carencia) AS fecha_fin_carencia,
+      (CURRENT_DATE < COALESCE((SELECT pb.fecha_fin_carencia FROM poliza_beneficiarios pb
+                 WHERE pb.poliza_id=p.id AND pb.tercero_id=$2 AND pb.activo AND NOT pb.ejecutado LIMIT 1),
+               p.fecha_fin_carencia)) AS en_carencia,
       EXISTS(
         SELECT 1 FROM poliza_beneficiarios pb
         WHERE pb.poliza_id=p.id AND pb.tercero_id=$2 AND pb.activo AND NOT pb.ejecutado
