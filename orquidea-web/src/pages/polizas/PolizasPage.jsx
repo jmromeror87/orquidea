@@ -41,7 +41,7 @@ import CoberturaPlan from '../../components/polizas/CoberturaPlan.jsx'
 import RenovacionPoliza from '../../components/polizas/RenovacionPoliza.jsx'
 import Bitacora from '../../components/bitacora/Bitacora.jsx'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
-         diasQueCubre, tarifaDiaria, cuotaPorPeriodo, iso as isoFecha } from '../../utils/periodosPoliza.js'
+         diasQueCubre, tarifaDiaria, cuotaPorPeriodo, addDias, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
 // ── Cobertura según los pagos: hasta qué día está cubierta y si está en mora ──
 function EstadoCobertura({ data }) {
@@ -643,6 +643,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
     metodo_pago: 'efectivo',
     referencia: '',
     fecha_pago: hoy.toISOString().split('T')[0],
+    observaciones: '',
   })
   const [montoTotal, setMontoTotal] = useState(Number(poliza.valor_cuota) || '')
   const [archivo,      setArchivo]      = useState(null)
@@ -773,6 +774,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
           metodo_pago: form.metodo_pago,
           referencia: form.referencia,
           notas: '',
+          observaciones: form.observaciones || '',
         })
         const soporteId = res.data?.recibo?.id || res.data?.abono_parcial?.id
         if (archivo && soporteId) {
@@ -804,236 +806,292 @@ function ModalPago({ poliza, onClose, onSaved }) {
     } finally { setSaving(false) }
   }
 
+  // Vista previa de "Un periodo" (mismo cálculo que el servidor)
+  const previewMes = (() => {
+    if (modo !== 'mes' || !form.mes_correspondiente || !(Number(form.monto) > 0)) return null
+    const plan = planDePago(poliza, cuotaFn, estadoPagos, { elegidos: [form.mes_correspondiente], monto: Number(form.monto) })
+    const it = plan.items[0]
+    if (!it) return null
+    return { it, completa: it.completa, dias: it.completa ? null : diasQueCubre(it.abonado_antes + it.monto, cuotaFn(it.periodo), it.periodo),
+      falta: Math.round((cuotaFn(it.periodo) - it.abonado_antes - it.monto) * 100) / 100, cubreHasta: plan.cubre_hasta ? isoFecha(plan.cubre_hasta) : null }
+  })()
+  const totalRecibir = modo === 'mes' ? Number(form.monto) || 0 : total || 0
+  const fLargaPg = iso => new Date(iso + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })
+  const cubreHasta = modo === 'mes' ? previewMes?.cubreHasta : preview?.cubreHasta
+  const phIso = poliza.pago_hasta ? String(poliza.pago_hasta).slice(0, 10) : null
+  const hoyIso = isoFecha({ y: hoy.getFullYear(), m: hoy.getMonth(), d: hoy.getDate() })
+  const alDia = phIso && phIso >= hoyIso
+  // Atajos: pagar N periodos completos (suma lo que falta de cada uno, con SU tarifa)
+  const atajo = n => {
+    const suma = candidatos.slice(0, n).reduce((acc, c) => acc + c.falta, 0)
+    usuarioTocoMeses.current = false
+    setMontoTotal(Math.round(suma))
+  }
+  const paso = (n, titulo, ayuda) => (
+    <div className="pg-paso"><span className="pg-num">{n}</span><div><b>{titulo}</b>{ayuda && <small>{ayuda}</small>}</div></div>
+  )
+
   return (
     <div className="pl-overlay">
-      <div className="pl-modal">
-        <div className="pl-mhead">
-          <div>
-            <div className="pl-mtitle">Registrar pago — Póliza #{poliza.numero}</div>
-            <div className="pl-msub">{poliza.titular_nombre} · Cuota: {fmt(poliza.valor_cuota)}/periodo</div>
+      <style>{CSS_PG}</style>
+      <div className="pg-modal">
+        <div className="pg-head">
+          <div className="pg-hicon"><CreditCard size={20} color="#fff"/></div>
+          <div style={{ minWidth:0, flex:1 }}>
+            <div className="pg-eyebrow">Registrar pago · Póliza {poliza.numero_legado || `#${poliza.numero}`}</div>
+            <div className="pg-title">{poliza.titular_nombre}</div>
+            <div className="pg-chips">
+              <span className="pg-chip">Cuota {fmt(cuota)} / periodo</span>
+              {alDia
+                ? <span className="pg-chip ok">✓ Cubierta hasta el {fLargaPg(phIso)}</span>
+                : <span className="pg-chip mal">⚠ {phIso ? `Sin cobertura desde el ${fLargaPg(isoFecha(addDias(ymdPg(phIso), 1)))}` : 'Sin pagos válidos'}{poliza.meses_mora > 0 ? ` · ${poliza.meses_mora} periodo${poliza.meses_mora > 1 ? 's' : ''} en mora` : ''}</span>}
+            </div>
           </div>
-          <button className="pl-mclose" onClick={onClose}><X size={16}/></button>
+          <button className="pg-close" onClick={onClose} title="Cerrar"><X size={18}/></button>
         </div>
-        <div className="pl-mbody">
-          {err && <div className="pl-alert err" style={{ marginBottom:14 }}><AlertTriangle size={13}/>{err}</div>}
-          {poliza.meses_mora > 0 && (
-            <div className="pl-alert warn" style={{ marginBottom:14 }}>
-              <AlertCircle size={14}/>
-              Esta póliza tiene <strong>{poliza.meses_mora} mes{poliza.meses_mora>1?'es':''} de mora</strong>.
-              Se recomienda registrar los pagos pendientes mes por mes.
-            </div>
-          )}
-          <div style={{ display:'flex', gap:8, marginBottom:14 }}>
-            <button type="button" onClick={() => setModo('mes')}
-              style={{ flex:1, padding:'9px 12px', borderRadius:10, cursor:'pointer', fontSize:12.5, fontWeight:700,
-                border: modo==='mes' ? '1.5px solid #6366F1' : '1.5px solid #E2E5F0',
-                background: modo==='mes' ? '#EEF2FF' : '#fff', color: modo==='mes' ? '#4338CA' : '#6B7280' }}>
-              Un periodo
-            </button>
-            <button type="button" onClick={() => setModo('monto')}
-              style={{ flex:1, padding:'9px 12px', borderRadius:10, cursor:'pointer', fontSize:12.5, fontWeight:700,
-                border: modo==='monto' ? '1.5px solid #6366F1' : '1.5px solid #E2E5F0',
-                background: modo==='monto' ? '#EEF2FF' : '#fff', color: modo==='monto' ? '#4338CA' : '#6B7280' }}>
-              Monto total (varios periodos)
-            </button>
-          </div>
 
-          {modo === 'mes' ? (
-            <div className="pl-grid2">
-              <div className="pl-field">
-                <label>Periodo que cubre <span className="pl-req">*</span></label>
-                <select value={form.mes_correspondiente}
-                  onChange={e => setForm(p => ({...p, mes_correspondiente: e.target.value}))}>
-                  {mesesPendientes.map((m, i) => (
-                    <option key={m.iso} value={m.iso}>
-                      {m.label}{i === 0 ? ' (siguiente pendiente)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="pl-field">
-                <label>Fecha de pago</label>
-                <input type="date" value={form.fecha_pago}
-                  onChange={e => setForm(p => ({...p, fecha_pago:e.target.value}))}/>
-              </div>
-            </div>
-          ) : (
-            <div className="pl-field">
-              <label>Monto total a pagar <span className="pl-req">*</span></label>
-              <CurrencyInput value={montoTotal}
-                onChange={v => setMontoTotal(v)}
-                placeholder={`Ej: ${cuota * 3} para pagar 3 meses`}/>
+        <div className="pg-body">
+          <div className="pg-izq">
+            {err && <div className="pl-alert err" style={{ marginBottom:14 }}><AlertTriangle size={13}/>{err}</div>}
 
-              {candidatos.length > 0 && (
-                <div style={{ marginTop:10 }}>
-                  <div style={{ fontSize:11.5, color:'#6B7280', fontWeight:700, marginBottom:6 }}>
-                    Activa o desactiva los periodos a pagar:
+            {paso(1, '¿Cómo paga el cliente?', 'Elija un periodo puntual, o reciba un valor y el sistema lo reparte solo.')}
+            <div className="pg-modos">
+              <button type="button" className={modo === 'mes' ? 'on' : ''} onClick={() => setModo('mes')}>
+                <b>📅 Un periodo</b><span>Paga la cuota de un periodo específico</span>
+              </button>
+              <button type="button" className={modo === 'monto' ? 'on' : ''} onClick={() => setModo('monto')}>
+                <b>💵 Un valor (varios periodos)</b><span>Trae dinero para uno o varios periodos; lo que sobre queda como abono en días</span>
+              </button>
+            </div>
+
+            {paso(2, modo === 'mes' ? 'Periodo y valor' : 'Valor recibido y periodos', modo === 'mes' ? 'El valor sugerido es lo que le falta a ese periodo.' : 'Use los atajos o escriba el valor; puede activar o quitar periodos.')}
+            {modo === 'mes' ? (
+              <div className="pl-grid2">
+                <div className="pl-field">
+                  <label>Periodo que cubre <span className="pl-req">*</span></label>
+                  <select value={form.mes_correspondiente}
+                    onChange={e => setForm(p => ({...p, mes_correspondiente: e.target.value}))}>
+                    {mesesPendientes.map((m, i) => (
+                      <option key={m.iso} value={m.iso}>{m.label}{i === 0 ? ' (siguiente pendiente)' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="pl-field">
+                  <label>Valor <span className="pl-req">*</span></label>
+                  <CurrencyInput value={form.monto} onChange={v => setForm(p => ({...p, monto:v}))}/>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="pl-field">
+                  <label>Valor recibido <span className="pl-req">*</span></label>
+                  <CurrencyInput value={montoTotal} onChange={v => setMontoTotal(v)} placeholder="0"/>
+                </div>
+                {candidatos.length > 0 && (
+                  <div className="pg-atajos">
+                    <span>Atajos:</span>
+                    {[1, 3, 6, 12].filter(n => n <= candidatos.length).map(n => (
+                      <button type="button" key={n} onClick={() => atajo(n)}>{n} periodo{n > 1 ? 's' : ''}</button>
+                    ))}
                   </div>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:6, maxHeight:130, overflowY:'auto', padding:2 }}>
+                )}
+                {candidatos.length > 0 && (
+                  <div className="pg-periodos">
                     {candidatos.map(m => {
                       const activo = mesesActivos.has(m.iso)
                       const esAbono = !activo && preview?.mesAbono?.iso === m.iso
                       return (
-                        <button type="button" key={m.iso} onClick={() => toggleMes(m.iso)}
-                          style={{
-                            padding:'5px 10px', borderRadius:7, fontSize:11.5, fontWeight:700, cursor:'pointer',
-                            border: activo ? '1.5px solid #6366F1' : esAbono ? '1.5px solid #F59E0B' : '1.5px solid #E2E5F0',
-                            background: activo ? '#EEF2FF' : esAbono ? '#FFFBEB' : '#fff',
-                            color: activo ? '#4338CA' : esAbono ? '#B45309' : '#9CA3AF',
-                          }}>
-                          {activo ? '✓ ' : ''}{m.label}{m.abonado > 0 ? ` · falta ${fmt(m.falta)}` : m.tarifa !== cuota ? ` · ${fmt(m.tarifa)}` : ''}
+                        <button type="button" key={m.iso} onClick={() => toggleMes(m.iso)} className={activo ? 'on' : esAbono ? 'abono' : ''}
+                          title={`${m.periodo.iso.split('-').reverse().join('/')} → ${m.periodo.fin_iso.split('-').reverse().join('/')} · tarifa ${fmt(m.tarifa)}`}>
+                          {activo ? '✓ ' : esAbono ? '◐ ' : ''}{m.label}
+                          {m.abonado > 0 ? <em>falta {fmt(m.falta)}</em> : m.tarifa !== cuota ? <em>{fmt(m.tarifa)}</em> : null}
                         </button>
                       )
                     })}
                   </div>
-                </div>
-              )}
-
-              {tarifas && tarifas.length > 1 && candidatos.some(c => c.tarifa !== cuota) && (() => {
-                const t = tarifas.find(x => x.desde > tarifas[0].desde)
-                return (
-                  <div style={{ marginTop:8, padding:'8px 12px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:9, fontSize:12, color:'#92400E', lineHeight:1.5 }}>
-                    📈 Desde el <strong>{new Date(t.desde + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })}</strong> la cuota sube a <strong>{fmt(t.cuota)}</strong>
-                    {t.pendiente ? ' (aún sin % del salario mínimo registrado: se cobra con la tarifa actual)' : ` (+${String(t.porcentaje).replace('.', ',')} %${t.proyectado ? ' proyectado' : ' del salario mínimo'})`}.
-                    {' '}Los periodos de ese año se liquidan con la tarifa nueva.
-                  </div>
-                )
-              })()}
-
-              {preview && (
-                <div style={{ marginTop:10, padding:'10px 12px', background:'#F5F3FF', border:'1px solid #DDD6FE',
-                  borderRadius:9, fontSize:12.5, color:'#5B21B6', lineHeight:1.6 }}>
-                  {preview.mesesCompletos > 0 ? (
-                    <div>
-                      ✅ Se pagarán <strong>{preview.mesesCompletos} periodo{preview.mesesCompletos>1?'s':''}</strong>: {preview.completas.map(it =>
-                        it.abonado_antes > 0 ? `${it.periodo.etiqueta} (completa: faltaban ${fmt(it.monto)})` : it.periodo.etiqueta).join(', ')}
-                    </div>
-                  ) : (
-                    <div>Ningún periodo completo — todo el monto se registrará como abono</div>
-                  )}
-                  {preview.sobranteAlcanzaOtroMes ? (
-                    <div style={{ marginTop:6, color:'#B45309' }}>
-                      ⚠️ El sobrante alcanza para otro periodo completo. Actívalo en la lista de arriba.
-                    </div>
-                  ) : preview.abono && (
-                    <div style={{ marginTop:6 }}>
-                      💰 Sobran <strong>{fmt(preview.abono.monto)}</strong> → abono a <strong>{preview.abono.periodo.etiqueta}</strong>
-                      {' '}= <strong>{preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''} de cobertura</strong>
-                      {' '}({fmt(Math.round(preview.abono.tarifa))}/día). Faltarían {fmt(preview.abono.falta)} para completar ese periodo.
-                    </div>
-                  )}
-                  {preview.cubreHasta && (
-                    <div style={{ marginTop:6, fontWeight:800, color:'#065F46' }}>
-                      📅 Queda cubierto hasta el {new Date(preview.cubreHasta + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })}
-                    </div>
-                  )}
-                  {preview.noRepartido > 0.5 && (
-                    <div style={{ marginTop:6, color:'#DC2626' }}>
-                      ⚠️ {fmt(preview.noRepartido)} no se pueden aplicar con los periodos marcados.
-                    </div>
-                  )}
-                  {preview.plan.items.length === 0 && (
-                    <div style={{ color:'#DC2626' }}>El monto no alcanza ni para un abono parcial</div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="pl-grid2">
-            {modo === 'mes' && (
-              <div className="pl-field">
-                <label>Monto <span className="pl-req">*</span></label>
-                <CurrencyInput value={form.monto}
-                  onChange={v => setForm(p => ({...p, monto:v}))}/>
-              </div>
+                )}
+              </>
             )}
-            <div className="pl-field">
-              <label>Forma de pago</label>
-              <select value={form.metodo_pago}
-                onChange={e => { setForm(p => ({...p, metodo_pago:e.target.value, referencia:''})); setArchivo(null); setArchivoNombre('') }}>
-                {formas.map(f => <option key={f.codigo} value={f.codigo}>{f.icono} {f.nombre}</option>)}
-              </select>
-            </div>
-          </div>
 
-          {/* Referencia — condicional */}
-          {formaSel?.requiere_referencia && (
-            <div className="pl-field">
-              <label>N° de referencia <span className="pl-req">*</span></label>
-              <input value={form.referencia}
-                placeholder={`Código de ${formaSel.nombre}…`}
-                style={{ borderColor: !form.referencia.trim() ? '#FCA5A5' : undefined }}
-                onChange={e => setForm(p => ({...p, referencia:e.target.value}))}/>
-              {!form.referencia.trim() && (
-                <span style={{ fontSize:11, color:'#EF4444', marginTop:2, display:'block' }}>
-                  Obligatorio para {formaSel.nombre}
-                </span>
+            {tarifas && tarifas.length > 1 && candidatos.some(c => c.tarifa !== cuota) && (() => {
+              const t = tarifas.find(x => x.desde > tarifas[0].desde)
+              return (
+                <div className="pg-aviso">
+                  📈 Desde el <strong>{fLargaPg(t.desde)}</strong> la cuota sube a <strong>{fmt(t.cuota)}</strong>
+                  {t.pendiente ? ' (aún sin % del salario mínimo registrado: se cobra con la tarifa actual)' : ` (+${String(t.porcentaje).replace('.', ',')} %${t.proyectado ? ' proyectado' : ' del salario mínimo'})`}.
+                  {' '}Los periodos de ese año se liquidan con la tarifa nueva.
+                </div>
+              )
+            })()}
+
+            {paso(3, 'Forma de pago', formaSel?.requiere_referencia || formaSel?.requiere_soporte ? `${formaSel.nombre} pide ${[formaSel.requiere_referencia && 'número de referencia', formaSel.requiere_soporte && 'soporte'].filter(Boolean).join(' y ')}.` : null)}
+            <div className="pl-grid2">
+              <div className="pl-field">
+                <label>Forma de pago</label>
+                <select value={form.metodo_pago}
+                  onChange={e => { setForm(p => ({...p, metodo_pago:e.target.value, referencia:''})); setArchivo(null); setArchivoNombre('') }}>
+                  {formas.map(f => <option key={f.codigo} value={f.codigo}>{f.icono} {f.nombre}</option>)}
+                </select>
+              </div>
+              {modo === 'mes' ? (
+                <div className="pl-field">
+                  <label>Fecha de pago</label>
+                  <input type="date" value={form.fecha_pago} onChange={e => setForm(p => ({...p, fecha_pago:e.target.value}))}/>
+                </div>
+              ) : formaSel?.requiere_referencia ? null : <div/>}
+              {formaSel?.requiere_referencia && (
+                <div className="pl-field">
+                  <label>N.° de referencia <span className="pl-req">*</span></label>
+                  <input value={form.referencia} data-cap="no" placeholder={`Código de ${formaSel.nombre}…`}
+                    style={{ borderColor: !form.referencia.trim() ? '#FCA5A5' : undefined }}
+                    onChange={e => setForm(p => ({...p, referencia:e.target.value}))}/>
+                </div>
               )}
             </div>
-          )}
 
-          {/* Input de archivo — siempre montado para que el ref funcione */}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp,.bmp,.tiff"
-            style={{ display:'none' }}
-            onChange={onArchivoChange}
-            onClick={e => { e.target.value = null }}
-          />
-
-          {/* Soporte — condicional */}
-          {formaSel?.requiere_soporte && (
-            <div className="pl-field">
-              <label>Soporte de pago <span className="pl-req">*</span>
-                <span style={{ color:'#9CA3AF', fontWeight:400, marginLeft:6 }}>PDF, JPG, PNG…</span>
-              </label>
-              <div
-                onClick={() => fileRef.current?.click()}
-                style={{ border:`2px dashed ${archivo ? '#059669' : '#E2E5F0'}`,
-                  borderRadius:10, padding:'12px 14px', cursor:'pointer',
-                  background: archivo ? '#F0FDF4' : '#FAFBFF',
-                  display:'flex', alignItems:'center', gap:10, transition:'all .15s' }}
-                onMouseEnter={e => { if (!archivo) e.currentTarget.style.borderColor='#8B5CF6' }}
-                onMouseLeave={e => { if (!archivo) e.currentTarget.style.borderColor= archivo ? '#059669' : '#E2E5F0' }}
-              >
+            {/* Input de archivo — siempre montado para que el ref funcione */}
+            <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.bmp,.tiff" style={{ display:'none' }}
+              onChange={onArchivoChange} onClick={e => { e.target.value = null }}/>
+            {formaSel?.requiere_soporte && (
+              <div className={`pg-soporte${archivo ? ' ok' : ''}`} onClick={() => fileRef.current?.click()}>
                 {archivo
                   ? <><CheckCircle2 size={16} color="#059669"/>
-                      <div>
-                        <div style={{ fontSize:12, fontWeight:700, color:'#065F46' }}>{archivoNombre}</div>
-                        <div style={{ fontSize:11, color:'#059669' }}>Listo para adjuntar</div>
-                      </div>
-                      <button type="button" onClick={e => { e.stopPropagation(); setArchivo(null); setArchivoNombre('') }}
-                        style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#9CA3AF' }}>
-                        <X size={13}/>
-                      </button>
+                      <div><b>{archivoNombre}</b><small>Listo para adjuntar</small></div>
+                      <button type="button" onClick={e => { e.stopPropagation(); setArchivo(null); setArchivoNombre('') }} title="Quitar"><X size={13}/></button>
                     </>
-                  : <><CreditCard size={16} color="#9CA3AF"/>
-                      <span style={{ fontSize:12, color:'#6B7280' }}>Haz clic para adjuntar el comprobante</span>
-                    </>
-                }
+                  : <><FileText size={16} color="#9CA3AF"/><div><b>Adjuntar soporte de pago *</b><small>PDF o imagen del comprobante de {formaSel.nombre}</small></div></>}
               </div>
-              {!archivo && (
-                <span style={{ fontSize:11, color:'#EF4444', marginTop:3, display:'block' }}>
-                  Obligatorio para pagos por {formaSel.nombre}
-                </span>
-              )}
-            </div>
-          )}
+            )}
 
-          <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:8 }}>
-            <button className="pl-btn pl-btn-ghost" onClick={onClose}>Cancelar</button>
-            <button className="pl-btn pl-btn-primary" onClick={guardar} disabled={saving}>
-              {saving ? <Loader2 size={14} className="pl-spin"/> : <CreditCard size={14}/>}
-              Registrar pago
-            </button>
+            {paso(4, 'Observaciones', 'Opcional. Se imprimen en el recibo.')}
+            <div className="pl-field">
+              <textarea rows={2} value={form.observaciones || ''} placeholder="Ej.: pagó la hija, María; trae el soporte mañana…"
+                onChange={e => setForm(p => ({ ...p, observaciones: e.target.value }))}
+                style={{ width:'100%', resize:'vertical', fontFamily:'inherit', boxSizing:'border-box' }}/>
+            </div>
           </div>
+
+          {/* ── Resumen ── */}
+          <div className="pg-der">
+            <div className="pg-resumen">
+              <small>Total a recibir</small>
+              <strong>{fmt(totalRecibir)}</strong>
+              <span>{formaSel ? `${formaSel.icono || ''} ${formaSel.nombre}` : ''}</span>
+            </div>
+
+            <div className="pg-detalle">
+              {modo === 'mes' ? (
+                previewMes ? (
+                  <>
+                    <div className="pg-linea"><span>{previewMes.it.abonado_antes > 0 ? 'Completa' : previewMes.completa ? 'Cuota' : 'Abono a'} {previewMes.it.periodo.etiqueta}</span><b>{fmt(previewMes.it.monto)}</b></div>
+                    {!previewMes.completa && <div className="pg-nota">Abono = <b>{previewMes.dias} día{previewMes.dias !== 1 ? 's' : ''}</b> de cobertura. Faltarían {fmt(previewMes.falta)} para completar el periodo.</div>}
+                  </>
+                ) : <div className="pg-nota">Indique el valor a recibir.</div>
+              ) : preview ? (
+                <>
+                  {preview.completas.map(it => (
+                    <div className="pg-linea" key={it.periodo.iso}><span>✓ {it.periodo.etiqueta}{it.abonado_antes > 0 ? ' (completa)' : ''}</span><b>{fmt(it.monto)}</b></div>
+                  ))}
+                  {preview.abono && !preview.sobranteAlcanzaOtroMes && (
+                    <div className="pg-linea abono"><span>◐ Abono {preview.abono.periodo.etiqueta}</span><b>{fmt(preview.abono.monto)}</b></div>
+                  )}
+                  {preview.abono && !preview.sobranteAlcanzaOtroMes && (
+                    <div className="pg-nota">El abono da <b>{preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''}</b> de cobertura ({fmt(Math.round(preview.abono.tarifa))}/día). Faltarían {fmt(preview.abono.falta)} para completar ese periodo.</div>
+                  )}
+                  {preview.sobranteAlcanzaOtroMes && <div className="pg-nota mal">⚠️ Lo que sobra alcanza para otro periodo completo: actívelo en la lista.</div>}
+                  {preview.noRepartido > 0.5 && <div className="pg-nota mal">⚠️ {fmt(preview.noRepartido)} no se pueden aplicar con los periodos marcados.</div>}
+                  {preview.plan.items.length === 0 && <div className="pg-nota mal">El valor no alcanza ni para un abono.</div>}
+                </>
+              ) : <div className="pg-nota">Escriba el valor recibido o use un atajo.</div>}
+            </div>
+
+            {cubreHasta && (
+              <div className="pg-cubre">
+                <small>Queda cubierta hasta</small>
+                <b>{fLargaPg(cubreHasta)}</b>
+              </div>
+            )}
+
+            <div className="pg-tips">
+              <b>💡 Ayuda</b>
+              <ul>
+                <li>Cada periodo va del día de afiliación ({diaAncla(poliza)}) al día anterior del mes siguiente.</li>
+                <li>Un valor que no completa la cuota da <b>días</b> de cobertura; el siguiente pago completa primero lo que falta.</li>
+                <li>Los meses atrasados no se cobran: el pago arranca en el periodo actual.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="pg-pie">
+          <button className="pl-btn pl-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="pl-btn pl-btn-primary" onClick={guardar} disabled={saving || !(totalRecibir > 0)}>
+            {saving ? <Loader2 size={14} className="pl-spin"/> : <CreditCard size={14}/>}
+            Registrar pago{totalRecibir > 0 ? ` de ${fmt(totalRecibir)}` : ''}
+          </button>
         </div>
       </div>
     </div>
   )
 }
+
+const ymdPg = iso => ({ y: +iso.slice(0, 4), m: +iso.slice(5, 7) - 1, d: +iso.slice(8, 10) })
+
+const CSS_PG = `
+.pg-modal { background:#fff; border-radius:20px; width:min(1080px, 96vw); max-height:94vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.28); }
+.pg-head { display:flex; align-items:flex-start; gap:14px; padding:18px 22px; background:linear-gradient(135deg,#047857 0%,#059669 60%,#10B981 100%); color:#fff; }
+.pg-hicon { width:44px; height:44px; border-radius:12px; background:rgba(255,255,255,.2); border:2px solid rgba(255,255,255,.3); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pg-eyebrow { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; opacity:.8; }
+.pg-title { font-size:18px; font-weight:900; line-height:1.25; }
+.pg-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.pg-chip { font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:20px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); }
+.pg-chip.ok { background:#ecfdf5; color:#047857; border-color:#ecfdf5; }
+.pg-chip.mal { background:#fef2f2; color:#b91c1c; border-color:#fef2f2; }
+.pg-close { width:36px; height:36px; border-radius:10px; border:1.5px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+.pg-body { flex:1; min-height:0; overflow-y:auto; display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); }
+.pg-izq { padding:18px 22px; }
+.pg-der { padding:18px 20px; background:#f8fafc; border-left:1px solid #eef2f7; display:flex; flex-direction:column; gap:12px; }
+.pg-paso { display:flex; gap:10px; align-items:flex-start; margin:14px 0 10px; }
+.pg-paso:first-of-type { margin-top:0; }
+.pg-num { width:24px; height:24px; border-radius:50%; background:#059669; color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pg-paso b { display:block; font-size:13.5px; color:#0f172a; }
+.pg-paso small { display:block; font-size:11.5px; color:#64748b; margin-top:1px; }
+.pg-modos { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.pg-modos button { text-align:left; border:1.5px solid #e2e8f0; background:#fff; border-radius:12px; padding:10px 12px; cursor:pointer; font-family:inherit; }
+.pg-modos button b { display:block; font-size:13px; color:#0f172a; }
+.pg-modos button span { display:block; font-size:11.5px; color:#64748b; margin-top:2px; line-height:1.35; }
+.pg-modos button.on { border-color:#10b981; background:#ecfdf5; box-shadow:0 0 0 3px rgba(16,185,129,.12); }
+.pg-atajos { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:-4px 0 10px; font-size:11.5px; color:#64748b; font-weight:700; }
+.pg-atajos button { border:1.5px solid #c7d2fe; background:#eef2ff; color:#4338ca; border-radius:20px; padding:3px 11px; font-size:11.5px; font-weight:700; cursor:pointer; font-family:inherit; }
+.pg-periodos { display:flex; flex-wrap:wrap; gap:6px; max-height:150px; overflow-y:auto; padding:2px; }
+.pg-periodos button { display:flex; align-items:center; gap:5px; padding:5px 10px; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer; border:1.5px solid #e2e8f0; background:#fff; color:#94a3b8; font-family:inherit; }
+.pg-periodos button em { font-style:normal; font-weight:600; font-size:10.5px; opacity:.85; }
+.pg-periodos button.on { border-color:#10b981; background:#ecfdf5; color:#047857; }
+.pg-periodos button.abono { border-color:#f59e0b; background:#fffbeb; color:#b45309; }
+.pg-aviso { margin-top:10px; padding:8px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:9px; font-size:12px; color:#92400e; line-height:1.5; }
+.pg-soporte { display:flex; align-items:center; gap:10px; border:2px dashed #e2e8f0; border-radius:10px; padding:10px 14px; cursor:pointer; background:#fafbff; margin-bottom:10px; }
+.pg-soporte.ok { border-color:#059669; background:#f0fdf4; }
+.pg-soporte b { display:block; font-size:12.5px; color:#334155; } .pg-soporte small { display:block; font-size:11px; color:#94a3b8; }
+.pg-soporte button { margin-left:auto; background:none; border:none; cursor:pointer; color:#94a3b8; }
+.pg-resumen { background:linear-gradient(135deg,#065f46,#059669); color:#fff; border-radius:14px; padding:16px; }
+.pg-resumen small { display:block; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; opacity:.85; }
+.pg-resumen strong { display:block; font-size:30px; font-weight:900; line-height:1.15; margin:2px 0; }
+.pg-resumen span { font-size:12px; opacity:.9; }
+.pg-detalle { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; max-height:220px; overflow-y:auto; }
+.pg-linea { display:flex; justify-content:space-between; gap:8px; font-size:12.5px; padding:5px 0; border-bottom:1px dashed #eef2f7; color:#334155; }
+.pg-linea:last-of-type { border-bottom:none; }
+.pg-linea b { color:#0f172a; white-space:nowrap; }
+.pg-linea.abono { color:#b45309; }
+.pg-nota { font-size:11.5px; color:#64748b; margin-top:6px; line-height:1.45; }
+.pg-nota.mal { color:#b91c1c; }
+.pg-cubre { border:1.5px solid #a7f3d0; background:#ecfdf5; border-radius:12px; padding:10px 12px; }
+.pg-cubre small { display:block; font-size:10.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#047857; }
+.pg-cubre b { font-size:15px; color:#065f46; }
+.pg-tips { font-size:11.5px; color:#64748b; background:#fff; border:1px solid #eef2f7; border-radius:12px; padding:10px 12px; }
+.pg-tips b { color:#334155; } .pg-tips ul { margin:6px 0 0; padding-left:16px; line-height:1.5; }
+.pg-pie { display:flex; justify-content:flex-end; gap:10px; padding:12px 22px; border-top:1px solid #eef2f7; background:#fff; }
+@media (max-width:860px) { .pg-body { grid-template-columns:1fr; } .pg-der { border-left:none; border-top:1px solid #eef2f7; } .pg-modos { grid-template-columns:1fr; } }
+`
 
 // ── Generación PDF: Contrato de Previsión Exequial ─────────────────────────
 

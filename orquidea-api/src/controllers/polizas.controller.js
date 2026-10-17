@@ -897,7 +897,7 @@ export async function historialCancelaciones(req, reply) {
 // pero invisible en Contabilidad). Ahora ambos caminos pasan por aquí y
 // ambos generan su comprobante PAGO_CUOTA_POLIZA, igual que ya hacía el
 // módulo de Recaudo (pagos.controller.js) para sus propios pagos.
-async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id, historico = false }) {
+async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, metodo_pago, referencia, fecha_pago, usuario_id, historico = false, observaciones = null }) {
   const fechaPagoDate = fecha_pago || new Date().toISOString().split('T')[0]
 
   // El pago cubre un PERIODO contado desde el día de afiliación (no un mes de
@@ -930,12 +930,12 @@ async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, 
         [poliza.id, periodo.iso, periodo.fin_iso, monto, metodo_pago, referencia || null, fechaPagoDate, usuario_id])
     : await client.query(`
         INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, parcial, metodo_pago, referencia, fecha_pago, usuario_id, notas,
-                                  pago_hasta_anterior, sin_cobertura_previa)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                                  pago_hasta_anterior, sin_cobertura_previa, observaciones)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         RETURNING id, numero_recibo`,
         [poliza.id, periodo.iso, periodo.fin_iso, monto, parcial, metodo_pago, referencia || null, fechaPagoDate, usuario_id,
          parcial ? `Abono parcial a cuenta de la cuota (${periodo.etiqueta})` : null,
-         poliza.pago_hasta || null, poliza.pago_hasta == null])
+         poliza.pago_hasta || null, poliza.pago_hasta == null, observaciones?.trim() || null])
 
   // Cobertura: el periodo entero si quedó completo; si no, los días que alcanza el abono.
   // Nunca retrocede pago_hasta (pagos adelantados o filas fuera de orden).
@@ -967,12 +967,12 @@ async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, 
 
 export async function registrarPago(req, reply) {
   const { id } = req.params
-  const { mes_correspondiente, monto, metodo_pago = 'efectivo', referencia, fecha_pago } = req.body
+  const { mes_correspondiente, monto, metodo_pago = 'efectivo', referencia, fecha_pago, observaciones } = req.body
 
   if (!mes_correspondiente) return reply.code(400).send({ error: 'mes_correspondiente es obligatorio (YYYY-MM-DD)' })
   if (!monto || +monto <= 0) return reply.code(400).send({ error: 'monto debe ser mayor a 0' })
 
-  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio, valor_cuota FROM polizas WHERE id=$1', [id])
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio, valor_cuota, pago_hasta, tarifa_desde FROM polizas WHERE id=$1', [id])
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
 
@@ -981,7 +981,7 @@ export async function registrarPago(req, reply) {
     await db.query('BEGIN')
     const pago = await procesarPagoPoliza(db, {
       poliza: pol.rows[0], mes_correspondiente, monto, metodo_pago,
-      referencia, fecha_pago, usuario_id: req.user.id,
+      referencia, fecha_pago, usuario_id: req.user.id, observaciones,
     })
     await db.query('COMMIT')
     return reply.code(201).send({ ok: true, pago })
@@ -1007,7 +1007,7 @@ export async function importarPagos(req, reply) {
   if (pagos.length > 500)
     return reply.code(400).send({ error: 'Máximo 500 filas por carga — divide el archivo en lotes más pequeños' })
 
-  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio, valor_cuota FROM polizas WHERE id=$1', [id])
+  const pol = await pool.query('SELECT id, numero, estado, titular_id, sede_id, fecha_inicio, valor_cuota, pago_hasta, tarifa_desde FROM polizas WHERE id=$1', [id])
   if (!pol.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
   if (pol.rows[0].estado === 'CANCELADA') return reply.code(400).send({ error: 'La póliza está cancelada' })
 

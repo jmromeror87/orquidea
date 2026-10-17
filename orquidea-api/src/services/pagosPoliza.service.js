@@ -65,11 +65,13 @@ export async function calcularPlan(client, pol, modo) {
  */
 export async function registrarPlan(client, pol, plan, {
   metodo_pago = 'efectivo', referencia = null, usuario_id, cobrador_id = null, notas = null,
-  descuento = 0, recargo_mora = 0, formaContable = null, concepto = null,
+  descuento = 0, recargo_mora = 0, formaContable = null, concepto = null, observaciones = null,
 }) {
   if (!plan.items.length) throw Object.assign(new Error('No hay periodos pendientes para aplicar este pago'), { httpCode: 400 })
   // Cobertura ANTES de este pago: anularlo la restaura exactamente
   const antes = (await client.query('SELECT pago_hasta FROM polizas WHERE id = $1 FOR UPDATE', [pol.id])).rows[0]?.pago_hasta || null
+  // Todas las filas de este pago comparten lote: un solo recibo con el total
+  const lote = (await client.query('SELECT gen_random_uuid() AS id')).rows[0].id
   const filas = []
   for (let i = 0; i < plan.items.length; i++) {
     const it = plan.items[i]
@@ -84,13 +86,13 @@ export async function registrarPlan(client, pol, plan, {
     const ins = await client.query(`
       INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, parcial,
         descuento, recargo_mora, metodo_pago, referencia, fecha_pago, usuario_id, cobrador_id, notas,
-        pago_hasta_anterior, sin_cobertura_previa)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_DATE,$10,$11,$12,$13,$14)
+        pago_hasta_anterior, sin_cobertura_previa, observaciones, lote_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_DATE,$10,$11,$12,$13,$14,$15,$16)
       RETURNING *, numero_recibo`,
       [pol.id, it.periodo.iso, it.periodo.fin_iso, it.monto, it.parcial,
        esUltimo ? descuento : 0, esUltimo ? recargo_mora : 0,
        metodo_pago, referencia || null, usuario_id, cobrador_id, [nota, notas && nota !== notas ? notas : null].filter(Boolean).join(' — ') || null,
-       anterior, anterior == null])
+       anterior, anterior == null, observaciones?.trim() || null, lote])
     filas.push(ins.rows[0])
   }
 

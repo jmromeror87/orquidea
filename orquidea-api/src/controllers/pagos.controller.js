@@ -247,7 +247,7 @@ export async function listar(req, reply) {
 export async function registrarPagoPoliza(req, reply) {
   const { poliza_id, meses, monto_total, meses_seleccionados, mes_abono,
           metodo_pago = 'efectivo', referencia = '',
-          descuento = 0, recargo_mora = 0, notas = '' } = req.body
+          descuento = 0, recargo_mora = 0, notas = '', observaciones = '' } = req.body
   const usuario_id = req.user.id
   const { sedeIds } = resolverSede(req)
   if (!(await polizaPermitida(pool, poliza_id, sedeIds)))
@@ -283,7 +283,7 @@ export async function registrarPagoPoliza(req, reply) {
     }
     const filas = await registrarPlan(client, pol, plan, {
       metodo_pago, referencia, usuario_id, cobrador_id: usuario_id, notas: notas || null,
-      descuento: Number(descuento), recargo_mora: Number(recargo_mora),
+      descuento: Number(descuento), recargo_mora: Number(recargo_mora), observaciones,
     })
     await client.query('COMMIT')
     return reply.status(201).send({

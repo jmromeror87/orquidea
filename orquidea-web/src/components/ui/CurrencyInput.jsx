@@ -59,7 +59,7 @@ function trescientosALetras(n) {
   return partes.filter(Boolean).join(' ')
 }
 
-function numeroALetras(n) {
+export function numeroALetras(n) {
   n = Math.round(Math.abs(n))
   if (n === 0) return 'cero'
   if (n > 999_999_999_999) return null // fuera de rango razonable, no se muestra
