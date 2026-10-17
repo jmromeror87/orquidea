@@ -847,7 +847,9 @@ export async function reactivar(req, reply) {
       UPDATE polizas SET
         estado = 'VIGENTE',
         fecha_cancelacion = NULL,
-        pago_hasta = CURRENT_DATE,
+        -- Reactivar perdona la mora pero NO regala cobertura: queda cubierta
+        -- hasta ayer (o lo que ya tuviera pagado) y debe pagar para cubrir hoy.
+        pago_hasta = GREATEST(pago_hasta, CURRENT_DATE - 1),
         meses_mora = 0,
         saldo_mora = 0,
         actualizado = NOW()
@@ -927,11 +929,13 @@ async function procesarPagoPoliza(client, { poliza, mes_correspondiente, monto, 
         RETURNING id, numero_recibo`,
         [poliza.id, periodo.iso, periodo.fin_iso, monto, metodo_pago, referencia || null, fechaPagoDate, usuario_id])
     : await client.query(`
-        INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, parcial, metodo_pago, referencia, fecha_pago, usuario_id, notas)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, parcial, metodo_pago, referencia, fecha_pago, usuario_id, notas,
+                                  pago_hasta_anterior, sin_cobertura_previa)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         RETURNING id, numero_recibo`,
         [poliza.id, periodo.iso, periodo.fin_iso, monto, parcial, metodo_pago, referencia || null, fechaPagoDate, usuario_id,
-         parcial ? `Abono parcial a cuenta de la cuota (${periodo.etiqueta})` : null])
+         parcial ? `Abono parcial a cuenta de la cuota (${periodo.etiqueta})` : null,
+         poliza.pago_hasta || null, poliza.pago_hasta == null])
 
   // Cobertura: el periodo entero si quedó completo; si no, los días que alcanza el abono.
   // Nunca retrocede pago_hasta (pagos adelantados o filas fuera de orden).

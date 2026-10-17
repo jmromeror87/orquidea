@@ -15,7 +15,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolverSede, polizaPermitida, contratoPermitido } from '../utils/sede.js'
 import { contabilizarEvento, reversarComprobante } from '../services/contabilidad.service.js'
-import { diaAncla, normalizarInicio, ymd, finCobertura, periodoQueInicia, iso as isoFecha } from '../utils/periodosPoliza.js'
+import { diaAncla, normalizarInicio, ymd, finCobertura, periodoQueInicia, addDias, iso as isoFecha } from '../utils/periodosPoliza.js'
 import { calcularPlan, registrarPlan, resumenPlan, cuotaDePoliza, recalcularMora as recalcularMoraPoliza } from '../services/pagosPoliza.service.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -551,23 +551,56 @@ export async function anularPagoPoliza(req, reply) {
       return reply.send({ ok: true })
     }
 
-    // Cobertura del periodo de la cuota anulada con lo que SIGA pagado en él
-    // (otra cuota completa → periodo entero; abonos → sus días; nada → hasta el
-    // día anterior al periodo). pago_hasta nunca avanza al anular, solo retrocede.
-    const rest = await client.query(`
+    // Cobertura después de anular:
+    //  · si en ese periodo sigue habiendo una cuota completa → el periodo entero;
+    //  · si quedan abonos → los días que alcanzan;
+    //  · si no queda nada → la cobertura que tenía la póliza ANTES de este pago
+    //    (nunca más allá del día anterior al periodo). Antes se asumía siempre
+    //    "hasta el día anterior al periodo", y una póliza sin ningún otro pago
+    //    quedaba al día sin haber pagado (bug real, póliza 0719).
+    const rest = (await client.query(`
       SELECT BOOL_OR(NOT parcial) AS completa, COALESCE(SUM(monto) FILTER (WHERE parcial), 0) AS abonado
       FROM pagos_poliza WHERE poliza_id = $1 AND mes_correspondiente = $2 AND tipo = 'CUOTA' AND NOT anulado`,
-      [pg.poliza_id, pg.mes_correspondiente])
+      [pg.poliza_id, pg.mes_correspondiente])).rows[0] || {}
     const per = periodoQueInicia(ymd(pg.mes_correspondiente), diaAncla(pg))
     const { cuotaFn } = await cuotaDePoliza(client, { ...pg, id: pg.poliza_id })
-    const finPer = rest.rows[0]?.completa ? per.fin : finCobertura(per, Number(rest.rows[0]?.abonado || 0), cuotaFn(per))
+    const diaAntes = isoFecha(addDias(per.inicio, -1))
+    // Cobertura previa = la mayor entre lo que guardó el pago al registrarse y
+    // lo que cubren los OTROS pagos válidos de periodos anteriores (un mismo
+    // pago puede abarcar varios periodos; anular uno no debe borrar los otros)
+    const r = await client.query(`
+      SELECT MAX(periodo_hasta)::text AS h FROM pagos_poliza
+      WHERE poliza_id = $1 AND tipo = 'CUOTA' AND NOT anulado AND NOT parcial AND mes_correspondiente < $2`,
+      [pg.poliza_id, pg.mes_correspondiente])
+    const porOtros = r.rows[0]?.h || null
+    // Lo que guardó el pago solo cuenta si NO viene de otro pago (si viene de
+    // uno, manda lo que siga vigente, porque ese otro pudo anularse después).
+    // Si no viene de ningún pago es cobertura "base": sistema anterior o reactivación.
+    let guardada = pg.pago_hasta_anterior ? isoFecha(ymd(pg.pago_hasta_anterior)) : null
+    if (guardada) {
+      const deOtroPago = await client.query(`
+        SELECT 1 FROM pagos_poliza WHERE poliza_id = $1 AND tipo = 'CUOTA' AND id <> $2 AND periodo_hasta = $3::date LIMIT 1`,
+        [pg.poliza_id, pg.id, guardada])
+      if (deOtroPago.rows.length) guardada = null
+    }
+    // Lo cubierto por OTROS pagos llega como máximo al día anterior al periodo
+    // anulado; la cobertura base (sin pago detrás) se restaura tal cual estaba.
+    const porOtrosTope = porOtros && porOtros > diaAntes ? diaAntes : porOtros
+    const previa = [porOtrosTope, guardada].filter(Boolean).sort().pop() || null
+    let finPer
+    if (rest.completa) finPer = isoFecha(per.fin)
+    else if (Number(rest.abonado) > 0) {
+      const f = isoFecha(finCobertura(per, Number(rest.abonado), cuotaFn(per)))
+      finPer = previa && previa > f ? previa : f
+    } else finPer = previa   // puede ser NULL: la póliza queda sin cobertura
+
     // ultimo_pago: la fecha del último pago que SIGUE vigente (sin él, el listado
     // seguía mostrando como "último pago" la fecha del pago recién anulado)
     await client.query(`
       UPDATE polizas SET
-        pago_hasta  = LEAST(COALESCE(pago_hasta, fecha_inicio), $2::date),
+        pago_hasta  = CASE WHEN $2::date IS NULL THEN NULL ELSE LEAST(COALESCE(pago_hasta, $2::date), $2::date) END,
         ultimo_pago = (SELECT MAX(fecha_pago) FROM pagos_poliza WHERE poliza_id = $1 AND NOT anulado)
-      WHERE id = $1`, [pg.poliza_id, isoFecha(finPer)])
+      WHERE id = $1`, [pg.poliza_id, finPer])
     // Mora con la MISMA regla del proceso nocturno (antes sumaba +1 mes fijo)
     await recalcularMoraPoliza(client, pg.poliza_id)
 

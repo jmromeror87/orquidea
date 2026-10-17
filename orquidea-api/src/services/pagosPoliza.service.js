@@ -68,22 +68,29 @@ export async function registrarPlan(client, pol, plan, {
   descuento = 0, recargo_mora = 0, formaContable = null, concepto = null,
 }) {
   if (!plan.items.length) throw Object.assign(new Error('No hay periodos pendientes para aplicar este pago'), { httpCode: 400 })
+  // Cobertura ANTES de este pago: anularlo la restaura exactamente
+  const antes = (await client.query('SELECT pago_hasta FROM polizas WHERE id = $1 FOR UPDATE', [pol.id])).rows[0]?.pago_hasta || null
   const filas = []
   for (let i = 0; i < plan.items.length; i++) {
     const it = plan.items[i]
     const cuota = tarifaDe(plan.cuotaFn || pol.valor_cuota, it.periodo)
+    // Cobertura justo antes de ESTE periodo: la previa para el primero; para los
+    // siguientes, el fin del periodo anterior del mismo pago
+    const anterior = i === 0 ? antes : plan.items[i - 1].periodo.fin_iso
     const esUltimo = i === plan.items.length - 1
     const nota = it.completa
       ? (it.abonado_antes > 0 ? `Completa el periodo ${it.periodo.etiqueta} (ya tenía abonado $${it.abonado_antes.toLocaleString('es-CO')})` : notas)
       : `Abono parcial a cuenta de la cuota (faltan $${(cuota - it.abonado_antes - it.monto).toLocaleString('es-CO')} de $${cuota.toLocaleString('es-CO')})`
     const ins = await client.query(`
       INSERT INTO pagos_poliza (poliza_id, mes_correspondiente, periodo_hasta, monto, parcial,
-        descuento, recargo_mora, metodo_pago, referencia, fecha_pago, usuario_id, cobrador_id, notas)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_DATE,$10,$11,$12)
+        descuento, recargo_mora, metodo_pago, referencia, fecha_pago, usuario_id, cobrador_id, notas,
+        pago_hasta_anterior, sin_cobertura_previa)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_DATE,$10,$11,$12,$13,$14)
       RETURNING *, numero_recibo`,
       [pol.id, it.periodo.iso, it.periodo.fin_iso, it.monto, it.parcial,
        esUltimo ? descuento : 0, esUltimo ? recargo_mora : 0,
-       metodo_pago, referencia || null, usuario_id, cobrador_id, [nota, notas && nota !== notas ? notas : null].filter(Boolean).join(' — ') || null])
+       metodo_pago, referencia || null, usuario_id, cobrador_id, [nota, notas && nota !== notas ? notas : null].filter(Boolean).join(' — ') || null,
+       anterior, anterior == null])
     filas.push(ins.rows[0])
   }
 

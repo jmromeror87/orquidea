@@ -60,7 +60,8 @@ function EstadoCobertura({ data }) {
     tono = 'gris'; titulo = `Póliza ${data.estado.toLowerCase()}`
     detalle = ph ? `Tuvo cobertura pagada hasta el ${fLarga(ph)}.` : 'Sin pagos registrados.'
   } else if (!ph) {
-    tono = 'rojo'; titulo = 'Sin cobertura pagada'; detalle = 'La póliza no tiene pagos registrados.'
+    tono = 'rojo'; titulo = mora > 0 ? `Sin cobertura — ${mora} periodo${mora !== 1 ? 's' : ''} en mora` : 'Sin cobertura pagada'
+    detalle = `No tiene pagos válidos desde la afiliación (${fLarga(String(data.fecha_inicio).slice(0, 10))}).`
   } else if (dias >= 0) {
     tono = dias <= 5 ? 'ambar' : 'verde'
     titulo = `Al día — cubierta hasta el ${fLarga(ph)}`
