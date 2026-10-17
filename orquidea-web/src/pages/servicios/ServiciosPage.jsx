@@ -3447,6 +3447,11 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
 
   const inp = { padding:'6px 8px', border:'1.5px solid #DDD6FE', borderRadius:8, fontSize:12, outline:'none', background:'#fff' }
 
+  // Los ítems "es_cobertura" no siempre son de póliza: en un servicio de contrato
+  // son los incluidos en el paquete y en uno de convenio, lo que cubre el convenio
+  const etiquetaIncluido = data?.poliza_id ? 'Cobertura póliza'
+    : data?.convenio_id ? 'Cubierto por convenio'
+    : data?.contrato_id ? 'Incluido en el paquete' : 'Incluido'
   const ItemRow = ({ it }) => {
     const col = catCol(it.categoria)
     const enEd = editId === it.id
@@ -3473,7 +3478,7 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
                 <div style={{ fontSize:10.5, color: col, fontWeight:700 }}>
                   {it.catalogo_codigo && <span style={{ marginRight:5 }}>{it.catalogo_codigo} ·</span>}
                   {it.categoria || '—'}
-                  {it.es_cobertura && <span style={{ color:'#059669', marginLeft:5 }}>· Cobertura póliza</span>}
+                  {it.es_cobertura && <span style={{ color:'#059669', marginLeft:5 }}>· {etiquetaIncluido}</span>}
                   {it.producto_id && <span style={{ color:'#0891B2', marginLeft:5 }}>· 📦 Descontado de inventario</span>}
                 </div>
               </>
@@ -3555,7 +3560,7 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
           textAlign:'center' }}>
           <div style={{ fontSize:10, fontWeight:800, color:'#9CA3AF', textTransform:'uppercase',
             letterSpacing:.7, marginBottom:4 }}>
-            {data?.poliza_id ? `Cobertura · ${data?.poliza_plan || 'Póliza'}` : 'Cobertura póliza'}
+            {data?.poliza_id ? `Cobertura · ${data?.poliza_plan || 'Póliza'}` : data?.contrato_id ? 'Contrato' : 'Cobertura póliza'}
           </div>
           {data?.poliza_id ? (
             <>
@@ -3571,6 +3576,11 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
                 {cobertura.length} ítem{cobertura.length !== 1 ? 's' : ''} cubierto{cobertura.length !== 1 ? 's' : ''}
               </div>
             </>
+          ) : data?.contrato_id ? (
+            <div style={{ fontSize:13, color:'#B45309', fontWeight:700 }}>
+              N° {data.contrato_numero || '—'}
+              <div style={{ fontSize:10, color:'#6B7280', fontWeight:500, marginTop:2 }}>valor y saldo en la ficha del contrato</div>
+            </div>
           ) : (
             <div style={{ fontSize:13, color:'#9CA3AF', fontWeight:600 }}>Sin póliza</div>
           )}
@@ -3703,7 +3713,7 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
         <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
           {cobertura.length > 0 && (
             <div style={{ fontSize:10, fontWeight:800, color:'#059669', letterSpacing:.7,
-              textTransform:'uppercase', marginBottom:2 }}>Cobertura de póliza</div>
+              textTransform:'uppercase', marginBottom:2 }}>{data?.poliza_id ? 'Cobertura de póliza' : data?.convenio_id ? 'Cubierto por el convenio' : 'Incluido en el paquete del contrato'}</div>
           )}
           {cobertura.map(it => <ItemRow key={it.id} it={it}/>)}
 
