@@ -29,6 +29,7 @@ import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { aplicarColoresTema } from '../../context/ThemeContext.jsx'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { coincide, sinTildes } from '../../utils/textoFormato.js'
+import IncrementoAnual from '../../components/polizas/IncrementoAnual.jsx'
 
 const TABS = [
   { id:'empresa',        label:'Empresa',           sub:'Datos legales',        Icon:Building2, color:'#6366F1' },
@@ -36,7 +37,7 @@ const TABS = [
   { id:'salas',          label:'Salas de Velación',  sub:'Capacidad y estados',  Icon:DoorOpen,  color:'#8B5CF6' },
   { id:'flota',          label:'Flota',              sub:'Vehículos y conductores', Icon:Truck, color:'#0891B2' },
   { id:'dian',           label:'DIAN',               sub:'Facturación electr.',  Icon:FileText,  color:'#F59E0B' },
-  { id:'parametros',     label:'Parámetros',         sub:'Numeración / mora',    Icon:Sliders,   color:'#64748B' },
+  { id:'parametros',     label:'Parámetros',         sub:'Numeración / mora / renovación', Icon:Sliders,   color:'#64748B' },
   { id:'servicios',      label:'Servicios',          sub:'Ítems de servicio',    Icon:Package,   color:'#0EA5E9' },
   { id:'paquetes',       label:'Paquetes',            sub:'Combos de servicio',   Icon:PackagePlus, color:'#7C3AED' },
   { id:'tipos_doc',      label:'Tipos Documento',    sub:'DIAN Colombia',        Icon:CreditCard, color:'#0891B2' },
@@ -101,6 +102,15 @@ const CSS = `
   .cfg-content::-webkit-scrollbar-thumb { background:#DDE1F0; border-radius:4px; }
 
   /* ── Section card ── */
+  .par-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; padding:6px; background:#fff; border:1px solid #ECEDF8; border-radius:16px; box-shadow:0 1px 4px rgba(0,0,0,.04); }
+  .par-tab { flex:1; min-width:150px; display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:1.5px solid transparent; background:transparent; cursor:pointer; text-align:left; font-family:inherit; transition:background .15s, border-color .15s; }
+  .par-tab:hover { background:#F5F6FB; }
+  .par-tab.on { background:#EEF0FF; border-color:#C7CAF5; }
+  .par-tab-ic { width:34px; height:34px; border-radius:10px; background:#F1F3F9; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+  .par-tab.on .par-tab-ic { background:#fff; }
+  .par-tab b { display:block; font-size:13px; color:#1E1B4B; }
+  .par-tab small { display:block; font-size:11px; color:#8B8FA8; margin-top:1px; }
+  .sec-card + .sec-card { margin-top:18px; }
   .sec-card  { background:#fff; border-radius:20px; border:1px solid #ECEDF8;
                box-shadow:0 1px 4px rgba(0,0,0,.04); overflow:hidden;
                animation:slideIn .22s ease; }
@@ -1871,6 +1881,8 @@ function TabDian({ data, saving, setSaving, onOk, onErr }) {
    TAB PARÁMETROS
 ════════════════════════════════════ */
 function TabParametros({ data, saving, setSaving, onOk, onErr }) {
+  const [sub, setSub] = useState(() => { try { return localStorage.getItem('cfg-param-tab') || 'numeracion' } catch { return 'numeracion' } })
+  useEffect(() => { try { localStorage.setItem('cfg-param-tab', sub) } catch { /* sin almacenamiento */ } }, [sub])
   // ── Parámetros generales (empresa) ──────────────────────────────────────
   const [f, setF] = useState({ prefijo_contrato:'CONT', prefijo_servicio:'SRV', prefijo_prevision:'PREV' })
   useEffect(() => { if (data) setF(x => ({...x,...data})) }, [data])
@@ -1953,6 +1965,17 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
 
   return (
     <>
+      <div className="par-tabs" role="tablist">
+        {SUBTABS_PARAMETROS.map(t => (
+          <button key={t.id} type="button" role="tab" aria-selected={sub === t.id}
+            className={`par-tab${sub === t.id ? ' on' : ''}`} onClick={() => setSub(t.id)}>
+            <span className="par-tab-ic">{t.icon}</span>
+            <span><b>{t.label}</b><small>{t.desc}</small></span>
+          </button>
+        ))}
+      </div>
+
+      {sub === 'numeracion' && (
       <SecCard titulo="Prefijos de Numeración" sub="Documentos generados por el sistema" Icon={Sliders} color="#64748B">
         <div className="g3">
           <div className="campo"><label>Contratos</label><input value={f.prefijo_contrato} onChange={e=>set('prefijo_contrato')(e.target.value)} placeholder="CONT" /></div>
@@ -1961,7 +1984,9 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
         </div>
         <BtnBar saving={saving} onGuardar={guardar} />
       </SecCard>
+      )}
 
+      {sub === 'servicios' && (
       <SecCard titulo="Coordinador de servicios" sub="Quien aparece como coordinador en los formatos que se entregan a la familia" Icon={UserSquare2} color="#7C3AED">
         <div className="g2">
           <div className="campo">
@@ -1978,7 +2003,9 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
         </div>
         <BtnBar saving={savingCoord} onGuardar={guardarCoordinador} />
       </SecCard>
+      )}
 
+      {sub === 'iva' && (
       <SecCard titulo="IVA" sub="Porcentaje que se aplica automáticamente cuando un servicio del catálogo marca 'Aplica IVA'" Icon={Sliders} color="#0EA5E9">
         <div className="g3">
           <div className="campo">
@@ -1991,7 +2018,9 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
         </div>
         <BtnBar saving={saving} onGuardar={guardar} />
       </SecCard>
+      )}
 
+      {sub === 'mora' && (
       <SecCard titulo="Intereses de Mora — Pólizas Prepago" sub="Parámetros dinámicos aplicados automáticamente cada noche" Icon={Sliders} color="#EF4444">
         {loadingMora ? (
           <div style={{display:'flex',gap:8,alignItems:'center',color:'#6B7280',padding:'20px 0'}}>
@@ -2100,9 +2129,20 @@ function TabParametros({ data, saving, setSaving, onOk, onErr }) {
           </>
         )}
       </SecCard>
+      )}
+
+      {sub === 'renovacion' && <IncrementoAnual/>}
     </>
   )
 }
+
+const SUBTABS_PARAMETROS = [
+  { id:'numeracion', icon:'🔢', label:'Numeración',            desc:'Prefijos de documentos' },
+  { id:'servicios',  icon:'⚱️', label:'Servicios',             desc:'Coordinador predeterminado' },
+  { id:'iva',        icon:'🧾', label:'IVA',                   desc:'Impuesto del catálogo' },
+  { id:'mora',       icon:'⏰', label:'Mora de pólizas',       desc:'Intereses y cancelación' },
+  { id:'renovacion', icon:'📈', label:'Renovación de pólizas', desc:'Incremento anual (SMMLV)' },
+]
 
 /* ════════════════════════════════════
    TAB SERVICIOS
