@@ -37,6 +37,58 @@ import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
          diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
+// ── Cobertura según los pagos: hasta qué día está cubierta y si está en mora ──
+function EstadoCobertura({ data }) {
+  if (!data) return null
+  const cerrada = ['CANCELADA', 'EJECUTADA'].includes(data.estado)
+  const hoy = new Date(); const hoyUTC = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+  const ph = data.pago_hasta ? String(data.pago_hasta).slice(0, 10) : null
+  const phUTC = ph ? Date.UTC(+ph.slice(0, 4), +ph.slice(5, 7) - 1, +ph.slice(8, 10)) : null
+  const dias = phUTC != null ? Math.round((phUTC - hoyUTC) / 86400000) : null
+  const fLarga = iso => new Date(iso + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })
+  const siguiente = !cerrada ? primerPeriodoAPagar(data) : null
+  const mora = Number(data.meses_mora || 0)
+
+  let tono, titulo, detalle
+  if (cerrada) {
+    tono = 'gris'; titulo = `Póliza ${data.estado.toLowerCase()}`
+    detalle = ph ? `Tuvo cobertura pagada hasta el ${fLarga(ph)}.` : 'Sin pagos registrados.'
+  } else if (!ph) {
+    tono = 'rojo'; titulo = 'Sin cobertura pagada'; detalle = 'La póliza no tiene pagos registrados.'
+  } else if (dias >= 0) {
+    tono = dias <= 5 ? 'ambar' : 'verde'
+    titulo = `Al día — cubierta hasta el ${fLarga(ph)}`
+    detalle = dias === 0 ? 'Hoy es el último día cubierto.' : `Quedan ${dias} día${dias !== 1 ? 's' : ''} de cobertura.`
+  } else {
+    tono = 'rojo'
+    titulo = mora > 0 ? `En mora — ${mora} periodo${mora !== 1 ? 's' : ''} sin pagar` : 'Pago pendiente'
+    detalle = `Sin cobertura desde el ${fLarga(new Date(phUTC + 86400000).toISOString().slice(0, 10))} (hace ${-dias} día${dias !== -1 ? 's' : ''}).`
+      + (mora > 0 && Number(data.saldo_mora) > 0 ? ` Saldo en mora: ${new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(data.saldo_mora)}.` : '')
+  }
+  const C = {
+    verde: ['#ECFDF5', '#A7F3D0', '#065F46', '✅'], ambar: ['#FFFBEB', '#FDE68A', '#92400E', '⏰'],
+    rojo: ['#FEF2F2', '#FECACA', '#991B1B', '⚠️'], gris: ['#F8FAFC', '#E2E8F0', '#475569', '⏹️'],
+  }[tono]
+  return (
+    <div style={{ background:C[0], border:`1.5px solid ${C[1]}`, borderRadius:14, padding:'14px 18px', color:C[2],
+      display:'flex', gap:14, alignItems:'flex-start', flexWrap:'wrap' }}>
+      <div style={{ fontSize:24, lineHeight:1 }}>{C[3]}</div>
+      <div style={{ flex:1, minWidth:220 }}>
+        <div style={{ fontSize:10, fontWeight:800, letterSpacing:1, textTransform:'uppercase', opacity:.75 }}>Cobertura según pagos</div>
+        <div style={{ fontSize:15, fontWeight:800, marginTop:2 }}>{titulo}</div>
+        <div style={{ fontSize:12.5, marginTop:3 }}>{detalle}</div>
+      </div>
+      {siguiente && (
+        <div style={{ fontSize:12, background:'rgba(255,255,255,.7)', borderRadius:10, padding:'8px 12px' }}>
+          <div style={{ fontWeight:700, opacity:.75 }}>Próximo periodo a pagar</div>
+          <div style={{ fontWeight:800, fontSize:13.5 }}>{siguiente.etiqueta}</div>
+          <div style={{ opacity:.8 }}>{fLarga(siguiente.iso)} → {fLarga(siguiente.fin_iso)}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Etiqueta de un pago de póliza: periodo ("Jun–Jul 2026") o afiliación
 const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
   ? `Afiliación${pago.beneficiario_nombre ? ' · ' + pago.beneficiario_nombre : ' · titular'}`
@@ -1585,6 +1637,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                   </PldCard>
 
                   <PldCard icon="📊" title="Estado de la póliza">
+                    <div style={{ marginBottom:12 }}><EstadoCobertura data={data}/></div>
                     <div style={{ marginBottom:10 }}>
                       <span className="pld-label">Estado</span>
                       <div style={{ marginTop:4 }}>
@@ -1593,10 +1646,10 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                     </div>
                     <div className="pld-grid2" style={{ marginBottom:10 }}>
                       <PldField label="Plan" value={data.plan_nombre}/>
-                      <PldField label="Cuota mensual" value={`${fmt(data.valor_cuota)}/mes`} color="#059669"/>
+                      <PldField label="Cuota por periodo" value={`${fmt(data.valor_cuota)}/periodo`} color="#059669"/>
                     </div>
                     <div className="pld-grid2" style={{ marginBottom:10 }}>
-                      <PldField label="Día de cobro" value={`Día ${data.dia_cobro} de cada mes`}/>
+                      <PldField label="Día de cobro" value={`El ${data.dia_cobro} de cada mes (inicio de cada periodo)`}/>
                       <PldField label="Último pago" value={fmtDate(data.ultimo_pago)}/>
                     </div>
                     <div className="pld-grid2">
@@ -1928,6 +1981,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
 
             ) : (
               <>
+                <div style={{ marginBottom:14 }}><EstadoCobertura data={data}/></div>
                 <PldCard icon="✅" title={`Plan: ${data.plan_nombre}`}
                   accentColor="#059669" accentBg="linear-gradient(90deg,#ECFDF5,#D1FAE5)">
                   <div style={{ display:'flex', flexWrap:'wrap', gap:7 }}>
