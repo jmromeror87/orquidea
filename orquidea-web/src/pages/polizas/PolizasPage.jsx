@@ -197,7 +197,7 @@ const CSS = `
   /* Drawer póliza */
   .pl-drawer-overlay { position:fixed; inset:0; background:rgba(10,10,30,.45); backdrop-filter:blur(3px);
     z-index:1000; display:flex; justify-content:flex-end; }
-  .pl-drawer { background:#fff; width:88%; max-width:1100px; height:100vh; display:flex;
+  .pl-drawer { background:#fff; width:92%; max-width:1240px; height:100vh; display:flex;
     flex-direction:column; box-shadow:-8px 0 40px rgba(0,0,0,.18); animation:pl-slide-in .22s ease;
     border-top-left-radius:18px; border-bottom-left-radius:18px; overflow:hidden; }
   @keyframes pl-slide-in { from{transform:translateX(60px);opacity:0} to{transform:translateX(0);opacity:1} }
@@ -210,7 +210,7 @@ const CSS = `
   .pl-drawer-stab.active { background:linear-gradient(135deg,#059669,#047857); color:#fff;
     font-weight:800; box-shadow:0 3px 10px rgba(5,150,105,.25); }
   .pl-drawer-stab .stab-icon { font-size:16px; line-height:1; flex-shrink:0; }
-  .pl-drawer-content { flex:1; min-height:0; overflow-y:auto; padding:28px 32px; }
+  .pl-drawer-content { flex:1; min-height:0; overflow-y:auto; padding:24px 28px; }
   /* Cards dentro del drawer */
   .pld-card { background:#fff; border:1.5px solid #E5F7EE; border-radius:14px; margin-bottom:16px; overflow:hidden; }
   .pld-card-head { display:flex; align-items:center; gap:9px; padding:12px 16px;
