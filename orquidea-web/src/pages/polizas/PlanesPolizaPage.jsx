@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, CheckCircle, XCircle, ShieldCheck, Users, Clock, DollarSign, ToggleLeft, ToggleRight, PlusCircle, Search, Package } from 'lucide-react'
 import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
+import ListaDoble from '../../components/ui/ListaDoble.jsx'
 import { toast } from '../../store/toast.store.js'
 
 const CATEGORIAS_SERVICIO = [
@@ -77,7 +78,7 @@ const CSS = `
 
 /* Modal */
 .pp-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
-.pp-modal { background:#fff; border-radius:16px; width:100%; max-width:680px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+.pp-modal { background:#fff; border-radius:16px; width:100%; max-width:860px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.25); }
 .pp-modal-head { display:flex; align-items:center; justify-content:space-between; padding:20px 24px 16px; border-bottom:3px solid #059669; position:sticky; top:0; background:#fff; z-index:1; }
 .pp-modal-title { font-size:18px; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:8px; }
 .pp-modal-close { background:none; border:none; font-size:22px; cursor:pointer; color:#94a3b8; line-height:1; }
@@ -506,48 +507,17 @@ export default function PlanesPolizaPage() {
                   Si el servicio que necesita no existe, créelo aquí mismo sin salir del formulario.
                 </div>
 
-                <div style={{ position:'relative', marginBottom:10 }}>
-                  <Search size={14} style={{ position:'absolute', left:10, top:10, color:'#94a3b8' }} />
-                  <input
-                    type="text"
-                    value={buscarServ}
-                    onChange={e => setBuscarServ(e.target.value)}
-                    placeholder="Buscar servicio del catálogo…"
-                    style={{ width:'100%', border:'1.5px solid #e2e8f0', borderRadius:8, padding:'8px 12px 8px 32px', fontSize:13, outline:'none', boxSizing:'border-box' }}
-                  />
-                </div>
-
-                <div style={{ display:'flex', flexWrap:'wrap', gap:8, maxHeight:180, overflowY:'auto', padding:'2px 2px 4px' }}>
-                  {catalogo
-                    .filter(s => s.nombre.toLowerCase().includes(buscarServ.toLowerCase()))
-                    .map(s => {
-                      const activo = form.servicios_ids.includes(s.id)
-                      return (
-                        <button
-                          type="button"
-                          key={s.id}
-                          onClick={() => toggleServicio(s.id)}
-                          style={{
-                            display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
-                            border:`1.5px solid ${activo ? '#059669' : '#e2e8f0'}`, borderRadius:20,
-                            background: activo ? '#d1fae5' : '#fff', color: activo ? '#065f46' : '#475569',
-                            fontSize:12.5, fontWeight:600, cursor:'pointer',
-                          }}
-                        >
-                          {activo && <CheckCircle size={12}/>} {s.nombre}
-                          <span style={{ opacity:.7 }}>· {fmt(s.precio_base)}</span>
-                        </button>
-                      )
-                    })}
-                  {catalogo.length === 0 && (
-                    <span style={{ fontSize:12.5, color:'#94a3b8' }}>Aún no hay servicios configurados.</span>
-                  )}
-                </div>
-
-                {form.servicios_ids.length > 0 && (
-                  <div style={{ fontSize:11.5, color:'#059669', fontWeight:600, marginTop:8 }}>
-                    {form.servicios_ids.length} servicio(s) asignado(s) a este plan
-                  </div>
+                {/* Lista doble: disponibles ⇄ asignados al plan */}
+                <ListaDoble
+                  items={catalogo.map(sv => ({ id: sv.id, label: sv.nombre, detalle: fmt(sv.precio_base), precio: Number(sv.precio_base) || 0 }))}
+                  seleccionados={form.servicios_ids}
+                  onChange={ids => setForm(f => ({ ...f, servicios_ids: ids }))}
+                  tituloIzq="Disponibles en el catálogo"
+                  tituloDer="Asignados al plan"
+                  pieDer={der => der.length ? `Valor: ${fmt(der.reduce((t, x) => t + x.precio, 0))}` : ''}
+                />
+                {catalogo.length === 0 && (
+                  <div style={{ fontSize:12.5, color:'#94a3b8', marginTop:6 }}>Aún no hay servicios configurados.</div>
                 )}
 
                 {!nuevoServ ? (
