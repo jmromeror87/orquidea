@@ -47,6 +47,7 @@ const CSS = `
 .ld-item .ld-det { flex-shrink:0; font-size:11.5px; color:#64748b; }
 .ld-vacio { font-size:12px; color:#94a3b8; text-align:center; padding:24px 8px; }
 .ld-pie { padding:7px 10px; border-top:1px solid #eef2f7; font-size:11.5px; color:#475569; display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap; }
+.ld-total { color:#047857; font-weight:800; font-size:13px; }
 .ld-pie button { background:none; border:none; color:#4f46e5; font-weight:700; font-size:11.5px; cursor:pointer; padding:0; font-family:inherit; }
 .ld-botones { display:flex; flex-direction:column; justify-content:center; gap:8px; }
 .ld-btn { width:36px; height:32px; border-radius:8px; border:1.5px solid #c7d2fe; background:#eef2ff; color:#4338ca; display:flex; align-items:center; justify-content:center; cursor:pointer; }
@@ -62,7 +63,7 @@ const CSS = `
 
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-function Panel({ titulo, items, marcados, setMarcados, onDoble, pie }) {
+function Panel({ titulo, items, marcados, setMarcados, onDoble, pie, pieDestacado = false }) {
   const [q, setQ] = useState('')
   const visibles = items.filter(i => norm(i.label).includes(norm(q)))
   const marcadosVisibles = visibles.filter(i => marcados.has(i.id))
@@ -100,7 +101,7 @@ function Panel({ titulo, items, marcados, setMarcados, onDoble, pie }) {
         <button type="button" onClick={marcarTodos} disabled={!visibles.length}>
           {visibles.length && marcadosVisibles.length === visibles.length ? 'Desmarcar todos' : 'Marcar todos'}
         </button>
-        <span>{pie}</span>
+        <span className={pieDestacado ? 'ld-total' : undefined}>{pie}</span>
       </div>
     </div>
   )
@@ -133,7 +134,7 @@ export default function ListaDoble({ items, seleccionados, onChange, tituloIzq =
             onClick={() => pasarIzq(der.map(i => i.id))}><ChevronsLeft size={16}/></button>
         </div>
         <Panel titulo={tituloDer} items={der} marcados={marcDer} setMarcados={setMarcDer}
-          onDoble={id => pasarIzq([id])} pie={typeof pieDer === 'function' ? pieDer(der) : pieDer}/>
+          onDoble={id => pasarIzq([id])} pie={typeof pieDer === 'function' ? pieDer(der) : pieDer} pieDestacado/>
       </div>
     </>
   )
