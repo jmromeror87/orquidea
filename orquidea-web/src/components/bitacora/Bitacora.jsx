@@ -50,7 +50,7 @@ export const CATEGORIAS = {
 }
 const EVENTOS = {
   POLIZA:'🛡️', PAGO:'💳', ANULACION:'⛔', BENEFICIARIO:'👤', EJECUCION:'🕊️', TRANSFERENCIA:'🔄',
-  CANCELACION:'⛔', REACTIVACION:'✅', SERVICIO:'⚱️',
+  CANCELACION:'⛔', REACTIVACION:'✅', SERVICIO:'⚱️', OBSERVACION:'📝',
 }
 const ADMINS = ['superadmin', 'administrador']
 
@@ -105,7 +105,7 @@ const CSS = `
 .bt-npie button { border:none; background:none; color:#4f46e5; font-weight:700; font-size:11px; cursor:pointer; padding:0; font-family:inherit; display:flex; align-items:center; gap:3px; }
 .bt-evento { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border-radius:10px; background:#f8fafc; border:1px solid #eef2f7; }
 .bt-evento .bt-etit { font-size:12.5px; font-weight:700; color:#334155; }
-.bt-evento .bt-edet { font-size:12px; color:#64748b; margin-top:1px; }
+.bt-evento .bt-edet { font-size:12px; color:#64748b; margin-top:1px; white-space:pre-wrap; }
 .bt-evento .bt-ehora { margin-left:auto; font-size:11px; color:#94a3b8; white-space:nowrap; text-align:right; }
 .bt-auto { font-size:9.5px; font-weight:800; letter-spacing:.05em; color:#64748b; background:#e2e8f0; border-radius:5px; padding:1px 5px; margin-left:6px; vertical-align:1px; }
 .bt-borrada { padding:9px 12px; border-radius:10px; border:1px dashed #fecaca; background:#fef2f2; font-size:12px; color:#991b1b; }

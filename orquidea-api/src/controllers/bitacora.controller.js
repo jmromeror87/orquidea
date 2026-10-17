@@ -117,7 +117,7 @@ const fCorta = d => d ? new Date(d).toISOString().slice(0, 10).split('-').revers
 async function eventosPoliza(polizaId) {
   const q = (sql) => pool.query(sql, [polizaId]).then(r => r.rows)
   const [pol, pagos, bens, transf, react, servs] = await Promise.all([
-    q(`SELECT p.creado_en, u.nombre AS usuario, pl.nombre AS plan, p.valor_cuota, p.numero
+    q(`SELECT p.creado_en, u.nombre AS usuario, pl.nombre AS plan, p.valor_cuota, p.numero, p.observaciones
          FROM polizas p JOIN planes_poliza pl ON pl.id = p.plan_id LEFT JOIN usuarios u ON u.id = p.usuario_id
         WHERE p.id = $1`),
     q(`SELECT pp.id, pp.numero_recibo, pp.tipo, pp.monto, pp.parcial, pp.mes_correspondiente, pp.periodo_hasta,
@@ -145,7 +145,11 @@ async function eventosPoliza(polizaId) {
   const ev = []
   const add = (id, fecha, tipo, icono, titulo, detalle, usuario) => fecha && ev.push({ id, fecha, tipo, icono, titulo, detalle, usuario })
 
-  for (const p of pol) add('pol', p.creado_en, 'POLIZA', 'shield', 'Póliza creada', `Plan ${p.plan} · cuota ${pesos(p.valor_cuota)}`, p.usuario)
+  for (const p of pol) {
+    add('pol', p.creado_en, 'POLIZA', 'shield', 'Póliza creada', `${p.plan} · cuota ${pesos(p.valor_cuota)}`, p.usuario)
+    // Las observaciones del formulario de la póliza también se ven aquí
+    if (p.observaciones?.trim()) add('pol-obs', p.creado_en, 'OBSERVACION', 'nota', 'Observaciones de la póliza', p.observaciones.trim(), p.usuario)
+  }
   for (const p of pagos) {
     const que = p.tipo === 'AFILIACION' ? 'Afiliación / cambio de beneficiario'
       : `${p.parcial ? 'Abono' : 'Cuota'} del periodo ${fCorta(p.mes_correspondiente)} → ${fCorta(p.periodo_hasta)}`

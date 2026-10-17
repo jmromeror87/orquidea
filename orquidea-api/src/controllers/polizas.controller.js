@@ -395,19 +395,22 @@ export async function contratoImpresion(req, reply) {
 
 export async function crear(req, reply) {
   const {
-    titular_id, plan_id, valor_cuota, dia_cobro = 1,
+    titular_id, plan_id,
     fecha_inicio, observaciones, beneficiarios = [], numero_legado,
     asesor_id, recaudador_id,
   } = req.body
 
   if (!titular_id) return reply.code(400).send({ error: 'titular_id es obligatorio' })
   if (!plan_id)    return reply.code(400).send({ error: 'plan_id es obligatorio' })
-  if (!valor_cuota || +valor_cuota <= 0) return reply.code(400).send({ error: 'valor_cuota debe ser mayor a 0' })
 
   const planRes = await pool.query('SELECT * FROM planes_poliza WHERE id=$1 AND activo', [plan_id])
   if (!planRes.rows.length) return reply.code(400).send({ error: 'Plan no encontrado o inactivo' })
 
   const plan = planRes.rows[0]
+  // La cuota SIEMPRE es la del plan (se define en Configuración de planes);
+  // no se acepta un valor distinto desde el formulario.
+  const valor_cuota = +plan.valor_mensual
+  if (!valor_cuota || valor_cuota <= 0) return reply.code(400).send({ error: `El plan "${plan.nombre}" no tiene cuota configurada` })
   if (beneficiarios.length > plan.max_beneficiarios)
     return reply.code(400).send({ error: `El plan permite máximo ${plan.max_beneficiarios} beneficiarios` })
 
@@ -590,7 +593,12 @@ export async function cobrarAfiliacionBeneficiario(req, reply) {
 
 export async function actualizar(req, reply) {
   const { id } = req.params
-  const { plan_id, valor_cuota, dia_cobro, observaciones, numero_legado } = req.body
+  // La cuota no se edita a mano: solo cambia si se cambia de plan (toma la
+  // del plan nuevo). El día de cobro sale del día de afiliación (periodos
+  // tipo arriendo), así que tampoco se edita.
+  const { plan_id, observaciones, numero_legado } = req.body
+  let valor_cuota = null
+  const dia_cobro = null
 
   const actual = await pool.query(
     `SELECT plan_id, fecha_fin_carencia FROM polizas WHERE id=$1 AND estado NOT IN ('CANCELADA','EJECUTADA')`, [id]
@@ -604,6 +612,7 @@ export async function actualizar(req, reply) {
     const planRes = await pool.query('SELECT * FROM planes_poliza WHERE id=$1 AND activo', [plan_id])
     if (!planRes.rows.length) return reply.code(400).send({ error: 'Plan no encontrado o inactivo' })
     const plan = planRes.rows[0]
+    valor_cuota = +plan.valor_mensual   // cambio de plan → cuota del plan nuevo
 
     // No cuenta a quienes ya fallecieron y usaron su cobertura (ejecutado) —
     // ese cupo queda libre para un reemplazo, aunque el registro se conserve

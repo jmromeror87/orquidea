@@ -21,7 +21,7 @@ import {
   ChevronLeft, ChevronRight, User, Phone, Mail, Calendar,
   AlertTriangle, CheckCircle2, Clock, Ban, Edit2, Eye,
   CreditCard, Heart, PlusCircle, Trash2, Star, ArrowLeftRight,
-  DollarSign, Users, AlertCircle, Settings, FileText, MessageCircle, Send, Printer,
+  DollarSign, Users, AlertCircle, Settings, FileText, MessageCircle, Send, Printer, Lock,
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -301,17 +301,62 @@ function CoberturaTag({ ok, label }) {
 
 // ── Modal Formulario ──────────────────────────────────────────────────────
 
+const CSS_PF = `
+.pf-drawer { background:#f8fafc; width:92%; max-width:1180px; height:100vh; display:flex; flex-direction:column;
+  box-shadow:-8px 0 40px rgba(0,0,0,.18); animation:pl-slide-in .22s ease; border-top-left-radius:18px; border-bottom-left-radius:18px; overflow:hidden; }
+.pf-head { background:linear-gradient(135deg,#047857 0%,#059669 60%,#10B981 100%); padding:18px 24px; display:flex; align-items:center; gap:14px; flex-shrink:0; }
+.pf-hicon { width:50px; height:50px; border-radius:14px; background:rgba(255,255,255,.2); border:2px solid rgba(255,255,255,.3); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pf-eyebrow { font-size:10px; color:rgba(255,255,255,.7); font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+.pf-title { font-size:19px; font-weight:900; color:#fff; line-height:1.2; }
+.pf-sub { font-size:12px; color:rgba(255,255,255,.8); margin-top:2px; }
+.pf-close { margin-left:auto; width:38px; height:38px; border-radius:10px; border:1.5px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.pf-close:hover { background:rgba(255,255,255,.25); }
+.pf-body { flex:1; min-height:0; overflow-y:auto; padding:22px 24px; }
+.pf-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:18px; align-items:start; }
+.pf-col-der { position:sticky; top:0; }
+.pf-card { background:#fff; border:1.5px solid #e5f7ee; border-radius:14px; margin-bottom:16px; overflow:hidden; }
+.pf-chead { display:flex; align-items:center; gap:9px; padding:11px 16px; background:linear-gradient(90deg,#ECFDF5,#F0FDF4); border-bottom:1px solid #e5f7ee; }
+.pf-chead span:first-child { font-size:15px; }
+.pf-ctit { font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#065F46; }
+.pf-cbody { padding:16px; }
+.pf-cbody .pl-field:last-child { margin-bottom:0; }
+.pf-g2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.pf-ro { display:flex; align-items:center; gap:8px; min-height:40px; padding:8px 12px; border-radius:10px; background:#f1f5f9; border:1.5px dashed #cbd5e1; color:#334155; font-size:13.5px; font-weight:700; }
+.pf-ro svg { color:#94a3b8; flex-shrink:0; }
+.pf-ayuda { font-size:11px; color:#94a3b8; margin-top:4px; line-height:1.4; }
+.pf-cuota { padding:16px; border-radius:14px; background:linear-gradient(135deg,#065f46,#059669); color:#fff; margin-bottom:12px; }
+.pf-cuota small { display:flex; align-items:center; gap:5px; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; opacity:.85; }
+.pf-cuota strong { display:block; font-size:30px; font-weight:900; line-height:1.15; margin-top:4px; }
+.pf-cuota em { font-style:normal; font-size:13px; font-weight:600; opacity:.85; }
+.pf-cuota div { font-size:11.5px; opacity:.9; margin-top:6px; line-height:1.4; }
+.pf-datos { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+.pf-dato { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:8px 10px; }
+.pf-dato small { display:block; font-size:9.5px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; }
+.pf-dato b { font-size:13.5px; color:#0f172a; }
+.pf-vacio { text-align:center; color:#94a3b8; font-size:12.5px; padding:30px 10px; }
+.pf-pie { flex-shrink:0; display:flex; align-items:center; gap:10px; padding:12px 24px; background:#fff; border-top:1.5px solid #e5f7ee; }
+.pf-pie .pl-alert { margin:0; flex:1; }
+@media (max-width:900px) { .pf-grid { grid-template-columns:1fr; } .pf-col-der { position:static; } .pf-drawer { width:100%; border-radius:0; } }
+`
+
+// Fuera del formulario: si se define adentro, cada tecla la recrea y el campo pierde el foco
+function Card({ icon, title, children, right }) {
+  return (
+    <div className="pf-card">
+      <div className="pf-chead"><span>{icon}</span><span className="pf-ctit">{title}</span>{right && <span style={{ marginLeft:'auto' }}>{right}</span>}</div>
+      <div className="pf-cbody">{children}</div>
+    </div>
+  )
+}
+
 function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
   const [form, setForm] = useState(poliza ? {
     plan_id:      poliza.plan_id      || '',
-    valor_cuota:  poliza.valor_cuota  || '',
-    dia_cobro:    poliza.dia_cobro    || 1,
     fecha_inicio: poliza.fecha_inicio?.split('T')[0] || new Date().toISOString().split('T')[0],
     observaciones:poliza.observaciones || '',
     numero_legado: poliza.numero_legado || '',
   } : {
-    plan_id:'', valor_cuota:'', dia_cobro:1,
-    fecha_inicio: new Date().toISOString().split('T')[0], observaciones:'', numero_legado:'',
+    plan_id:'', fecha_inicio: new Date().toISOString().split('T')[0], observaciones:'', numero_legado:'',
   })
 
   const [busqTit, setBusqTit]       = useState(poliza?.titular_nombre || '')
@@ -322,13 +367,11 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
   const [err, setErr]               = useState('')
 
   const planActual = planes.find(p => p.id === form.plan_id)
-
-  // Auto-completar cuota con valor del plan
-  useEffect(() => {
-    if (planActual && !poliza) {
-      setForm(p => ({ ...p, valor_cuota: planActual.valor_mensual }))
-    }
-  }, [form.plan_id])
+  const cambioPlan = !!poliza && form.plan_id !== poliza.plan_id
+  // La cuota viene del plan y no se edita aquí. Una póliza existente conserva
+  // la cuota con la que se vendió, salvo que se cambie de plan.
+  const cuota = poliza && !cambioPlan ? +poliza.valor_cuota : +(planActual?.valor_mensual || 0)
+  const diaCobro = +String(form.fecha_inicio || '').slice(8, 10) || 1
 
   useEffect(() => {
     if (busqTit.length < 2) return setCandTit([])
@@ -348,14 +391,14 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
     setErr('')
     if (!titularId)      return setErr('Seleccione el titular de la póliza.')
     if (!form.plan_id)   return setErr('Seleccione un plan.')
-    if (!form.valor_cuota || +form.valor_cuota <= 0) return setErr('Ingrese el valor de la cuota mensual.')
+    if (!cuota || cuota <= 0) return setErr('El plan elegido no tiene cuota configurada. Ajústela en Configuración de planes.')
     if (planActual && bens.length > planActual.max_beneficiarios)
       return setErr(`El plan "${planActual.nombre}" permite máximo ${planActual.max_beneficiarios} beneficiarios.`)
     setSaving(true)
     try {
       if (poliza) {
-        await api.put(`/polizas/${poliza.id}`, form)
-        toast.success('Póliza actualizada con éxito')
+        await api.put(`/polizas/${poliza.id}`, { plan_id: form.plan_id, observaciones: form.observaciones, numero_legado: form.numero_legado })
+        toast.success(cambioPlan ? `Póliza actualizada — nuevo plan con cuota de ${fmt(cuota)}` : 'Póliza actualizada con éxito')
       } else {
         const res = await api.post('/polizas', { ...form, titular_id: titularId, beneficiarios: bens })
         const costoAfiliacion = Number(res.data.data?.costo_afiliacion || 0)
@@ -374,201 +417,204 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
   }
 
   return (
-    <div className="pl-overlay">
-      <div className="pl-modal">
-        <div className="pl-mhead">
-          <div>
-            <div className="pl-mtitle">{poliza ? `Editar póliza #${poliza.numero}` : 'Nueva póliza'}</div>
-            <div className="pl-msub">Previsión funeraria — registro de afiliación</div>
+    <div className="pl-drawer-overlay">
+      <style>{CSS_PF}</style>
+      <div className="pf-drawer">
+        <div className="pf-head">
+          <div className="pf-hicon">{poliza ? <ShieldCheck size={22} color="#fff"/> : <ShieldPlus size={22} color="#fff"/>}</div>
+          <div style={{ minWidth:0 }}>
+            <div className="pf-eyebrow">{poliza ? `Editar póliza ${poliza.numero_legado || '#' + poliza.numero}` : 'Nueva afiliación'}</div>
+            <div className="pf-title">{poliza ? poliza.titular_nombre : 'Nueva póliza de previsión'}</div>
+            <div className="pf-sub">Previsión funeraria — registro de afiliación</div>
           </div>
-          <button className="pl-mclose" onClick={onClose}><X size={16}/></button>
+          <button className="pf-close" onClick={onClose} title="Cerrar"><X size={18}/></button>
         </div>
-        <div className="pl-mbody">
-          {err && <div className="pl-alert err" style={{ marginBottom:16 }}><AlertTriangle size={13}/>{err}</div>}
 
-          {!poliza && (
-            <>
-              <div className="pl-section">Titular de la póliza</div>
-              <div className="pl-field">
-                <label>Titular <span className="pl-req">*</span></label>
-                <div style={{ position:'relative' }}>
-                  <Search size={13} color="#9CA3AF" style={{ position:'absolute', left:10,
-                    top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
-                  <input value={busqTit} onChange={e => { setBusqTit(e.target.value); setTitularId('') }}
-                    placeholder="Nombre o documento…" style={{ paddingLeft:30 }}/>
-                </div>
-                {titularId && <span style={{ fontSize:11, color:'#059669', fontWeight:700 }}>✓ Titular seleccionado</span>}
-                {candTit.length > 0 && !titularId && (
-                  <div style={{ border:'1.5px solid #ECEDF8', borderRadius:10, overflow:'hidden',
-                    maxHeight:150, overflowY:'auto', background:'#fff', marginTop:4 }}>
-                    {candTit.map((c,i) => (
-                      <div key={c.id}
-                        onClick={() => { setTitularId(c.id); setBusqTit(`${c.nombres||''} ${c.apellidos||''}`.trim()); setCandTit([]) }}
-                        style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', cursor:'pointer',
-                          borderBottom:i<candTit.length-1?'1px solid #F4F5FA':'none', transition:'background .1s' }}
-                        onMouseEnter={e => e.currentTarget.style.background='#ECFDF5'}
-                        onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                        <div style={{ width:30, height:30, borderRadius:8, flexShrink:0,
-                          background:'linear-gradient(135deg,#059669,#047857)',
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:12, fontWeight:800, color:'#fff' }}>
-                          {(c.nombres?.[0]||'?').toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontSize:12.5, fontWeight:700 }}>{c.nombres} {c.apellidos}</div>
-                          <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}</div>
-                        </div>
+        <div className="pf-body">
+          <div className="pf-grid">
+            {/* ── Columna izquierda: datos ── */}
+            <div>
+              <Card icon="👤" title="Titular">
+                {poliza ? (
+                  <div className="pf-ro"><Lock size={14}/>{poliza.titular_nombre}<span style={{ fontWeight:500, color:'#94a3b8' }}>· {poliza.titular_doc}</span></div>
+                ) : (
+                  <div className="pl-field">
+                    <label>Titular de la póliza <span className="pl-req">*</span></label>
+                    <div style={{ position:'relative' }}>
+                      <Search size={13} color="#9CA3AF" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
+                      <input value={busqTit} onChange={e => { setBusqTit(e.target.value); setTitularId('') }}
+                        placeholder="Buscar por nombre o documento…" style={{ paddingLeft:30, width:'100%', boxSizing:'border-box' }}/>
+                    </div>
+                    {titularId && <span style={{ fontSize:11, color:'#059669', fontWeight:700 }}>✓ Titular seleccionado</span>}
+                    {candTit.length > 0 && !titularId && (
+                      <div style={{ border:'1.5px solid #ECEDF8', borderRadius:10, overflow:'hidden', maxHeight:180, overflowY:'auto', background:'#fff', marginTop:4 }}>
+                        {candTit.map((c,i) => (
+                          <div key={c.id}
+                            onClick={() => { setTitularId(c.id); setBusqTit(`${c.nombres||''} ${c.apellidos||''}`.trim()); setCandTit([]) }}
+                            style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', cursor:'pointer',
+                              borderBottom:i<candTit.length-1?'1px solid #F4F5FA':'none' }}
+                            onMouseEnter={e => e.currentTarget.style.background='#ECFDF5'}
+                            onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                            <div style={{ width:30, height:30, borderRadius:8, flexShrink:0, background:'linear-gradient(135deg,#059669,#047857)',
+                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#fff' }}>
+                              {(c.nombres?.[0]||'?').toUpperCase()}
+                            </div>
+                            <div>
+                              <div style={{ fontSize:12.5, fontWeight:700 }}>{c.nombres} {c.apellidos}</div>
+                              <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}</div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
-              </div>
-            </>
-          )}
+              </Card>
 
-          <div className="pl-section" style={{ marginTop: poliza ? 0 : 6 }}>Plan y pago</div>
-          <div className="pl-field">
-            <label style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span>Plan de póliza <span className="pl-req">*</span></span>
-              {esAdmin && (
+              <Card icon="📋" title="Plan" right={esAdmin && (
                 <a href="/polizas/planes" target="_blank" rel="noopener"
                   style={{ fontSize:11, color:'#059669', fontWeight:700, textDecoration:'none', display:'flex', alignItems:'center', gap:3 }}>
                   <Settings size={11}/> Administrar planes
                 </a>
-              )}
-            </label>
-            {planes.length === 0 ? (
-              <div style={{ padding:'10px 14px', background:'#fefce8', border:'1.5px solid #fde68a', borderRadius:8, fontSize:13, color:'#92400e' }}>
-                No hay planes activos.{' '}
-                {esAdmin && (
-                  <a href="/polizas/planes" target="_blank" rel="noopener"
-                    style={{ color:'#059669', fontWeight:700, textDecoration:'underline' }}>
-                    Crear un plan →
-                  </a>
+              )}>
+                {planes.length === 0 ? (
+                  <div style={{ padding:'10px 14px', background:'#fefce8', border:'1.5px solid #fde68a', borderRadius:8, fontSize:13, color:'#92400e' }}>
+                    No hay planes activos.{' '}
+                    {esAdmin && <a href="/polizas/planes" target="_blank" rel="noopener" style={{ color:'#059669', fontWeight:700, textDecoration:'underline' }}>Crear un plan →</a>}
+                  </div>
+                ) : (
+                  <div className="pl-field">
+                    <label>Plan de póliza <span className="pl-req">*</span></label>
+                    <select value={form.plan_id} onChange={e => setForm(p => ({...p, plan_id:e.target.value}))}>
+                      <option value="">— Seleccione un plan —</option>
+                      {planes.map(p => (
+                        <option key={p.id} value={p.id}>{p.nombre} · {fmt(p.valor_mensual)}/periodo · máx {p.max_beneficiarios} beneficiarios</option>
+                      ))}
+                    </select>
+                    {cambioPlan && (
+                      <span className="pf-ayuda" style={{ color:'#b45309' }}>
+                        Al cambiar de plan la cuota pasa a la del plan nuevo y la cobertura nueva tiene su propia carencia desde hoy.
+                      </span>
+                    )}
+                  </div>
                 )}
-              </div>
-            ) : (
-              <select value={form.plan_id} onChange={e => setForm(p => ({...p, plan_id:e.target.value}))}>
-                <option value="">— Seleccione un plan —</option>
-                {planes.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre} · {fmt(p.valor_mensual)}/mes · máx {p.max_beneficiarios} beneficiarios
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+              </Card>
 
-          {/* Previsualización del plan */}
-          {planActual && (
-            <div style={{ background:'linear-gradient(135deg,#ECFDF5,#D1FAE5)', border:'1.5px solid #A7F3D0',
-              borderRadius:12, padding:'12px 16px', marginBottom:14 }}>
-              <div style={{ fontSize:11, fontWeight:800, color:'#059669', letterSpacing:.5,
-                textTransform:'uppercase', marginBottom:8 }}>Cobertura del plan</div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                <CoberturaTag ok label={`Velación ${planActual.cubre_velacion_h}h`}/>
-                {Array.isArray(planActual.servicios) && planActual.servicios.map(s => (
-                  <CoberturaTag key={s.id} ok label={s.nombre}/>
-                ))}
-                {Array.isArray(planActual.coberturas_extra) && planActual.coberturas_extra.map((c, i) => (
-                  <CoberturaTag key={`ex-${i}`} ok={c.incluido !== false} label={c.nombre}/>
-                ))}
-              </div>
-              {(!planActual.servicios || planActual.servicios.length === 0) && (
-                <div style={{ fontSize:11, color:'#92400E', marginTop:6 }}>
-                  ⚠️ Este plan aún no tiene servicios del catálogo asignados.{' '}
-                  {esAdmin && (
-                    <a href="/polizas/planes" target="_blank" rel="noopener" style={{ color:'#059669', fontWeight:700 }}>
-                      Asignarlos →
-                    </a>
-                  )}
+              <Card icon="🗂️" title="Datos de la póliza">
+                <div className="pf-g2">
+                  <div className="pl-field">
+                    <label>Número de póliza <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opcional)</span></label>
+                    <input value={form.numero_legado} placeholder="Ej: 2244" data-cap="no"
+                      onChange={e => setForm(p => ({...p, numero_legado:e.target.value}))}/>
+                    <span className="pf-ayuda">El que maneja la funeraria. Vacío = número interno del sistema.</span>
+                  </div>
+                  <div className="pl-field">
+                    <label>Fecha de afiliación {!poliza && <span className="pl-req">*</span>}</label>
+                    {poliza ? (
+                      <div className="pf-ro"><Lock size={14}/>{fmtDate(form.fecha_inicio)}</div>
+                    ) : (
+                      <input type="date" value={form.fecha_inicio} onChange={e => setForm(p => ({...p, fecha_inicio:e.target.value}))}/>
+                    )}
+                    <span className="pf-ayuda">{poliza ? 'No se cambia: de ella dependen los periodos ya pagados.' : 'Desde este día corren los periodos de cobro.'}</span>
+                  </div>
+                  <div className="pl-field">
+                    <label>Cuota por periodo</label>
+                    <div className="pf-ro" title="Viene del plan — se configura en Planes de póliza"><Lock size={14}/>{cuota ? fmt(cuota) : '—'}</div>
+                    <span className="pf-ayuda">Viene del plan. Solo lectura.</span>
+                  </div>
+                  <div className="pl-field">
+                    <label>Día de cobro</label>
+                    <div className="pf-ro"><Lock size={14}/>El {diaCobro} de cada mes</div>
+                    <span className="pf-ayuda">Automático: el día de afiliación (periodo del {diaCobro} al {diaCobro === 1 ? 'último día del mes' : `${diaCobro - 1} del mes siguiente`}).</span>
+                  </div>
                 </div>
-              )}
-              <div style={{ fontSize:11, color:'#065F46', marginTop:8, fontWeight:600 }}>
-                ⏳ Carencia: {planActual.meses_carencia} meses · 👥 Máx. beneficiarios: {planActual.max_beneficiarios}
-              </div>
-            </div>
-          )}
+              </Card>
 
-          <div className="pl-grid3">
-            <div className="pl-field" style={{ marginBottom:0 }}>
-              <label>Número de póliza <span style={{ color:'#9CA3AF', fontWeight:400 }}>(opcional)</span></label>
-              <input value={form.numero_legado} placeholder="Ej: 2244"
-                onChange={e => setForm(p => ({...p, numero_legado:e.target.value}))}/>
-            </div>
-            <div className="pl-field" style={{ marginBottom:0 }}>
-              <label>Cuota mensual <span className="pl-req">*</span></label>
-              <CurrencyInput value={form.valor_cuota}
-                onChange={v => setForm(p => ({...p, valor_cuota:v}))} placeholder="0"/>
-            </div>
-            <div className="pl-field" style={{ marginBottom:0 }}>
-              <label>Día de cobro</label>
-              <input type="number" min="1" max="28" value={form.dia_cobro}
-                onChange={e => setForm(p => ({...p, dia_cobro:+e.target.value}))}/>
-            </div>
-            <div className="pl-field" style={{ marginBottom:0 }}>
-              <label>Fecha de inicio</label>
-              <input type="date" value={form.fecha_inicio}
-                onChange={e => setForm(p => ({...p, fecha_inicio:e.target.value}))}/>
-            </div>
-          </div>
-          <div style={{ fontSize:11, color:'#9CA3AF', marginTop:6, marginBottom:14 }}>
-            El número de póliza es el que maneja la funeraria (ej. el de un contrato heredado). Si se deja vacío, se usa el número interno que genera el sistema automáticamente.
-          </div>
-
-          {/* Beneficiarios (solo en creación) */}
-          {!poliza && (
-            <>
-              <div className="pl-section" style={{ marginTop:18 }}>
-                Beneficiarios ({bens.length}/{planActual?.max_beneficiarios || '?'})
-              </div>
-              <div style={{ marginBottom:10 }}>
-                <BuscadorBeneficiario
-                  parentescos={PARENTESCOS_BEN}
-                  disabled={!titularId || (planActual && bens.length >= planActual.max_beneficiarios)}
-                  disabledMsg={!titularId ? 'Primero selecciona el titular de la póliza.' : `El plan permite máximo ${planActual?.max_beneficiarios} beneficiarios.`}
-                  excluidos={new Map([
-                    ...(titularId ? [[titularId, 'Titular']] : []),
-                    ...bens.map(b => [b.tercero_id, 'Ya agregado']),
-                  ])}
-                  onAgregar={(t, parentesco) => agregarBen(t, parentesco)}
-                />
-              </div>
-              {bens.length > 0 && (
-                <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:14 }}>
-                  {bens.map((b, i) => (
-                    <div key={b.tercero_id} className="pl-ben-item" style={{ padding:'8px 12px' }}>
-                      <Heart size={14} color="#0891B2"/>
-                      <div style={{ flex:1 }}>
-                        <span style={{ fontSize:12.5, fontWeight:700 }}>{b.nombre}</span>
-                        <span style={{ fontSize:11, color:'#9CA3AF', marginLeft:8 }}>
-                          {b.parentesco} · {b.doc}
-                        </span>
-                      </div>
-                      <button onClick={() => setBens(p => p.filter((_,j) => j !== i))}
-                        style={{ background:'none', border:'none', cursor:'pointer', color:'#EF4444' }}>
-                        <Trash2 size={13}/>
-                      </button>
+              {!poliza && (
+                <Card icon="👨‍👩‍👧" title={`Beneficiarios (${bens.length}/${planActual?.max_beneficiarios || '?'})`}>
+                  <BuscadorBeneficiario
+                    parentescos={PARENTESCOS_BEN}
+                    disabled={!titularId || (planActual && bens.length >= planActual.max_beneficiarios)}
+                    disabledMsg={!titularId ? 'Primero selecciona el titular de la póliza.' : `El plan permite máximo ${planActual?.max_beneficiarios} beneficiarios.`}
+                    excluidos={new Map([
+                      ...(titularId ? [[titularId, 'Titular']] : []),
+                      ...bens.map(b => [b.tercero_id, 'Ya agregado']),
+                    ])}
+                    onAgregar={(t, parentesco) => agregarBen(t, parentesco)}
+                  />
+                  {bens.length > 0 && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:10 }}>
+                      {bens.map((b, i) => (
+                        <div key={b.tercero_id} className="pl-ben-item" style={{ padding:'8px 12px' }}>
+                          <Heart size={14} color="#0891B2"/>
+                          <div style={{ flex:1 }}>
+                            <span style={{ fontSize:12.5, fontWeight:700 }}>{b.nombre}</span>
+                            <span style={{ fontSize:11, color:'#9CA3AF', marginLeft:8 }}>{b.parentesco} · {b.doc}</span>
+                          </div>
+                          <button onClick={() => setBens(p => p.filter((_,j) => j !== i))} title="Quitar"
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'#EF4444' }}>
+                            <Trash2 size={13}/>
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </Card>
               )}
-            </>
-          )}
 
-          <div className="pl-field" style={{ marginTop:4 }}>
-            <label>Observaciones</label>
-            <input value={form.observaciones} placeholder="Notas de la afiliación…"
-              onChange={e => setForm(p => ({...p, observaciones:e.target.value}))}/>
-          </div>
+              <Card icon="📝" title="Observaciones">
+                <div className="pl-field">
+                  <textarea rows={3} value={form.observaciones} placeholder="Notas de la afiliación…"
+                    onChange={e => setForm(p => ({...p, observaciones:e.target.value}))}
+                    style={{ width:'100%', resize:'vertical', fontFamily:'inherit' }}/>
+                </div>
+              </Card>
+            </div>
 
-          <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:8 }}>
-            <button className="pl-btn pl-btn-ghost" onClick={onClose}>Cancelar</button>
-            <button className="pl-btn pl-btn-primary" onClick={guardar} disabled={saving}>
-              {saving ? <Loader2 size={14} className="pl-spin"/> : <ShieldCheck size={14}/>}
-              {poliza ? 'Guardar cambios' : 'Afiliar póliza'}
-            </button>
+            {/* ── Columna derecha: resumen del plan ── */}
+            <div className="pf-col-der">
+              <Card icon="✅" title={planActual ? `Plan: ${planActual.nombre}` : 'Resumen del plan'}>
+                {!planActual ? (
+                  <div className="pf-vacio">Seleccione un plan para ver la cuota y todo lo que cubre.</div>
+                ) : (
+                  <>
+                    <div className="pf-cuota">
+                      <small><Lock size={11}/> Cuota por periodo</small>
+                      <strong>{fmt(cuota)} <em>/ periodo</em></strong>
+                      {poliza && !cambioPlan && +planActual.valor_mensual !== cuota
+                        ? <div>Cuota con la que se vendió esta póliza. El plan hoy vale {fmt(planActual.valor_mensual)}.</div>
+                        : <div>Definida en Planes de póliza — no se modifica en la afiliación.</div>}
+                    </div>
+                    <div className="pf-datos">
+                      <div className="pf-dato"><small>Carencia</small><b>{planActual.meses_carencia} {+planActual.meses_carencia === 1 ? 'mes' : 'meses'}</b></div>
+                      <div className="pf-dato"><small>Beneficiarios</small><b>Hasta {planActual.max_beneficiarios}</b></div>
+                      <div className="pf-dato"><small>Afiliación</small><b>{+planActual.valor_afiliacion ? fmt(planActual.valor_afiliacion) : '—'}</b></div>
+                    </div>
+                    {(!planActual.servicios || planActual.servicios.length === 0) && (
+                      <div style={{ fontSize:11.5, color:'#92400E', marginBottom:10 }}>
+                        ⚠️ Este plan aún no tiene servicios del catálogo asignados.{' '}
+                        {esAdmin && <a href="/polizas/planes" target="_blank" rel="noopener" style={{ color:'#059669', fontWeight:700 }}>Asignarlos →</a>}
+                      </div>
+                    )}
+                    <CoberturaPlan data={{
+                      servicios_incluidos: planActual.servicios || [],
+                      coberturas_extra: planActual.coberturas_extra || [],
+                      cubre_velacion_h: planActual.cubre_velacion_h,
+                    }}/>
+                  </>
+                )}
+              </Card>
+            </div>
           </div>
+        </div>
+
+        <div className="pf-pie">
+          {err ? <div className="pl-alert err"><AlertTriangle size={13}/>{err}</div> : <span style={{ flex:1 }}/>}
+          <button className="pl-btn pl-btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="pl-btn pl-btn-primary" onClick={guardar} disabled={saving}>
+            {saving ? <Loader2 size={14} className="pl-spin"/> : <ShieldCheck size={14}/>}
+            {poliza ? 'Guardar cambios' : 'Afiliar póliza'}
+          </button>
         </div>
       </div>
     </div>
@@ -1638,6 +1684,12 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                     </div>
                   </PldCard>
                 </div>
+
+                <PldCard icon="📝" title="Observaciones de la póliza">
+                  {data.observaciones?.trim()
+                    ? <div style={{ fontSize:13.5, color:'#1f2937', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{data.observaciones}</div>
+                    : <div style={{ fontSize:12.5, color:'#9CA3AF' }}>Sin observaciones. Se agregan con <b>Editar</b>; para el seguimiento del día a día use la <b>Bitácora</b>.</div>}
+                </PldCard>
 
                 <PldCard icon="🤝" title="Venta y recaudo">
                   <ResponsablesPoliza data={data} puedeEditar={esEditor && !['CANCELADA','EJECUTADA'].includes(data.estado)}
