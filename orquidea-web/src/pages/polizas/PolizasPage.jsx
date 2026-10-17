@@ -37,6 +37,7 @@ import { imprimirReciboPagoPoliza } from '../../utils/reciboPagoPoliza.js'
 import BuscadorBeneficiario from '../../components/polizas/BuscadorBeneficiario.jsx'
 import TablaPagosPoliza from '../../components/polizas/TablaPagosPoliza.jsx'
 import ResponsablesPoliza from '../../components/polizas/ResponsablesPoliza.jsx'
+import CoberturaPlan from '../../components/polizas/CoberturaPlan.jsx'
 import { diaAncla, primerPeriodoAPagar, listarPeriodos, normalizarInicio, siguientePeriodo, planDePago,
          diasQueCubre, tarifaDiaria, iso as isoFecha } from '../../utils/periodosPoliza.js'
 
@@ -1831,20 +1832,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                 <div style={{ marginBottom:14 }}><EstadoCobertura data={data}/></div>
                 <PldCard icon="✅" title={`Plan: ${data.plan_nombre}`}
                   accentColor="#059669" accentBg="linear-gradient(90deg,#ECFDF5,#D1FAE5)">
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:7 }}>
-                    <CoberturaTag ok label={`Velación ${data.cubre_velacion_h} horas`}/>
-                    {Array.isArray(data.servicios_incluidos) && data.servicios_incluidos.map(s => (
-                      <CoberturaTag key={s.id} ok label={s.nombre}/>
-                    ))}
-                    {Array.isArray(data.coberturas_extra) && data.coberturas_extra.map((c, i) => (
-                      <CoberturaTag key={`ex-${i}`} ok={c.incluido !== false} label={c.nombre}/>
-                    ))}
-                  </div>
-                  {(!data.servicios_incluidos || data.servicios_incluidos.length === 0) && (
-                    <div style={{ fontSize:11, color:'#92400E', marginTop:8 }}>
-                      Esta póliza no tiene servicios adicionales congelados (el plan no tenía servicios asignados al momento de la venta).
-                    </div>
-                  )}
+                  <CoberturaPlan data={data}/>
                 </PldCard>
 
                 <div className="pld-grid2">

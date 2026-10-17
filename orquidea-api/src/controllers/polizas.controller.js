@@ -286,8 +286,26 @@ export async function obtener(req, reply) {
 
   if (!pRes.rows.length) return reply.code(404).send({ error: 'Póliza no encontrada' })
 
+  // Servicios incluidos: cuáles descargan inventario al prestarse (catálogo
+  // enlazado a un producto) y cuántas existencias hay hoy de ese producto.
+  const pol = pRes.rows[0]
+  const ids = (Array.isArray(pol.servicios_incluidos) ? pol.servicios_incluidos : []).map(x => x.id).filter(Boolean)
+  if (ids.length) {
+    const inv = await pool.query(`
+      SELECT sc.id, ip.nombre AS producto_nombre, ip.codigo_sku, ip.unidad_medida, ip.stock_minimo,
+        COALESCE((SELECT SUM(st.cantidad) FROM inv_stock st WHERE st.producto_id = ip.id), 0) AS stock
+      FROM servicios_catalogo sc JOIN inv_productos ip ON ip.id = sc.producto_id
+      WHERE sc.id = ANY($1::uuid[])`, [ids])
+    const porId = Object.fromEntries(inv.rows.map(r => [r.id, r]))
+    pol.servicios_incluidos = pol.servicios_incluidos.map(x => {
+      const r = porId[x.id]
+      return r ? { ...x, inventario: { producto: r.producto_nombre, sku: r.codigo_sku, unidad: r.unidad_medida,
+        stock: +r.stock, stock_minimo: +r.stock_minimo || 0 } } : { ...x, inventario: null }
+    })
+  }
+
   return reply.send({
-    data: { ...pRes.rows[0], beneficiarios: benRes.rows, pagos: pagosRes.rows },
+    data: { ...pol, beneficiarios: benRes.rows, pagos: pagosRes.rows },
   })
 }
 
