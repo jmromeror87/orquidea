@@ -166,7 +166,7 @@ function ModalConvenio({ convenio, onClose, onSaved }) {
   }
 
   return (
-    <div className="cv-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="cv-overlay">
       <div className="cv-modal">
         <div className="cv-mhead">
           <div>

@@ -356,7 +356,7 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
 
   return (
     <>
-    <div className="ct-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="ct-overlay">
       <div className="ct-modal">
         <div className="ct-mhead">
           <div>
@@ -564,8 +564,7 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
 
     {/* ══════════ Modal — Crear rápido (Contratante / Difunto) ══════════ */}
     {quickCrear && (
-      <div className="ct-overlay" style={{ zIndex:1001 }}
-        onClick={e => { if (e.target === e.currentTarget) setQuickCrear(null) }}>
+      <div className="ct-overlay" style={{ zIndex:1001 }}>
         <div className="ct-modal" style={{ maxWidth:460 }}>
           <div className="ct-mhead">
             <div>
@@ -683,7 +682,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
 
   return (
     <>
-    <div className="ct-drawer-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="ct-drawer-overlay">
       <div className="ct-drawer">
 
         {/* Header dorado */}

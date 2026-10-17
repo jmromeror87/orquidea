@@ -360,7 +360,7 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
   }
 
   if (recibo) return (
-    <div className="pg-overlay" onClick={onClose}>
+    <div className="pg-overlay">
       <div className="pg-modal" onClick={e => e.stopPropagation()}>
         <div className="pg-modal-title">
           <span style={{color:'#059669',display:'flex',alignItems:'center',gap:8}}><CheckCircle size={20}/>¡Pago registrado!</span>
@@ -414,7 +414,7 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
   )
 
   return (
-    <div className="pg-overlay" onClick={onClose}>
+    <div className="pg-overlay">
       <div className="pg-modal" onClick={e => e.stopPropagation()}>
         <div className="pg-modal-title">
           <span style={{display:'flex',alignItems:'center',gap:8}}><Receipt size={20} color="#2E3192"/>Registrar Pago — {tipo === 'POLIZA' ? 'Póliza' : 'Contrato'}</span>

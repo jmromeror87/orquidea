@@ -1509,7 +1509,7 @@ function TabMiPanel() {
 
       {/* ── Modal de recibo POS-80 ── */}
       {reciboModal && (
-        <div className="rp-recibo-overlay" onClick={e => { if (e.target === e.currentTarget) setReciboModal(null) }}>
+        <div className="rp-recibo-overlay">
           <div className="rp-recibo-box">
 
             {/* Ticket POS */}
@@ -1674,7 +1674,7 @@ function TabMiPanel() {
 
       {/* ── Modal Reporte de Ruta ── */}
       {reporteRuta && (
-        <div className="rp-modal-overlay" onClick={() => setReporteRuta(null)}>
+        <div className="rp-modal-overlay">
           <div className="rp-reporte-modal" onClick={e => e.stopPropagation()}>
             <div className="rp-reporte-head">
               <div>

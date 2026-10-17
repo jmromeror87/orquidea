@@ -625,7 +625,7 @@ function ModalTercero({ tercero, tiposDocs, onClose, onSaved }) {
   }
 
   return (
-    <div className="tp-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="tp-overlay">
       <div className="tp-modal">
         <div className="tp-mhead">
           <div>
@@ -1156,7 +1156,7 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
     : 'linear-gradient(135deg,#5B6EE8 0%,#4A5DD4 50%,#6B8DD6 100%)'
 
   return (
-    <div className="tp-drawer-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="tp-drawer-overlay">
       <div className="tp-drawer">
 
         {/* Header */}

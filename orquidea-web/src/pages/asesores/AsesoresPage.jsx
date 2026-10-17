@@ -353,7 +353,7 @@ export default function AsesoresPage() {
       </div>
 
       {modalConfig && config && (
-        <div className="as-overlay" onClick={e => { if (e.target === e.currentTarget) setModalConfig(false) }}>
+        <div className="as-overlay">
           <div className="as-modal sm">
             <div className="as-mhead">
               <div className="as-mtitle"><Percent size={17} color="#BE185D" /> % de comisión global</div>
@@ -377,7 +377,7 @@ export default function AsesoresPage() {
       )}
 
       {detalle && (
-        <div className="as-overlay" onClick={e => { if (e.target === e.currentTarget) setDetalle(null) }}>
+        <div className="as-overlay">
           <div className="as-modal">
             <div className="as-mhead">
               <div className="as-mtitle">

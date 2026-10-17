@@ -931,7 +931,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
 
   return (
     <>
-    <div className="sv-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="sv-overlay">
       <div className="sv-modal">
         <div className="sv-mhead">
           <div>
@@ -2088,8 +2088,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
 
     {/* ══════════ Modal — Crear rápido (Contratante / Difunto), fuera del overlay principal ══════════ */}
       {quickCrear && (
-        <div className="sv-overlay" style={{ zIndex:1001 }}
-          onClick={e => { if (e.target === e.currentTarget) setQuickCrear(null) }}>
+        <div className="sv-overlay" style={{ zIndex:1001 }}>
           <div className="sv-modal" style={{ maxWidth:460 }}>
             <div className="sv-mhead">
               <div>
@@ -4739,7 +4738,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const disp = data ? DISPOSICION_META[data.tipo_disposicion] : {}
 
   return (
-    <div className="sv-drawer-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="sv-drawer-overlay">
       <div className="sv-drawer">
 
         {/* ── Header morado ─────────────────────────────────────────────── */}
@@ -5446,8 +5445,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
       {/* Modal del formato: va fuera de .sv-drawer (su animación con transform
           rompería el position:fixed del overlay) */}
       {formatoSel && (
-        <div className="sv-overlay" style={{ zIndex:1001 }}
-          onClick={e => { if (e.target === e.currentTarget) setFormatoSel(null) }}>
+        <div className="sv-overlay" style={{ zIndex:1001 }}>
           <div className="sv-modal" style={{ maxWidth:560 }}>
             <div className="sv-mhead">
               <div>

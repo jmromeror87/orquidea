@@ -208,7 +208,7 @@ function ModalCerrarCaja({ caja, onClose, onCerrada }) {
   const diferencia = montoReal !== '' ? (+montoReal - esperado) : null
 
   return (
-    <div className="pos-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pos-overlay">
       <div className="pos-modal">
         <div className="pos-mhead">
           <div style={{ fontSize:15, fontWeight:800 }}>Cerrar caja</div>
@@ -266,7 +266,7 @@ function ModalRecibo({ ventaId, onClose, onNuevaVenta }) {
   const pagoEfectivo = recibo.pagos?.find(p => p.metodo_pago === 'efectivo' && +p.monto_recibido > 0)
 
   return (
-    <div className="pos-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pos-overlay">
       <div className="pos-modal" style={{ maxWidth:340, textAlign:'center', padding:'28px 24px' }}>
         <div style={{ width:56, height:56, borderRadius:'50%', background:'#16A34A', display:'flex',
           alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
@@ -334,7 +334,7 @@ function ModalSoportePago({ metodoLabel, referenciaInicial, soporteInicial, onCo
   const esImagen = /\.(jpe?g|png|webp|gif|bmp|tiff)$/i.test(soporteUrl || '')
 
   return (
-    <div className="pos-overlay" onClick={e => { if (e.target === e.currentTarget) onCerrar() }}>
+    <div className="pos-overlay">
       <div className="pos-modal" style={{ maxWidth:400 }}>
         <div className="pos-mhead">
           <div>
@@ -432,7 +432,7 @@ function ModalClienteRapido({ onClose, onCreado }) {
   }
 
   return (
-    <div className="pos-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pos-overlay">
       <div className="pos-modal" style={{ maxWidth:400 }}>
         <div className="pos-mhead">
           <div style={{ fontSize:15, fontWeight:800, display:'flex', alignItems:'center', gap:8 }}>
@@ -1030,7 +1030,7 @@ function ModalPresentacion({ producto, onClose, onElegir }) {
     ...producto.presentaciones,
   ]
   return (
-    <div className="pos-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="pos-overlay">
       <div className="pos-modal" style={{ maxWidth: 380 }}>
         <div className="pos-mhead">
           <div>
@@ -1098,7 +1098,7 @@ function ReporteAuditoriaCaja({ cajaId, onCerrar }) {
   const abierta = caja.estado === 'ABIERTA'
 
   return (
-    <div className="pos-overlay" onClick={e => { if (e.target === e.currentTarget) onCerrar() }}>
+    <div className="pos-overlay">
       <div className="pos-modal" style={{ maxWidth:820 }}>
         <div className="pos-recibo" style={{ padding:'22px 26px' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>

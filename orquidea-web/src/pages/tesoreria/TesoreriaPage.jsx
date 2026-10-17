@@ -298,7 +298,7 @@ function ModalTerceroRapido({ onClose, onCreado }) {
   }
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 9000 }} onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" style={{ zIndex: 9000 }}>
       <div className="modal-box" style={{ maxWidth: 420 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div className="modal-title" style={{ marginBottom: 0 }}>Nuevo proveedor</div>
@@ -462,7 +462,7 @@ function ModalComprobante({ tipo, onClose, onCreado }) {
   )
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <div className="modal-box wide">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -589,7 +589,7 @@ function ModalAnular({ comprobante, onClose, onAnulado }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: 420 }}>
         <div className="modal-title" style={{ color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Ban size={17} /> Anular {comprobante.numero}

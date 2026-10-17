@@ -414,7 +414,7 @@ function TabPlanCuentas() {
       </div>
 
       {editando && (
-        <div className="modal-overlay" onClick={() => !saving && setEditando(null)}>
+        <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-title">Cuenta {editando.codigo}</div>
 
@@ -463,7 +463,7 @@ function TabPlanCuentas() {
       )}
 
       {creando && (
-        <div className="modal-overlay" onClick={() => !saving && setCreando(null)}>
+        <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-title">Nueva cuenta</div>
 

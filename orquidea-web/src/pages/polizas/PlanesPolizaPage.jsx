@@ -358,7 +358,7 @@ export default function PlanesPolizaPage() {
       </div>
 
       {modal && (
-        <div className="pp-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
+        <div className="pp-overlay">
           <div className="pp-modal">
             <div className="pp-modal-head">
               <div className="pp-modal-title">

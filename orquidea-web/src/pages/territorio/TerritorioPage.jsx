@@ -499,7 +499,7 @@ const CSS = `
 /* ─── Mini Modal genérico ─── */
 function Modal({ titulo, icono, iconoBg, onClose, onGuardar, guardando, error, children }) {
   return (
-    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <div className="modal-box">
         <div className="modal-hdr">
           <div className="modal-hdr-icon" style={{ background:iconoBg }}>{icono}</div>
@@ -524,7 +524,7 @@ function Modal({ titulo, icono, iconoBg, onClose, onGuardar, guardando, error, c
 /* ─── Modal confirmar eliminar ─── */
 function ModalEliminar({ texto, onClose, onConfirm, guardando }) {
   return (
-    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{maxWidth:360}}>
         <div className="modal-hdr">
           <div className="modal-hdr-icon" style={{background:'#FEF2F2'}}><Trash2 size={18} color="#EF4444"/></div>

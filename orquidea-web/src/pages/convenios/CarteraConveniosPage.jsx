@@ -50,8 +50,7 @@ function ModalAbono({ item, onClose, onSaved }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(15,16,53,.45)', zIndex:1000,
-      display:'flex', alignItems:'center', justifyContent:'center' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
+      display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ background:'#fff', borderRadius:16, width:420, maxWidth:'92vw', padding:22 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
           <div>

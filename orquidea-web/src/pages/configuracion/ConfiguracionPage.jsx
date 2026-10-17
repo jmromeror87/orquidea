@@ -600,7 +600,7 @@ function TabPaquetes() {
 
       {/* ── Modal crear/editar paquete ── */}
       {modal === 'paquete' && (
-        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal-box">
             <div className="modal-head">
               <div className="modal-title">{selected ? 'Editar paquete' : 'Nuevo paquete'}</div>
@@ -697,7 +697,7 @@ function TabPaquetes() {
 
       {/* ── Modal ítems del paquete ── */}
       {modal === 'items' && selected && (
-        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
+        <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth:620 }}>
             <div className="modal-head">
               <div>
@@ -1400,7 +1400,7 @@ function TabSalas({ salas, saving, setSaving, onOk, onErr }) {
 
       {/* Modal nueva / editar sala */}
       {modal !== null && (
-        <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setModal(null) }}>
+        <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth:400 }}>
             <div className="modal-head">
               <span className="modal-title">{modal?.id ? 'Editar sala' : 'Nueva sala de velación'}</span>
@@ -1711,7 +1711,7 @@ function TabFlota() {
 
       {/* Modal vehículo */}
       {modalV !== null && (
-        <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setModalV(null) }}>
+        <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth:460 }}>
             <div className="modal-head">
               <span className="modal-title">{modalV?.id ? 'Editar vehículo' : 'Nuevo vehículo'}</span>
@@ -1772,7 +1772,7 @@ function TabFlota() {
 
       {/* Modal conductor */}
       {modalC !== null && (
-        <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setModalC(null) }}>
+        <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth:460 }}>
             <div className="modal-head">
               <span className="modal-title">{modalC?.id ? 'Editar conductor' : 'Nuevo conductor'}</span>
@@ -2507,7 +2507,7 @@ function TabTiposDocumento({ tiposDoc, saving, setSaving, onOk, onErr }) {
 
     {/* Modal crear / editar — fuera del SecCard para no quedar bajo overflow:hidden */}
     {show && (
-      <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setShow(false) }}>
+      <div className="modal-overlay">
         <div className="modal-box">
           <div className="modal-head">
             <div className="modal-title">
@@ -2689,7 +2689,7 @@ function TabListasValores() {
     </SecCard>
 
     {show && (
-      <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setShow(false) }}>
+      <div className="modal-overlay">
         <div className="modal-box">
           <div className="modal-head">
             <div className="modal-title">
@@ -2833,7 +2833,7 @@ function TabRolesPersonal() {
     </SecCard>
 
     {show && (
-      <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setShow(false) }}>
+      <div className="modal-overlay">
         <div className="modal-box">
           <div className="modal-head">
             <div className="modal-title">{editId ? '✏️ Editar Rol' : '+ Nuevo Rol de Personal'}</div>
@@ -2956,7 +2956,7 @@ function TabTiposTraslado() {
     </SecCard>
 
     {show && (
-      <div className="modal-overlay" onClick={e => { if(e.target===e.currentTarget) setShow(false) }}>
+      <div className="modal-overlay">
         <div className="modal-box">
           <div className="modal-head">
             <div className="modal-title">✏️ {TRASLADO_TIPOS_LABEL[tipoEdit] || tipoEdit}</div>

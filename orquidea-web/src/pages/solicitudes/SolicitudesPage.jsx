@@ -199,7 +199,7 @@ export default function SolicitudesPage() {
       </div>
 
       {seleccionado && (
-        <div className="sl-overlay" onClick={() => setSeleccionado(null)}>
+        <div className="sl-overlay">
           <div className="sl-modal" onClick={(e) => e.stopPropagation()}>
             <div className="sl-modal-head">
               <div style={{ fontSize: 16, fontWeight: 800, color: '#0F1035' }}>{seleccionado.nombre}</div>

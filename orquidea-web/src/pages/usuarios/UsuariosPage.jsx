@@ -362,7 +362,7 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
   }
 
   return (
-    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="modal-overlay">
       <div className="modal-box">
         <div className="modal-header">
           <div className="modal-header-icon" style={{ background:'#EEF2FF' }}><UserCog size={20} color="#4338CA"/></div>
@@ -476,7 +476,7 @@ function ModalPassword({ usuario, onClose, onGuardado }) {
     finally { setSaving(false) }
   }
   return (
-    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{maxWidth:380}}>
         <div className="modal-header">
           <div className="modal-header-icon" style={{background:'#FEF3C7'}}><Lock size={20} color="#B45309"/></div>
@@ -514,7 +514,7 @@ function ModalConfirmar({ titulo, mensaje, textoBoton='Confirmar', peligro=true,
     try { await onConfirmar() } finally { setBusy(false) }
   }
   return (
-    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onCancelar()}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{maxWidth:400}}>
         <div className="modal-header">
           <div className="modal-header-icon" style={{background:peligro?'#FEF2F2':'#EEF2FF'}}>

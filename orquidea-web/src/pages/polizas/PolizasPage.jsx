@@ -379,7 +379,7 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
   }
 
   return (
-    <div className="pl-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pl-overlay">
       <div className="pl-modal">
         <div className="pl-mhead">
           <div>
@@ -775,7 +775,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
   }
 
   return (
-    <div className="pl-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pl-overlay">
       <div className="pl-modal">
         <div className="pl-mhead">
           <div>
@@ -1225,7 +1225,7 @@ function ModalEnviarMensaje({ poliza, onClose }) {
   }
 
   return (
-    <div className="pl-drawer-overlay" style={{ zIndex:60 }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pl-drawer-overlay" style={{ zIndex:60 }}>
       <div style={{ background:'#fff', borderRadius:18, width:480, maxWidth:'92vw', maxHeight:'88vh',
         overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ background:'linear-gradient(135deg,#25D366,#128C7E)', padding:'18px 22px',
@@ -1476,7 +1476,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
 
   return (
     <>
-    <div className="pl-drawer-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pl-drawer-overlay">
       <div className="pl-drawer">
 
         {/* Header */}
@@ -2033,8 +2033,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
     {showTransf && (
       <div className="pl-overlay" style={{ position:'fixed', inset:0, background:'rgba(15,16,53,.55)',
         backdropFilter:'blur(4px)', zIndex:1001, display:'flex', alignItems:'center',
-        justifyContent:'center', padding:20 }}
-        onClick={e => { if (e.target === e.currentTarget) setShowTransf(false) }}>
+        justifyContent:'center', padding:20 }}>
         <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:460,
           boxShadow:'0 24px 60px rgba(0,0,0,.25)', overflow:'hidden' }}>
           <div style={{ padding:'22px 24px 18px', borderBottom:'1.5px solid #ECEDF8',
@@ -2151,7 +2150,7 @@ function ModalAnularPago({ pago, poliza, onClose, onAnulado }) {
   }
 
   return (
-    <div className="pl-overlay" style={{ zIndex:1100 }} onClick={e => { if (e.target === e.currentTarget && !anulando) onClose() }}>
+    <div className="pl-overlay" style={{ zIndex:1100 }}>
       <div className="pl-modal" style={{ maxWidth: 480 }}>
         <div className="pl-mhead">
           <div>
@@ -2268,7 +2267,7 @@ function ModalImportarPagos({ polizaId, onClose, onImportado }) {
   }
 
   return (
-    <div className="pl-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="pl-overlay">
       <div className="pl-modal" style={{ maxWidth: 620 }}>
         <div className="pl-mhead">
           <div>

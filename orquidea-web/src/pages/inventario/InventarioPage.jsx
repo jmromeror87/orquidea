@@ -376,7 +376,7 @@ function ModalProducto({ producto, categorias, onClose, onSaved }) {
 
   return (
     <>
-      <div className="inv-drawer-overlay" onClick={onClose} />
+      <div className="inv-drawer-overlay" />
       <div className="inv-drawer">
         <div className="inv-drawer-hdr">
           <div>
@@ -531,7 +531,7 @@ function ModalDetalle({ productoId, onClose, onMovimiento }) {
   }
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="inv-overlay">
       <div className="inv-modal inv-modal-lg">
         <div className="inv-modal-head">
           <div>
@@ -699,7 +699,7 @@ function ModalMovimiento({ productoInicial, onClose, onSaved }) {
   const needsDestino = ['ENTRADA','TRASLADO','AJUSTE'].includes(tipo)
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="inv-overlay">
       <div className="inv-modal">
         <div className="inv-modal-head">
           <span className="inv-modal-title">Registrar Movimiento</span>
@@ -850,7 +850,7 @@ function ModalBodega({ onClose, onSaved }) {
   }
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="inv-overlay">
       <div className="inv-modal">
         <div className="inv-modal-head">
           <span className="inv-modal-title">Nueva Bodega</span>
@@ -925,7 +925,7 @@ function ModalUbicacion({ bodega, onClose, onSaved }) {
   }
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="inv-overlay">
       <div className="inv-modal">
         <div className="inv-modal-head">
           <span className="inv-modal-title">Nueva Ubicación — {bodega.nombre}</span>
@@ -1033,7 +1033,7 @@ function ModalOC({ bodegas, onClose, onSaved }) {
   }
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="inv-overlay">
       <div className="inv-modal inv-modal-lg">
         <div className="inv-modal-head">
           <span className="inv-modal-title">Nueva Orden de Compra</span>
@@ -1188,7 +1188,7 @@ function ModalDetalleOC({ ocId, onClose, onRefresh }) {
   }
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="inv-overlay">
       <div className="inv-modal inv-modal-lg">
         <div className="inv-modal-head">
           <div>
@@ -1482,7 +1482,7 @@ function ModalCategorias({ onClose, onChanged }) {
   }
 
   return (
-    <div className="inv-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="inv-overlay">
       <div className="inv-modal" style={{ maxWidth:520 }}>
         <div className="inv-modal-head">
           <span className="inv-modal-title">Categorías de inventario</span>

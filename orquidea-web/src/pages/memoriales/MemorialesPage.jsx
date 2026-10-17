@@ -257,7 +257,7 @@ function ModalMemorial({ memorial, onClose, onSaved }) {
   }
 
   return (
-    <div className="mm-overlay" onClick={onClose}>
+    <div className="mm-overlay">
       <div className="mm-modal" onClick={(e) => e.stopPropagation()}>
         <div className="mm-modal-head">
           <div className="mm-modal-titulo">{memorial ? 'Editar memorial' : 'Nuevo memorial'}</div>

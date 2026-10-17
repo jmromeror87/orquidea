@@ -371,7 +371,7 @@ function ModalNuevaSolicitud({ onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal cmp-modal-lg" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><ClipboardList size={20} color="#F59E0B" />Nueva Solicitud de Compra</span>
@@ -482,7 +482,7 @@ function ModalDetalleSolicitud({ id, onClose, onAprobar, onConvertir }) {
   )
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal cmp-modal-lg" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span>Solicitud #{data.numero}</span>
@@ -605,7 +605,7 @@ function ModalAprobarSolicitud({ solicitud, onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span><ThumbsUp size={18} color="#059669" style={{ marginRight: 8 }} />Aprobar Solicitud #{solicitud.numero}</span>
@@ -665,7 +665,7 @@ function ModalConvertirOC({ solicitud, onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span><FileCheck size={18} color="#F59E0B" style={{ marginRight: 8 }} />Convertir en Orden de Compra</span>
@@ -750,7 +750,7 @@ function ModalProveedor({ proveedor, onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span><Truck size={18} color="#F59E0B" style={{ marginRight: 8 }} />{proveedor ? 'Editar' : 'Nuevo'} Proveedor</span>
@@ -861,7 +861,7 @@ function ModalCalificar({ proveedor, onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span><Star size={18} color="#F59E0B" style={{ marginRight: 8 }} />Calificar Proveedor</span>
@@ -935,7 +935,7 @@ function ModalNuevaOC({ onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal cmp-modal-lg" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span><ShoppingCart size={20} color="#F59E0B" />Nueva Orden de Compra</span>
@@ -1076,7 +1076,7 @@ function ModalNuevaRecepcion({ onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal cmp-modal-lg" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span><Package size={20} color="#F59E0B" />Registrar Recepción {step === 2 ? '— ' + (ocSel?.proveedor_nombre || '') : ''}</span>
@@ -1205,7 +1205,7 @@ function ModalPagarCuenta({ cuenta, onClose, onOk }) {
   }
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span><CreditCard size={18} color="#F59E0B" style={{ marginRight: 8 }} />Registrar Pago</span>
@@ -1521,7 +1521,7 @@ function DetalleOCModal({ id, onClose }) {
   if (!data) return <div className="cmp-overlay"><div className="cmp-modal"><div className="cmp-empty">Cargando…</div></div></div>
 
   return (
-    <div className="cmp-overlay" onClick={onClose}>
+    <div className="cmp-overlay">
       <div className="cmp-modal cmp-modal-lg" onClick={e => e.stopPropagation()}>
         <div className="cmp-modal-title">
           <span>OC #{data.numero}</span>
