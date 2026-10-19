@@ -363,10 +363,13 @@ export async function registrarVisitaDetalle(req, reply) {
     orden_id, poliza_id,
     resultado,
     valor_cobrado = 0,
-    metodo_pago = 'EFECTIVO',
+    metodo_pago: metodoRecibido = 'efectivo',
     fecha_promesa,
+    hora_cita,
     observaciones,
   } = req.body
+  // Código de la forma de pago configurada (antes se forzaba EFECTIVO/NEQUI… en mayúsculas)
+  const metodo_pago = String(metodoRecibido || 'efectivo').toLowerCase()
 
   const recaudador_id = req.user?.id || null
 
@@ -483,27 +486,26 @@ export async function registrarVisitaDetalle(req, reply) {
       )
     }
 
-    // 6b. Auto-agendamiento: APLAZADO o PARCIAL con fecha → reasignar a la ruta de ese día
+    // 6b. La visita atiende las citas pendientes de esta póliza hasta la fecha de la orden
+    await client.query(`
+      UPDATE recaudo_agenda SET estado = 'ATENDIDA', atendida_en = NOW()
+      WHERE poliza_id = $1 AND estado = 'PENDIENTE'
+        AND fecha <= (SELECT fecha FROM ordenes_recaudo WHERE id = $2)`, [poliza_id, orden_id])
+
+    // 6c. Agenda tipo cita: "promete pagar el…" / "vuelva el…" (y el saldo de un
+    //     pago parcial) queda en el calendario ese día. Antes se movía la póliza
+    //     de ruta para siempre.
     let rutaAgendada = null
     if (['APLAZADO', 'PARCIAL', 'PROMESA'].includes(resultado) && fecha_promesa) {
-      const diaPromesa = new Date(fecha_promesa + 'T12:00:00').getDate()
-      // Buscar ruta del recaudador que corra ese día
-      const rutaQ = await client.query(`
-        SELECT r.id, r.nombre FROM rutas_recaudo r
-        WHERE r.recaudador_id = $1 AND r.activa AND $2 = ANY(r.dias_mes)
-        ORDER BY r.nombre LIMIT 1
-      `, [recaudador_id, diaPromesa])
-
-      if (rutaQ.rows.length > 0) {
-        const rutaDestino = rutaQ.rows[0].id
-        // Reasignar poliza a esa ruta para ese día
-        await client.query(`
-          INSERT INTO poliza_ruta (poliza_id, ruta_id)
-          VALUES ($1, $2)
-          ON CONFLICT (poliza_id) DO UPDATE SET ruta_id = $2, activa = TRUE
-        `, [poliza_id, rutaDestino])
-        rutaAgendada = rutaQ.rows[0].nombre
-      }
+      const rutaPol = await client.query(`
+        SELECT COALESCE((SELECT ruta_id FROM poliza_ruta WHERE poliza_id = $1 AND activa LIMIT 1),
+                        (SELECT ruta_id FROM ordenes_recaudo WHERE id = $2)) AS ruta_id`, [poliza_id, orden_id])
+      await client.query(`
+        INSERT INTO recaudo_agenda (poliza_id, fecha, hora, tipo, nota, ruta_id, recaudador_id, visita_origen_id, creado_por)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7)`,
+        [poliza_id, fecha_promesa, hora_cita || null, resultado === 'APLAZADO' ? 'VOLVER' : 'PROMESA',
+         observaciones || null, rutaPol.rows[0]?.ruta_id || null, recaudador_id, visita_id])
+      rutaAgendada = `${new Date(fecha_promesa + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}${hora_cita ? ` a las ${hora_cita}` : ''}`
     }
 
     await client.query('COMMIT')
@@ -623,17 +625,35 @@ export async function calendarioRecaudo(req, reply) {
     SELECT
       v.poliza_id,
       v.resultado,
-      DATE(COALESCE(v.visitado_en, v.creado_en)) AS fecha
+      v.valor_cobrado,
+      o.ruta_id,
+      EXTRACT(DAY FROM o.fecha)::int AS dia
     FROM visitas_recaudo v
     JOIN ordenes_recaudo o ON o.id = v.orden_id
-    WHERE EXTRACT(MONTH FROM COALESCE(v.visitado_en, v.creado_en)) = $1
-      AND EXTRACT(YEAR  FROM COALESCE(v.visitado_en, v.creado_en)) = $2
+    WHERE EXTRACT(MONTH FROM o.fecha) = $1 AND EXTRACT(YEAR FROM o.fecha) = $2
   `, [mes, anio])
 
-  const visitasPorPoliza = {}
-  for (const v of visitasQ.rows) {
-    visitasPorPoliza[v.poliza_id] = v
-  }
+  // Por póliza Y día (antes era solo por póliza: una visita del día 10 marcaba
+  // la póliza como gestionada también el día 20)
+  const visitaDe = (polizaId, dia) => visitasQ.rows.find(v => v.poliza_id === polizaId && v.dia === dia) || null
+
+  // Citas agendadas (promesas de pago / "vuelva el…")
+  const agendaQ = await pool.query(`
+    SELECT a.id, a.poliza_id, EXTRACT(DAY FROM a.fecha)::int AS dia, a.fecha::text AS fecha, to_char(a.hora, 'HH24:MI') AS hora,
+      a.tipo, a.nota, a.estado, a.ruta_id, r.nombre AS ruta_nombre, COALESCE(z.color, '#6366F1') AS color,
+      u.nombre AS recaudador, p.numero, p.valor_cuota, p.meses_mora, p.saldo_mora,
+      COALESCE(t.nombres || ' ' || t.apellidos, t.razon_social) AS titular_nombre
+    FROM recaudo_agenda a
+    JOIN polizas p ON p.id = a.poliza_id
+    JOIN terceros t ON t.id = p.titular_id
+    LEFT JOIN rutas_recaudo r ON r.id = a.ruta_id
+    LEFT JOIN zonas_recaudo z ON z.id = r.zona_id
+    LEFT JOIN usuarios u ON u.id = a.recaudador_id
+    WHERE a.estado <> 'CANCELADA' AND EXTRACT(MONTH FROM a.fecha) = $1 AND EXTRACT(YEAR FROM a.fecha) = $2
+      AND ($3::uuid[] IS NULL OR z.sede_id = ANY($3::uuid[]) OR z.sede_id IS NULL)
+    ORDER BY a.fecha, a.hora NULLS LAST`, [mes, anio, sedeIds])
+  const agenda = {}
+  for (const a of agendaQ.rows) (agenda[a.dia] = agenda[a.dia] || []).push(a)
 
   // Construir mapa dia → rutas → polizas
   const diasEnMes = new Date(anio, mes, 0).getDate()
@@ -655,16 +675,16 @@ export async function calendarioRecaudo(req, reply) {
         color:      ruta.color,
         recaudador: ruta.recaudador_nombre,
         total:      polizasDelDia.length,
-        cobradas:   polizasDelDia.filter(p => visitasPorPoliza[p.poliza_id]?.resultado === 'COBRADO').length,
+        cobradas:   polizasDelDia.filter(p => visitaDe(p.poliza_id, dia)?.resultado === 'COBRADO').length,
         polizas:    polizasDelDia.map(p => ({
           ...p,
-          visita: visitasPorPoliza[p.poliza_id] || null,
+          visita: visitaDe(p.poliza_id, dia),
         })),
       })
     }
   }
 
-  return reply.send({ anio, mes, dias_en_mes: diasEnMes, calendario })
+  return reply.send({ anio, mes, dias_en_mes: diasEnMes, calendario, agenda })
 }
 
 // PATCH /api/recaudo/ordenes/:id/estado
@@ -679,5 +699,15 @@ export async function cambiarEstadoOrden(req, reply) {
     return reply.code(403).send({ error: 'No tiene acceso a esta orden de recaudo' })
   }
   await pool.query(`UPDATE ordenes_recaudo SET estado = $1 WHERE id = $2`, [estado, req.params.id])
+  return reply.send({ ok: true })
+}
+
+// PATCH /api/recaudo/agenda/:id — cancelar una cita (con motivo)
+export async function cancelarCita(req, reply) {
+  const motivo = String(req.body?.motivo || '').trim()
+  const { rows } = await pool.query(`
+    UPDATE recaudo_agenda SET estado = 'CANCELADA', nota = concat_ws(' — ', nota, NULLIF('Cancelada: ' || $2, 'Cancelada: '))
+    WHERE id = $1 AND estado = 'PENDIENTE' RETURNING id`, [req.params.id, motivo])
+  if (!rows.length) return reply.code(404).send({ error: 'La cita no existe o ya fue atendida' })
   return reply.send({ ok: true })
 }

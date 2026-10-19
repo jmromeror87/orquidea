@@ -33,7 +33,8 @@ import './RecaudoPage.css'
 import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 
 /* ─── Helpers ─── */
-const hoy = () => new Date().toISOString().slice(0, 10)
+// Fecha LOCAL (toISOString es UTC: después de las 7 p. m. en Colombia daba el día siguiente)
+const hoy = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
 const fmtCOP = v =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v || 0)
@@ -63,6 +64,47 @@ const RESULTADO_ICONS = {
   COBRADO: '✓', AUSENTE: '—', PROMESA: '◷', PARCIAL: '½', NO_PAGA: '✗', APLAZADO: '↷',
 }
 
+// Botones de resultado: Promesa y Aplazado son UNO solo ("Reagendar") que deja
+// una cita en el calendario (fecha y hora opcional), como una cita médica.
+const RESULTADOS_UI = [
+  { id:'COBRADO',  label:'Cobrado',   icon:'✓' },
+  { id:'PARCIAL',  label:'Parcial',   icon:'½' },
+  { id:'AUSENTE',  label:'Ausente',   icon:'—' },
+  { id:'NO_PAGA',  label:'No paga',   icon:'✗' },
+  { id:'REAGENDAR',label:'Reagendar', icon:'📅' },
+]
+const sumarDias = n => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+
+function CamposReagendar({ tipo, setTipo, fecha, setFecha, hora, setHora, soloFecha = false, titulo }) {
+  const atajos = [['Mañana', 1], ['En 3 días', 3], ['En 1 semana', 7], ['En 15 días', 15]]
+  return (
+    <div style={{ border:'1.5px solid #C7D2FE', background:'#EEF2FF', borderRadius:12, padding:'12px 14px', marginBottom:14 }}>
+      {!soloFecha && (
+        <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+          {[['PROMESA', '🤝 Promete pagar ese día'], ['APLAZADO', '↷ Pide que vuelva otro día']].map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setTipo(k)}
+              style={{ flex:1, minWidth:170, padding:'8px 10px', borderRadius:10, fontWeight:700, fontSize:12.5, cursor:'pointer', fontFamily:'inherit',
+                border: tipo === k ? '1.5px solid #4F46E5' : '1.5px solid #E2E8F0', background: tipo === k ? '#fff' : '#F8FAFC', color: tipo === k ? '#4338CA' : '#64748B' }}>{l}</button>
+          ))}
+        </div>
+      )}
+      <div style={{ fontSize:11, fontWeight:800, color:'#4338CA', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:6 }}>{titulo || 'Agendar visita'}</div>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+        {atajos.map(([l, n]) => (
+          <button key={l} type="button" onClick={() => setFecha(sumarDias(n))}
+            style={{ border:'1px solid #C7D2FE', background: fecha === sumarDias(n) ? '#4F46E5' : '#fff', color: fecha === sumarDias(n) ? '#fff' : '#4338CA',
+              borderRadius:20, padding:'3px 11px', fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ display:'flex', gap:8 }}>
+        <input type="date" className="rc-input" min={sumarDias(0)} value={fecha} onChange={e => setFecha(e.target.value)} style={{ flex:1 }}/>
+        <input type="time" className="rc-input" value={hora} onChange={e => setHora(e.target.value)} style={{ width:130 }} title="Hora (opcional)"/>
+      </div>
+      {fecha && <div style={{ fontSize:12, color:'#4338CA', marginTop:6 }}>📅 Quedará en el calendario el {fmtFecha(fecha)}{hora ? ` a las ${hora}` : ''}.</div>}
+    </div>
+  )
+}
+
 /* ─── Componente Badge resultado ─── */
 function BadgeResultado({ resultado }) {
   if (!resultado) return null
@@ -80,407 +122,6 @@ function BadgeEstado({ estado }) {
     <span className={`rc-orden-badge ${estado}`}>
       {icons[estado]} {estado.replace('_', ' ')}
     </span>
-  )
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TAB 1 — ORDEN DEL DÍA
-   ═══════════════════════════════════════════════════════════════════════════ */
-function TabOrden() {
-  const [fecha, setFecha] = useState(hoy())
-  const [rutasDisponibles, setRutasDisponibles] = useState([])
-  const [rutaId, setRutaId] = useState('')
-  const [orden, setOrden] = useState(null)
-  const [visitas, setVisitas] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [cargandoRutas, setCargandoRutas] = useState(false)
-  const [visitaActiva, setVisitaActiva] = useState(null)
-  const [formVisita, setFormVisita] = useState({
-    resultado: '', valor_cobrado: '', metodo_pago: 'efectivo', observaciones: '',
-  })
-  const [guardando, setGuardando] = useState(false)
-  const [msgGuardado, setMsgGuardado] = useState('')
-
-  // Cargar rutas del día cuando cambia la fecha
-  const cargarRutasDelDia = useCallback(async f => {
-    setCargandoRutas(true)
-    try {
-      const r = await api.get(`/recaudo/rutas-del-dia?fecha=${f}`)
-      setRutasDisponibles(r.data.data || [])
-      setRutaId('')
-      setOrden(null)
-      setVisitas([])
-    } catch { /* silencioso */ }
-    finally { setCargandoRutas(false) }
-  }, [])
-
-  useEffect(() => { cargarRutasDelDia(fecha) }, [fecha, cargarRutasDelDia])
-
-  // Cargar orden del día al seleccionar ruta
-  const cargarOrden = useCallback(async (rid, f) => {
-    if (!rid) return
-    setLoading(true)
-    try {
-      const r = await api.get(`/recaudo/orden-del-dia?ruta_id=${rid}&fecha=${f}`)
-      setOrden(r.data.data.orden)
-      setVisitas(r.data.data.visitas || [])
-    } catch { /* silencioso */ }
-    finally { setLoading(false) }
-  }, [])
-
-  const handleSelectRuta = async id => {
-    setRutaId(id)
-    setVisitaActiva(null)
-    await cargarOrden(id, fecha)
-  }
-
-  // Guardar visita
-  const guardarVisita = async polizaId => {
-    if (!formVisita.resultado) return
-    setGuardando(true)
-    try {
-      await api.post('/recaudo/visitas', {
-        orden_id: orden.id,
-        poliza_id: polizaId,
-        resultado: formVisita.resultado,
-        valor_cobrado: parseFloat(formVisita.valor_cobrado) || 0,
-        metodo_pago: formVisita.metodo_pago || 'efectivo',
-        observaciones: formVisita.observaciones,
-      })
-      toast.success('Visita registrada correctamente')
-      setMsgGuardado('Guardado')
-      setTimeout(() => setMsgGuardado(''), 2000)
-      setVisitaActiva(null)
-      setFormVisita({ resultado: '', valor_cobrado: '', metodo_pago: 'efectivo', observaciones: '' })
-      await cargarOrden(rutaId, fecha)
-    } catch { toast.error('Error al guardar la visita') }
-    finally { setGuardando(false) }
-  }
-
-  const abrirPanel = (polizaId, visitaExistente) => {
-    if (visitaActiva === polizaId) { setVisitaActiva(null); return }
-    setVisitaActiva(polizaId)
-    setFormVisita({
-      resultado: visitaExistente?.resultado || '',
-      valor_cobrado: visitaExistente?.valor_cobrado || '',
-      metodo_pago: visitaExistente?.metodo_pago || 'efectivo',
-      observaciones: visitaExistente?.observaciones || '',
-    })
-  }
-
-  // Cerrar orden
-  const cerrarOrden = async () => {
-    if (!orden) return
-    try {
-      await api.patch(`/recaudo/ordenes/${orden.id}/estado`, { estado: 'COMPLETADA' })
-      toast.success('Orden cerrada correctamente')
-      await cargarOrden(rutaId, fecha)
-    } catch { toast.error('Error al cerrar la orden') }
-  }
-
-  // Estadísticas
-  const total = visitas.length
-  const cobradas = visitas.filter(v => v.resultado === 'COBRADO').length
-  const parciales = visitas.filter(v => v.resultado === 'PARCIAL').length
-  const pendientes = visitas.filter(v => !v.resultado).length
-  const pct = total ? Math.round(((cobradas + parciales) / total) * 100) : 0
-  const totalRecaudado = Number(orden?.total_recaudado || 0)
-  const totalEsperado = Number(orden?.total_esperado || 0)
-
-  const todasGestionadas = total > 0 && pendientes === 0
-  const puedesCerrar = todasGestionadas && orden?.estado !== 'COMPLETADA'
-
-  return (
-    <div className="rc-body">
-      {/* Controles */}
-      <div className="rc-controls">
-        <div className="rc-field">
-          <label className="rc-label">Fecha</label>
-          <input
-            type="date" className="rc-input"
-            value={fecha}
-            onChange={e => setFecha(e.target.value)}
-          />
-        </div>
-
-        <div className="rc-field" style={{ flex: 1 }}>
-          <label className="rc-label">
-            Rutas disponibles {cargandoRutas && <span className="rc-spin" style={{ width: 12, height: 12 }} />}
-          </label>
-          <select
-            className="rc-select"
-            value={rutaId}
-            onChange={e => handleSelectRuta(e.target.value)}
-          >
-            <option value="">— Selecciona una ruta —</option>
-            {rutasDisponibles.map(r => (
-              <option key={r.id} value={r.id}>
-                [{r.zona_nombre}] {r.ruta_nombre} — {r.total_polizas} pólizas
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {rutaId && (
-          <button className="rc-btn rc-btn-ghost" onClick={() => cargarOrden(rutaId, fecha)} title="Recargar">
-            <RefreshCw size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* Chips de rutas disponibles */}
-      {rutasDisponibles.length > 0 && (
-        <div className="rc-rutas-chips">
-          {rutasDisponibles.map(r => (
-            <button
-              key={r.id}
-              className={`rc-ruta-chip${rutaId === r.id ? ' sel' : ''}`}
-              onClick={() => handleSelectRuta(r.id)}
-            >
-              <span style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: r.zona_color || '#6366F1', display: 'inline-block',
-              }} />
-              {r.ruta_nombre}
-              {r.orden_estado === 'COMPLETADA' && <CheckCircle2 size={12} />}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Estado vacío: sin fecha con rutas */}
-      {!cargandoRutas && rutasDisponibles.length === 0 && (
-        <div className="rc-empty">
-          <div className="rc-empty-icon"><Calendar size={24} color="#9CA3AF" /></div>
-          <div className="rc-empty-title">Sin rutas programadas</div>
-          <div className="rc-empty-sub">No hay rutas de recaudo configuradas para el día {fmtFecha(fecha)}.</div>
-        </div>
-      )}
-
-      {/* Sin ruta seleccionada */}
-      {rutasDisponibles.length > 0 && !rutaId && !loading && (
-        <div className="rc-info-box">
-          <Wallet size={18} />
-          Selecciona una ruta arriba para cargar la orden del día.
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div className="rc-empty">
-          <Loader2 size={28} color="#6366F1" style={{ animation: 'rc-spin 0.7s linear infinite' }} />
-          <div style={{ color: '#9CA3AF', fontSize: 13 }}>Cargando orden…</div>
-        </div>
-      )}
-
-      {/* Contenido de orden */}
-      {!loading && orden && (
-        <>
-          {/* Header de la orden */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#0F1035' }}>
-                {orden.ruta_nombre}
-                <span style={{ marginLeft: 10 }}><BadgeEstado estado={orden.estado} /></span>
-              </div>
-              <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>
-                Zona: {orden.zona_nombre} · Recaudador: {orden.recaudador_nombre || 'Sin asignar'} · {fmtFecha(fecha)}
-              </div>
-            </div>
-            {puedesCerrar && (
-              <button className="rc-btn rc-btn-success" onClick={cerrarOrden}>
-                <CheckCircle2 size={15} /> Cerrar Orden
-              </button>
-            )}
-            {msgGuardado && (
-              <span style={{ fontSize: 12, color: '#10B981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
-                <CheckCircle2 size={14} /> {msgGuardado}
-              </span>
-            )}
-          </div>
-
-          {/* Resumen */}
-          <div className="rc-resumen">
-            <div className="rc-resumen-card">
-              <div className="rc-resumen-label">Pólizas</div>
-              <div className="rc-resumen-value">{total}</div>
-              <div className="rc-resumen-sub">{pendientes} pendientes</div>
-            </div>
-            <div className="rc-resumen-card">
-              <div className="rc-resumen-label">Cobradas</div>
-              <div className="rc-resumen-value" style={{ color: '#10B981' }}>{cobradas}</div>
-              <div className="rc-resumen-sub">{parciales > 0 ? `+ ${parciales} parciales` : 'completas'}</div>
-            </div>
-            <div className="rc-resumen-card" style={{ flex: 2 }}>
-              <div className="rc-resumen-label">Efectividad</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <div className="rc-resumen-value" style={{ color: pct >= 80 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444' }}>
-                  {pct}%
-                </div>
-                <div className="rc-resumen-sub">{fmtCOP(totalRecaudado)} / {fmtCOP(totalEsperado)}</div>
-              </div>
-              <div className="rc-progress-bar">
-                <div className="rc-progress-fill" style={{ width: `${Math.min(pct, 100)}%` }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Lista de visitas */}
-          {visitas.length === 0 ? (
-            <div className="rc-empty">
-              <div className="rc-empty-icon"><Users size={22} color="#9CA3AF" /></div>
-              <div className="rc-empty-title">Sin pólizas en esta ruta</div>
-            </div>
-          ) : (
-            visitas.map(v => {
-              const panelAbierto = visitaActiva === v.poliza_id
-              const tieneResult  = !!v.resultado
-              const cardClass    = tieneResult ? v.resultado.toLowerCase().replace('_', '') : ''
-
-              return (
-                <div key={v.poliza_id} className={`rc-visita-card ${cardClass}`}>
-                  <div className="rc-visita-header">
-                    <div className={`rc-avatar${v.meses_mora > 0 ? ' mora' : ''}`}>
-                      {iniciales(v.titular_nombre)}
-                    </div>
-
-                    <div className="rc-visita-info">
-                      <div className="rc-titular-nombre">{v.titular_nombre}</div>
-                      <div className="rc-visita-meta">
-                        <span className="rc-meta-item">
-                          <FileText size={12} /> Póliza <strong>#{v.poliza_numero}</strong>
-                        </span>
-                        <span className="rc-meta-item">
-                          <DollarSign size={12} /> <strong>{fmtCOP(v.valor_cuota)}/mes</strong>
-                        </span>
-                        {v.meses_mora > 0 && (
-                          <span className="rc-meta-item">
-                            <span className="rc-badge mora">Mora: {v.meses_mora} m</span>
-                          </span>
-                        )}
-                        {v.titular_cel && (
-                          <span className="rc-meta-item">
-                            <Phone size={12} /> {v.titular_cel}
-                          </span>
-                        )}
-                        {v.titular_dir && (
-                          <span className="rc-meta-item">
-                            <Home size={12} /> {v.titular_dir}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Resultado actual */}
-                      {tieneResult && (
-                        <div className="rc-visita-badges" style={{ marginTop: 6 }}>
-                          <BadgeResultado resultado={v.resultado} />
-                          {v.valor_cobrado > 0 && (
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#10B981' }}>
-                              {fmtCOP(v.valor_cobrado)}
-                            </span>
-                          )}
-                          {v.metodo_pago && (
-                            <FormaPagoTag codigo={v.metodo_pago} size={14} style={{ fontSize: 11, color: '#6B7280' }}/>
-                          )}
-                          {v.visitado_en && (
-                            <span style={{ fontSize: 11, color: '#9CA3AF' }}>
-                              <Clock size={10} style={{ display: 'inline' }} /> {fmtHora(v.visitado_en)}
-                            </span>
-                          )}
-                          {v.observaciones && (
-                            <span style={{ fontSize: 11, color: '#64748B', fontStyle: 'italic' }}>
-                              "{v.observaciones}"
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Botón abrir panel */}
-                    <button
-                      className="rc-btn rc-btn-ghost"
-                      onClick={() => abrirPanel(v.poliza_id, v)}
-                      style={{ fontSize: 12, padding: '0 12px', height: 32 }}
-                    >
-                      {tieneResult ? 'Editar' : 'Registrar'}
-                      {panelAbierto ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    </button>
-                  </div>
-
-                  {/* Panel inline */}
-                  {panelAbierto && (
-                    <div className="rc-panel">
-                      <div className="rc-panel-title">Resultado de la visita</div>
-
-                      {/* Botones de resultado */}
-                      <div className="rc-resultado-btns">
-                        {Object.keys(RESULTADO_LABELS).map(res => (
-                          <button
-                            key={res}
-                            className={`rc-res-btn ${res}${formVisita.resultado === res ? ' sel' : ''}`}
-                            onClick={() => setFormVisita(f => ({ ...f, resultado: res }))}
-                          >
-                            {RESULTADO_ICONS[res]} {RESULTADO_LABELS[res]}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Campos adicionales si hay pago */}
-                      {(formVisita.resultado === 'COBRADO' || formVisita.resultado === 'PARCIAL') && (
-                        <div className="rc-panel-row">
-                          <div className="rc-panel-field">
-                            <label className="rc-panel-label">Valor cobrado</label>
-                            <CurrencyInput
-                              placeholder={fmtCOP(v.valor_cuota)}
-                              value={formVisita.valor_cobrado}
-                              onChange={v => setFormVisita(f => ({ ...f, valor_cobrado: v }))}
-                            />
-                          </div>
-                          <div className="rc-panel-field">
-                            <label className="rc-panel-label">Método de pago</label>
-                            <SelectorFormaPago value={formVisita.metodo_pago} size={18}
-                              onChange={c => setFormVisita(f => ({ ...f, metodo_pago: c }))}/>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Observaciones */}
-                      <textarea
-                        className="rc-panel-textarea"
-                        placeholder="Observaciones (opcional)…"
-                        value={formVisita.observaciones}
-                        onChange={e => setFormVisita(f => ({ ...f, observaciones: e.target.value }))}
-                        rows={2}
-                      />
-
-                      {/* Acciones */}
-                      <div className="rc-panel-actions">
-                        <button
-                          className="rc-btn rc-btn-primary"
-                          disabled={!formVisita.resultado || guardando}
-                          onClick={() => guardarVisita(v.poliza_id)}
-                        >
-                          {guardando
-                            ? <><Loader2 size={13} style={{ animation: 'rc-spin .6s linear infinite' }} /> Guardando…</>
-                            : <><CheckCircle2 size={13} /> Guardar</>
-                          }
-                        </button>
-                        <button
-                          className="rc-btn rc-btn-ghost"
-                          onClick={() => setVisitaActiva(null)}
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })
-          )}
-        </>
-      )}
-    </div>
   )
 }
 
@@ -866,7 +507,7 @@ function TabMiPanel() {
   const [accionVisita,    setAccionVisita]     = useState('')
   const [mostrarMas,      setMostrarMas]       = useState(null)
   const [formPago,        setFormPago]         = useState({
-    valor: '', metodo_pago: 'efectivo', fecha_promesa: '', observaciones: '',
+    valor: '', metodo_pago: 'efectivo', fecha_promesa: '', hora_cita: '', tipoCita: 'PROMESA', observaciones: '',
   })
   const [guardandoVisita, setGuardandoVisita]  = useState(false)
   const [errorVisita,     setErrorVisita]      = useState('')
@@ -967,15 +608,20 @@ function TabMiPanel() {
     setPanelVisita(panelVisita === polizaId && accionVisita === accion ? null : polizaId)
     setAccionVisita(accion)
     setFormPago({
-      valor: accion !== 'PROMESA' ? String(visitaData?.valor_cuota || '') : '',
+      valor: accion !== 'REAGENDAR' ? String(visitaData?.valor_cuota || '') : '',
       metodo_pago: 'efectivo',
       fecha_promesa: '',
+      hora_cita: '',
+      tipoCita: 'PROMESA',
       observaciones: '',
     })
   }
 
   // ── Ejecutar y guardar visita
-  const ejecutarAccion = async (polizaId, resultado, valorOverride, visitaData) => {
+  const ejecutarAccion = async (polizaId, accion, valorOverride, visitaData) => {
+    // "Reagendar" = promesa de pago o "vuelva otro día": queda como cita en el calendario
+    const resultado = accion === 'REAGENDAR' ? formPago.tipoCita : accion
+    if (accion === 'REAGENDAR' && !formPago.fecha_promesa) { setErrorVisita('Elija la fecha de la cita'); return }
     setGuardandoVisita(true)
     setErrorVisita('')
     // Valor cobrado: override > input del form > valor_cuota de la póliza
@@ -990,6 +636,7 @@ function TabMiPanel() {
         valor_cobrado:  valorCobrado,
         metodo_pago:    formPago.metodo_pago || 'efectivo',
         fecha_promesa:  formPago.fecha_promesa || undefined,
+        hora_cita:      formPago.hora_cita || undefined,
         observaciones:  formPago.observaciones || undefined,
       })
       setPanelVisita(null)
@@ -1007,7 +654,7 @@ function TabMiPanel() {
         setReciboModal(r.data.datos_recibo)
       }
       if (r.data.ruta_agendada) {
-        toast.success(`Agendado automáticamente en ${r.data.ruta_agendada}`)
+        toast.success(`📅 Cita agendada para el ${r.data.ruta_agendada}`, 6000)
       }
     } catch (err) {
       const msg = err?.response?.data?.error || err?.response?.data?.message || 'Error al guardar. Intenta de nuevo.'
@@ -1297,7 +944,7 @@ function TabMiPanel() {
                             </span>
                             {v.fecha_promesa && (
                               <span style={{ color:'#6366F1', fontWeight:700 }}>
-                                📅 Completa el {fmtFecha(v.fecha_promesa)} — agendado en ruta
+                                📅 Completa el {fmtFecha(v.fecha_promesa)} — cita en el calendario
                               </span>
                             )}
                           </div>
@@ -1306,14 +953,14 @@ function TabMiPanel() {
                         {/* Fila 2: info extra para APLAZADO */}
                         {v.resultado === 'APLAZADO' && v.fecha_promesa && (
                           <div style={{ fontSize:11, color:'#6366F1', fontWeight:700 }}>
-                            ↷ Volver el {fmtFecha(v.fecha_promesa)} — agendado automáticamente en ruta
+                            ↷ Volver el {fmtFecha(v.fecha_promesa)} — cita en el calendario
                           </div>
                         )}
 
                         {/* Fila 2: info extra para PROMESA */}
                         {v.resultado === 'PROMESA' && v.fecha_promesa && (
                           <div style={{ fontSize:11, color:'#6366F1', fontWeight:700 }}>
-                            ◷ Promete pagar el {fmtFecha(v.fecha_promesa)} — agendado en ruta
+                            🤝 Promete pagar el {fmtFecha(v.fecha_promesa)} — cita en el calendario
                           </div>
                         )}
                       </div>
@@ -1346,10 +993,11 @@ function TabMiPanel() {
                     </button>
                     <button
                       className="rp-accion-btn promesa"
-                      onClick={() => abrirAccion(v.poliza_id, 'PROMESA', v)}
+                      onClick={() => abrirAccion(v.poliza_id, 'REAGENDAR', v)}
                       disabled={guardandoVisita}
+                      title="Promete pagar o pide que vuelva: queda como cita en el calendario"
                     >
-                      ◷ PROMESA
+                      📅 REAGENDAR
                     </button>
                     <button
                       className="rp-accion-btn ausente"
@@ -1377,13 +1025,6 @@ function TabMiPanel() {
                       >
                         ✗ NO PAGA
                       </button>
-                      <button
-                        className="rp-accion-btn"
-                        style={{ background: '#EFF6FF', color: '#1D4ED8', borderColor: '#BFDBFE', border: '1.5px solid' }}
-                        onClick={() => { setMostrarMas(null); abrirAccion(v.poliza_id, 'APLAZADO', v) }}
-                      >
-                        ↷ APLAZADO
-                      </button>
                     </div>
                   )}
 
@@ -1393,9 +1034,8 @@ function TabMiPanel() {
                     <div className="rp-pago-title">
                       {accionVisita === 'COBRADO' && '✓ Registrar cobro completo'}
                       {accionVisita === 'PARCIAL' && '½ Registrar pago parcial'}
-                      {accionVisita === 'PROMESA' && '◷ Registrar promesa de pago'}
+                      {accionVisita === 'REAGENDAR' && '📅 Reagendar visita'}
                       {accionVisita === 'NO_PAGA' && '✗ Registrar negativa de pago'}
-                      {accionVisita === 'APLAZADO' && '↷ Registrar aplazamiento'}
                     </div>
 
                     {/* Valor y método (para cobros) */}
@@ -1417,34 +1057,13 @@ function TabMiPanel() {
                       </div>
                     )}
 
-                    {/* Fecha de promesa */}
-                    {accionVisita === 'PROMESA' && (
-                      <div className="rp-pago-row">
-                        <div className="rp-pago-field">
-                          <label>Fecha comprometida</label>
-                          <input
-                            type="date"
-                            value={formPago.fecha_promesa}
-                            min={hoy()}
-                            onChange={e => setFormPago(f => ({ ...f, fecha_promesa: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Fecha de aplazamiento */}
-                    {accionVisita === 'APLAZADO' && (
-                      <div className="rp-pago-row">
-                        <div className="rp-pago-field">
-                          <label>Regresar el día</label>
-                          <input
-                            type="date"
-                            value={formPago.fecha_promesa}
-                            min={hoy()}
-                            onChange={e => setFormPago(f => ({ ...f, fecha_promesa: e.target.value }))}
-                          />
-                        </div>
-                      </div>
+                    {/* Reagendar (promesa / volver) o resto de un pago parcial: cita en el calendario */}
+                    {(accionVisita === 'REAGENDAR' || accionVisita === 'PARCIAL') && (
+                      <CamposReagendar soloFecha={accionVisita === 'PARCIAL'}
+                        titulo={accionVisita === 'REAGENDAR' ? 'Fecha de la cita *' : 'Agendar el cobro del resto (opcional)'}
+                        tipo={formPago.tipoCita} setTipo={t => setFormPago(f => ({ ...f, tipoCita: t }))}
+                        fecha={formPago.fecha_promesa} setFecha={v2 => setFormPago(f => ({ ...f, fecha_promesa: v2 }))}
+                        hora={formPago.hora_cita} setHora={v2 => setFormPago(f => ({ ...f, hora_cita: v2 }))}/>
                     )}
 
                     {/* Observaciones */}
@@ -1751,6 +1370,154 @@ function TabMiPanel() {
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   COBRO DESDE EL CALENDARIO — clic en el titular → registrar la visita.
+   Usa /recaudo/visitas/detalle: registra el pago en la póliza (periodos,
+   cobertura) y en contabilidad, igual que Mi Panel. (La antigua "Orden del
+   día" usaba /recaudo/visitas, que solo anotaba la visita sin aplicar el pago.)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const CSS_COBRO = `
+.cb-ov { position:fixed; inset:0; background:rgba(15,16,53,.45); backdrop-filter:blur(3px); z-index:1300; display:flex; align-items:center; justify-content:center; padding:16px; }
+.cb-modal { background:#fff; border-radius:20px; width:100%; max-width:620px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.28); overflow:hidden; }
+.cb-head { display:flex; gap:12px; align-items:flex-start; padding:16px 20px; background:linear-gradient(135deg,#4F46E5,#7C3AED); color:#fff; }
+.cb-av { width:46px; height:46px; border-radius:14px; background:rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:15px; flex-shrink:0; }
+.cb-head b { display:block; font-size:16.5px; line-height:1.25; }
+.cb-head small { display:block; font-size:12px; opacity:.85; margin-top:2px; }
+.cb-head button { margin-left:auto; border:1.5px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); color:#fff; width:34px; height:34px; border-radius:10px; cursor:pointer; flex-shrink:0; }
+.cb-datos { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; padding:14px 20px; background:#F8FAFC; border-bottom:1px solid #EEF2F7; }
+.cb-dato small { display:block; font-size:10px; font-weight:800; color:#94A3B8; text-transform:uppercase; letter-spacing:.05em; }
+.cb-dato span { font-size:13px; font-weight:700; color:#0F172A; }
+.cb-body { padding:16px 20px; overflow-y:auto; min-height:0; }
+.cb-sec { font-size:11px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:.05em; margin:4px 0 8px; }
+.cb-pie { display:flex; justify-content:flex-end; gap:10px; padding:12px 20px; border-top:1px solid #EEF2F7; }
+.cb-aviso { padding:10px 12px; border-radius:10px; font-size:12.5px; line-height:1.45; margin-bottom:12px; }
+@media (max-width:640px) { .cb-datos { grid-template-columns:1fr 1fr; } }
+`
+
+function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
+  const [orden, setOrden] = useState(null)
+  const [visita, setVisita] = useState(null)
+  const [cargando, setCargando] = useState(true)
+  const [f, setF] = useState({ resultado: '', valor_cobrado: '', metodo_pago: 'efectivo', fecha_promesa: '', hora_cita: '', tipoCita: 'PROMESA', observaciones: '' })
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    api.get(`/recaudo/orden-del-dia?ruta_id=${ruta.ruta_id}&fecha=${fecha}`)
+      .then(r => {
+        setOrden(r.data.data.orden)
+        const v = (r.data.data.visitas || []).find(x => x.poliza_id === poliza.poliza_id) || null
+        setVisita(v)
+        if (v?.resultado) setF(x => ({ ...x, resultado: ['PROMESA', 'APLAZADO'].includes(v.resultado) ? 'REAGENDAR' : v.resultado,
+          tipoCita: v.resultado === 'APLAZADO' ? 'APLAZADO' : 'PROMESA', valor_cobrado: v.valor_cobrado || '',
+          metodo_pago: (v.metodo_pago || 'efectivo').toLowerCase(), observaciones: v.observaciones || '' }))
+      })
+      .catch(() => toast.error('No se pudo abrir la ruta de ese día'))
+      .finally(() => setCargando(false))
+  }, [fecha, ruta.ruta_id, poliza.poliza_id])
+
+  const yaCobrado = ['COBRADO', 'PARCIAL'].includes(visita?.resultado) && Number(visita?.valor_cobrado) > 0
+  const conPago = f.resultado === 'COBRADO' || f.resultado === 'PARCIAL'
+  const reagenda = f.resultado === 'REAGENDAR'
+  const resultadoReal = reagenda ? f.tipoCita : f.resultado
+  const cuota = Number(poliza.valor_cuota || visita?.valor_cuota || 0)
+  const hoyIso = hoy()
+
+  const elegir = res => setF(x => ({ ...x, resultado: res, valor_cobrado: res === 'COBRADO' && !x.valor_cobrado ? cuota : x.valor_cobrado }))
+
+  const guardar = async () => {
+    if (!f.resultado) return toast.error('Elija el resultado de la visita')
+    if (conPago && !(Number(f.valor_cobrado) > 0)) return toast.error('Indique el valor cobrado')
+    if (reagenda && !f.fecha_promesa) return toast.error('Elija la fecha de la cita')
+    setGuardando(true)
+    try {
+      const r = await api.post('/recaudo/visitas/detalle', {
+        orden_id: orden.id, poliza_id: poliza.poliza_id, resultado: resultadoReal,
+        valor_cobrado: conPago ? Number(f.valor_cobrado) : 0, metodo_pago: f.metodo_pago,
+        fecha_promesa: (reagenda || f.resultado === 'PARCIAL') && f.fecha_promesa ? f.fecha_promesa : undefined,
+        hora_cita: f.hora_cita || undefined, observaciones: f.observaciones || null,
+      })
+      const d = r.data.datos_recibo
+      if (conPago && d) {
+        const hasta = d.pago_hasta_nuevo ? new Date(String(d.pago_hasta_nuevo).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' }) : ''
+        toast.success(`Cobro de ${fmtCOP(f.valor_cobrado)} registrado a ${poliza.titular_nombre}${d.periodos_pagados?.length ? ` · ${d.periodos_pagados.join(', ')}` : ''}${hasta ? ` · cubierta hasta el ${hasta}` : ''}`, 7000)
+      } else {
+        toast.success(`Visita registrada: ${RESULTADO_LABELS[resultadoReal]}${r.data.ruta_agendada ? ` · 📅 cita agendada para el ${r.data.ruta_agendada}` : ''}`, 6000)
+      }
+      onGuardado()
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo registrar la visita') }
+    finally { setGuardando(false) }
+  }
+
+  return (
+    <div className="cb-ov">
+      <style>{CSS_COBRO}</style>
+      <div className="cb-modal">
+        <div className="cb-head">
+          <div className="cb-av">{iniciales(poliza.titular_nombre)}</div>
+          <div style={{ minWidth:0 }}>
+            <b>{poliza.titular_nombre}</b>
+            <small>Póliza #{poliza.numero} · {ruta.ruta_nombre} · {fmtFecha(fecha)}</small>
+          </div>
+          <button onClick={onClose} title="Cerrar">✕</button>
+        </div>
+        <div className="cb-datos">
+          <div className="cb-dato"><small>Cuota</small><span>{fmtCOP(cuota)}</span></div>
+          <div className="cb-dato"><small>Mora</small><span style={{ color: poliza.meses_mora > 0 ? '#DC2626' : '#059669' }}>{poliza.meses_mora > 0 ? `${poliza.meses_mora} mes${poliza.meses_mora > 1 ? 'es' : ''} · ${fmtCOP(poliza.saldo_mora)}` : 'Al día'}</span></div>
+          <div className="cb-dato"><small>Recaudador</small><span>{ruta.recaudador || '—'}</span></div>
+          {visita?.titular_cel && <div className="cb-dato"><small>Teléfono</small><span><a href={`tel:${visita.titular_cel}`} style={{ color:'#4F46E5' }}>{visita.titular_cel}</a></span></div>}
+          {visita?.titular_dir && <div className="cb-dato" style={{ gridColumn:'span 2' }}><small>Dirección</small><span>{visita.titular_dir}</span></div>}
+        </div>
+        <div className="cb-body">
+          {cargando ? <div style={{ textAlign:'center', padding:30 }}><Loader2 size={22} className="spin"/></div> : yaCobrado ? (
+            <div className="cb-aviso" style={{ background:'#ECFDF5', border:'1px solid #A7F3D0', color:'#065F46' }}>
+              ✓ Ya se registró el cobro de este día: <b>{fmtCOP(visita.valor_cobrado)}</b> ({RESULTADO_LABELS[visita.resultado]})
+              {visita.metodo_pago && <> · <FormaPagoTag codigo={visita.metodo_pago} size={14}/></>}.
+              <div style={{ marginTop:6, color:'#047857' }}>Para corregirlo, anule el pago desde la póliza (Pagos → Anular); así no se cobra dos veces.</div>
+            </div>
+          ) : (
+            <>
+              {fecha > hoyIso && <div className="cb-aviso" style={{ background:'#FFFBEB', border:'1px solid #FDE68A', color:'#92400E' }}>Esta ruta es del {fmtFecha(fecha)}: el cobro se registra con fecha de hoy.</div>}
+              <div className="cb-sec">Resultado de la visita</div>
+              <div className="rc-resultado-btns" style={{ marginBottom:14 }}>
+                {RESULTADOS_UI.map(r => (
+                  <button key={r.id} className={`rc-res-btn ${r.id === 'REAGENDAR' ? 'PROMESA' : r.id}${f.resultado === r.id ? ' sel' : ''}`} onClick={() => elegir(r.id)}>
+                    {r.icon} {r.label}
+                  </button>
+                ))}
+              </div>
+              {conPago && (
+                <>
+                  <div className="cb-sec">Valor cobrado</div>
+                  <div style={{ marginBottom:14 }}><CurrencyInput value={f.valor_cobrado} onChange={v => setF(x => ({ ...x, valor_cobrado: v }))} placeholder={fmtCOP(cuota)}/></div>
+                  <div className="cb-sec">Forma de pago</div>
+                  <div style={{ marginBottom:14 }}><SelectorFormaPago value={f.metodo_pago} size={18} onChange={c => setF(x => ({ ...x, metodo_pago: c }))}/></div>
+                </>
+              )}
+              {(reagenda || f.resultado === 'PARCIAL') && (
+                <CamposReagendar soloFecha={!reagenda} titulo={reagenda ? 'Fecha de la cita *' : 'Agendar el cobro del resto (opcional)'}
+                  tipo={f.tipoCita} setTipo={t => setF(x => ({ ...x, tipoCita: t }))}
+                  fecha={f.fecha_promesa} setFecha={v => setF(x => ({ ...x, fecha_promesa: v }))}
+                  hora={f.hora_cita} setHora={v => setF(x => ({ ...x, hora_cita: v }))}/>
+              )}
+              <div className="cb-sec">Observaciones</div>
+              <textarea className="rc-panel-textarea" rows={2} placeholder="Opcional…" value={f.observaciones} onChange={e => setF(x => ({ ...x, observaciones: e.target.value }))}/>
+            </>
+          )}
+        </div>
+        <div className="cb-pie">
+          <button className="rc-btn rc-btn-ghost" onClick={onClose} disabled={guardando}>{yaCobrado ? 'Cerrar' : 'Cancelar'}</button>
+          {!yaCobrado && !cargando && (
+            <button className="rc-btn rc-btn-primary" onClick={guardar} disabled={guardando || !f.resultado || !orden}>
+              {guardando ? <Loader2 size={13} className="spin"/> : <CheckCircle2 size={13}/>}
+              {conPago && Number(f.valor_cobrado) > 0 ? ` Registrar cobro de ${fmtCOP(f.valor_cobrado)}` : ' Guardar visita'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TabCalendario() {
   const hoyDate = new Date()
   const [anio, setAnio]  = useState(hoyDate.getFullYear())
@@ -1759,10 +1526,11 @@ function TabCalendario() {
   const [loading, setLoading] = useState(false)
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [rutaFiltro, setRutaFiltro] = useState('todas')
+  const [cobro, setCobro] = useState(null)   // { ruta, poliza } al hacer clic en un titular
 
-  const cargar = useCallback(async (a, m) => {
-    setLoading(true)
-    setDiaSeleccionado(null)
+  const cargar = useCallback(async (a, m, conservarDia = false) => {
+    setLoading(!conservarDia)
+    if (!conservarDia) setDiaSeleccionado(null)
     try {
       const r = await api.get(`/recaudo/calendario?anio=${a}&mes=${m}`)
       setDatos(r.data)
@@ -1789,6 +1557,13 @@ function TabCalendario() {
   while (celdas.length % 7 !== 0) celdas.push(null)
 
   const calendario = datos?.calendario || {}
+  const agenda = datos?.agenda || {}
+  const cancelarCita = async c => {
+    const motivo = window.prompt(`¿Cancelar la cita de ${c.titular_nombre}? Escriba el motivo:`)
+    if (motivo === null) return
+    try { await api.patch(`/recaudo/agenda/${c.id}`, { motivo }); toast.success('Cita cancelada'); cargar(anio, mes, true) }
+    catch (e) { toast.error(e.response?.data?.error || 'No se pudo cancelar la cita') }
+  }
 
   // Todas las rutas únicas para leyenda
   const todasRutas = []
@@ -1866,6 +1641,16 @@ function TabCalendario() {
                     {totalPolizas > 0 && (
                       <div className="cal-celda-total">{totalCobradas}/{totalPolizas} cobros</div>
                     )}
+                    {(agenda[dia] || []).length > 0 && (() => {
+                      const pend = agenda[dia].filter(c => c.estado === 'PENDIENTE').length
+                      return (
+                        <div className="cal-chip" style={{ background:'#EEF2FF', borderLeft:'3px solid #4F46E5', color:'#4338CA' }}
+                          title={agenda[dia].map(c => `${c.hora ? c.hora + ' ' : ''}${c.titular_nombre}`).join('\n')}>
+                          <span className="cal-chip-nombre">📅 {agenda[dia].length} cita{agenda[dia].length > 1 ? 's' : ''}</span>
+                          {pend > 0 && <span className="cal-chip-count">{pend} pend.</span>}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
@@ -1898,8 +1683,38 @@ function TabCalendario() {
                   ))}
                 </div>
               )}
-              {diaDataFiltrado.length === 0 ? (
-                <div className="cal-detalle-vacio">Sin cobros para este día</div>
+              {(agenda[diaSeleccionado] || []).length > 0 && (
+                <div className="cal-ruta-bloque">
+                  <div className="cal-ruta-header" style={{ borderLeft:'4px solid #4F46E5' }}>
+                    <div><span className="cal-ruta-nombre" style={{ color:'#4338CA' }}>📅 Citas agendadas</span>
+                      <span className="cal-ruta-recaudador">Promesas de pago y visitas reprogramadas</span></div>
+                  </div>
+                  <div className="cal-polizas-list">
+                    {agenda[diaSeleccionado].map(c => (
+                      <div key={c.id} className={`cal-poliza-item${c.estado === 'ATENDIDA' ? ' gestionada' : ''}`} role="button" tabIndex={0}
+                        style={{ cursor: c.estado === 'PENDIENTE' ? 'pointer' : 'default' }} title={c.estado === 'PENDIENTE' ? 'Registrar la visita de esta cita' : 'Cita atendida'}
+                        onClick={() => c.estado === 'PENDIENTE' && setCobro({ ruta: { ruta_id: c.ruta_id, ruta_nombre: c.ruta_nombre || 'Cita', recaudador: c.recaudador },
+                          poliza: { poliza_id: c.poliza_id, numero: c.numero, titular_nombre: c.titular_nombre, valor_cuota: c.valor_cuota, meses_mora: c.meses_mora, saldo_mora: c.saldo_mora } })}>
+                        <div className="cal-poliza-avatar" style={{ background:'#EEF2FF', color:'#4338CA', fontSize:11 }}>{c.hora || iniciales(c.titular_nombre)}</div>
+                        <div className="cal-poliza-info">
+                          <span className="cal-poliza-nombre">{c.titular_nombre}</span>
+                          <span className="cal-poliza-sub">{c.tipo === 'PROMESA' ? '🤝 Promete pagar' : '↷ Volver'} · Póliza #{c.numero}{c.ruta_nombre ? ` · ${c.ruta_nombre}` : ''}</span>
+                          {c.nota && <span className="cal-poliza-sub" style={{ fontStyle:'italic' }}>"{c.nota}"</span>}
+                        </div>
+                        <div className="cal-poliza-estado" style={{ display:'flex', gap:6, alignItems:'center' }}>
+                          {c.estado === 'ATENDIDA' ? <span className="rc-badge COBRADO">✓ Atendida</span> : <>
+                            <span className="cal-pendiente-badge">Pendiente</span>
+                            <button type="button" title="Cancelar cita" onClick={e => { e.stopPropagation(); cancelarCita(c) }}
+                              style={{ border:'none', background:'#FEF2F2', color:'#DC2626', borderRadius:6, width:22, height:22, cursor:'pointer' }}>✕</button>
+                          </>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {diaDataFiltrado.length === 0 && !(agenda[diaSeleccionado] || []).length ? (
+                <div className="cal-detalle-vacio">Sin cobros ni citas para este día</div>
               ) : (
                 diaDataFiltrado.map(ruta => (
                   <div key={ruta.ruta_id} className="cal-ruta-bloque">
@@ -1915,7 +1730,11 @@ function TabCalendario() {
                     </div>
                     <div className="cal-polizas-list">
                       {ruta.polizas.map(p => (
-                        <div key={p.poliza_id} className={`cal-poliza-item${p.visita ? ' gestionada' : ''}`}>
+                        <div key={p.poliza_id} className={`cal-poliza-item${p.visita ? ' gestionada' : ''}`}
+                          role="button" tabIndex={0} title="Registrar el cobro de este titular"
+                          style={{ cursor:'pointer' }}
+                          onClick={() => setCobro({ ruta, poliza: p })}
+                          onKeyDown={e => { if (e.key === 'Enter') setCobro({ ruta, poliza: p }) }}>
                           <div className="cal-poliza-avatar" style={{ background: p.visita ? '#10b98122' : ruta.color + '22', color: p.visita ? '#10b981' : ruta.color }}>
                             {iniciales(p.titular_nombre)}
                           </div>
@@ -1942,6 +1761,14 @@ function TabCalendario() {
           )}
         </div>
       )}
+
+      {cobro && (
+        <ModalCobro
+          fecha={`${anio}-${String(mes).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`}
+          ruta={cobro.ruta} poliza={cobro.poliza}
+          onClose={() => setCobro(null)}
+          onGuardado={() => { setCobro(null); cargar(anio, mes, true) }}/>
+      )}
     </div>
   )
 }
@@ -1951,7 +1778,6 @@ function TabCalendario() {
    ═══════════════════════════════════════════════════════════════════════════ */
 const TABS = [
   { id: 'mipanel',    label: 'Mi Panel',       Icon: UserCheck  },
-  { id: 'orden',      label: 'Orden del Día',  Icon: Wallet     },
   { id: 'calendario', label: 'Calendario',     Icon: Calendar   },
   { id: 'historial',  label: 'Historial',      Icon: History    },
   { id: 'indicadores',label: 'Indicadores',    Icon: BarChart2  },
@@ -1990,7 +1816,6 @@ export default function RecaudoPage() {
 
       {/* Contenido */}
       {tab === 'mipanel'     && <TabMiPanel />}
-      {tab === 'orden'       && <TabOrden />}
       {tab === 'calendario'  && <TabCalendario />}
       {tab === 'historial'   && <TabHistorial />}
       {tab === 'indicadores' && <TabIndicadores />}

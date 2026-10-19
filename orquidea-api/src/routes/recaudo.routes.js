@@ -25,6 +25,7 @@ import {
   cambiarEstadoOrden,
   misRutas,
   registrarVisitaDetalle,
+  cancelarCita,
   obtenerRecibo,
   calendarioRecaudo,
 } from '../controllers/recaudo.controller.js'
@@ -41,6 +42,7 @@ export default async function recaudoRoutes(fastify) {
   fastify.patch('/ordenes/:id/estado',       { preHandler: auth }, cambiarEstadoOrden)
   fastify.get('/mis-rutas',                 { preHandler: auth }, misRutas)
   fastify.post('/visitas/detalle',          { preHandler: auth }, registrarVisitaDetalle)
+  fastify.patch('/agenda/:id',              { preHandler: auth }, cancelarCita)
   fastify.get('/recibos/:id',               { preHandler: auth }, obtenerRecibo)
   fastify.get('/calendario',                { preHandler: auth }, calendarioRecaudo)
 }
