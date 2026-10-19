@@ -94,9 +94,26 @@ async function crearAuxiliarPuc(client, tipo, nombre, usuario_id) {
   return codigo
 }
 
-async function vincularFormas(client, codigoCuenta, formas) {
+// Deja EXACTAMENTE las formas de pago elegidas entrando a esta cuenta.
+// Una forma activa que se quita debe pasar a otra cuenta (`reasignar`:
+// { codigo_forma: id_cuenta_destino }); si quedara sin cuenta, los pagos con
+// esa forma no se podrían contabilizar.
+async function vincularFormas(client, codigoCuenta, formas, reasignar = {}) {
   if (!Array.isArray(formas)) return
-  // Las formas elegidas pasan a entrar a esta cuenta (no se desvinculan otras)
+  const actuales = (await client.query(`SELECT codigo, nombre, activo FROM formas_pago WHERE cuenta_contable_codigo = $1`, [codigoCuenta])).rows
+  // Solo las activas (las que se ven en el formulario); las inactivas no se tocan
+  const quitadas = actuales.filter(f => f.activo && !formas.includes(f.codigo))
+  for (const f of quitadas) {
+    const destinoId = reasignar?.[f.codigo]
+    if (destinoId) {
+      const d = (await client.query(`SELECT cuenta_contable_codigo FROM tesoreria_cuentas WHERE id = $1 AND activa`, [destinoId])).rows[0]
+      if (!d) throw err(`La cuenta elegida para "${f.nombre}" no existe o está inactiva`)
+      if (d.cuenta_contable_codigo === codigoCuenta) throw err(`Elija una cuenta distinta para "${f.nombre}"`)
+      await client.query(`UPDATE formas_pago SET cuenta_contable_codigo = $1 WHERE codigo = $2`, [d.cuenta_contable_codigo, f.codigo])
+    } else {
+      throw err(`Indique a qué cuenta pasan los pagos con "${f.nombre}": si queda sin cuenta, esos pagos no se podrán registrar`)
+    }
+  }
   if (formas.length) await client.query(`UPDATE formas_pago SET cuenta_contable_codigo = $1 WHERE codigo = ANY($2)`, [codigoCuenta, formas])
 }
 
@@ -119,7 +136,7 @@ export async function crearCuenta(req, reply) {
       INSERT INTO tesoreria_cuentas (nombre, banco, tipo, numero_cuenta, titular, cuenta_contable_codigo, sede_id, color, creado_por)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [b.nombre.trim(), b.banco || null, b.tipo, b.numero_cuenta || null, b.titular || null, codigo, b.sede_id || null, b.color || null, req.user.id])
-    await vincularFormas(client, codigo, b.formas_pago)
+    await vincularFormas(client, codigo, b.formas_pago, b.reasignar)
     await client.query('COMMIT')
     return reply.code(201).send({ data: rows[0] })
   } catch (e) {
@@ -142,7 +159,7 @@ export async function actualizarCuenta(req, reply) {
       [req.params.id, b.nombre.trim(), b.banco || null, b.tipo, b.numero_cuenta || null, b.titular || null, b.sede_id || null, b.color || null,
        typeof b.activa === 'boolean' ? b.activa : null])
     if (!rows.length) throw err('Cuenta no encontrada', 404)
-    await vincularFormas(client, rows[0].cuenta_contable_codigo, b.formas_pago)
+    await vincularFormas(client, rows[0].cuenta_contable_codigo, b.formas_pago, b.reasignar)
     await client.query('COMMIT')
     return reply.send({ data: rows[0] })
   } catch (e) {

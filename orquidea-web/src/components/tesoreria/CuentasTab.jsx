@@ -52,7 +52,7 @@ const CSS = `
 .tc-formas-sel input { accent-color:#059669; }
 `
 
-function ModalCuenta({ cuenta, onClose, onGuardada }) {
+function ModalCuenta({ cuenta, cuentas = [], onClose, onGuardada }) {
   const [f, setF] = useState(cuenta ? {
     nombre: cuenta.nombre, banco: cuenta.banco || '', tipo: cuenta.tipo, numero_cuenta: cuenta.numero_cuenta || '',
     titular: cuenta.titular || '', cuenta_contable_codigo: cuenta.cuenta_contable_codigo, activa: cuenta.activa,
@@ -60,6 +60,11 @@ function ModalCuenta({ cuenta, onClose, onGuardada }) {
   } : { nombre:'', banco:'', tipo:'AHORROS', numero_cuenta:'', titular:'', cuenta_contable_codigo:'', activa:true, formas_pago:[] })
   const [puc, setPuc] = useState([]), [formas, setFormas] = useState([])
   const [guardando, setGuardando] = useState(false)
+  const [reasignar, setReasignar] = useState({})   // forma quitada → cuenta a la que pasa
+  const originales = (cuenta?.formas_pago || []).map(x => x.codigo)
+  const quitadas = formas.filter(x => originales.includes(x.codigo) && !f.formas_pago.includes(x.codigo))
+  const otras = cuentas.filter(c => c.activa && c.id !== cuenta?.id)
+  const cuentaDeCodigo = cod => cuentas.find(c => c.cuenta_contable_codigo === cod)
   useEffect(() => {
     api.get('/tesoreria/cuentas/puc-disponibles').then(r => { setPuc(r.data.data || []); setFormas(r.data.formas_pago || []) })
       .catch(() => toast.error('No se pudo cargar el plan de cuentas'))
@@ -69,11 +74,15 @@ function ModalCuenta({ cuenta, onClose, onGuardada }) {
 
   const guardar = async () => {
     if (!f.nombre.trim()) return toast.error('Escriba el nombre de la cuenta')
+    const sinDestino = quitadas.filter(x => !reasignar[x.codigo])
+    if (sinDestino.length) return toast.error(`Indique a qué cuenta pasan los pagos con: ${sinDestino.map(x => x.nombre).join(', ')}`)
     setGuardando(true)
     try {
-      if (cuenta) await api.put(`/tesoreria/cuentas/${cuenta.id}`, f)
-      else await api.post('/tesoreria/cuentas', f)
-      toast.success(cuenta ? 'Cuenta actualizada' : 'Cuenta creada')
+      const body = { ...f, reasignar }
+      if (cuenta) await api.put(`/tesoreria/cuentas/${cuenta.id}`, body)
+      else await api.post('/tesoreria/cuentas', body)
+      const movidas = quitadas.map(x => `${x.nombre} → ${otras.find(c => c.id === reasignar[x.codigo])?.nombre}`)
+      toast.success(`${cuenta ? 'Cuenta actualizada' : 'Cuenta creada'}${movidas.length ? ` · ${movidas.join(' · ')}` : ''}`)
       onGuardada()
     } catch (e) { toast.error(e.response?.data?.error || 'No se pudo guardar la cuenta') }
     finally { setGuardando(false) }
@@ -111,13 +120,34 @@ function ModalCuenta({ cuenta, onClose, onGuardada }) {
           </div>
           <div className="ts-campo"><label>Formas de pago que entran a esta cuenta</label>
             <div className="tc-formas-sel">
-              {formas.map(x => (
-                <label key={x.codigo} className={f.formas_pago.includes(x.codigo) ? 'on' : ''}>
-                  <input type="checkbox" checked={f.formas_pago.includes(x.codigo)} onChange={() => toggleForma(x.codigo)}/>{x.icono} {x.nombre}
-                </label>
-              ))}
+              {formas.map(x => {
+                const enOtra = x.cuenta_contable_codigo && x.cuenta_contable_codigo !== cuenta?.cuenta_contable_codigo ? cuentaDeCodigo(x.cuenta_contable_codigo) : null
+                const marcada = f.formas_pago.includes(x.codigo)
+                return (
+                  <label key={x.codigo} className={marcada ? 'on' : ''} title={enOtra ? `Hoy entra a ${enOtra.nombre}` : ''}>
+                    <input type="checkbox" checked={marcada} onChange={() => toggleForma(x.codigo)}/>{x.icono} {x.nombre}
+                    {marcada && enOtra && <span style={{ fontSize:10.5, color:'#B45309', fontWeight:700 }}>· sale de {enOtra.nombre}</span>}
+                  </label>
+                )
+              })}
             </div>
             <small>Ej.: si marca "Bancolombia", todo pago recibido por transferencia Bancolombia se suma a esta cuenta.</small>
+            {quitadas.length > 0 && (
+              <div style={{ marginTop:10, padding:'10px 12px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:10 }}>
+                <div style={{ fontSize:12, fontWeight:800, color:'#92400E', marginBottom:6 }}>Quitó formas de pago de esta cuenta: ¿a qué cuenta pasan esos pagos?</div>
+                {quitadas.map(x => (
+                  <div key={x.codigo} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                    <span style={{ minWidth:120, fontSize:12.5, fontWeight:700, color:'#334155' }}>{x.icono} {x.nombre} →</span>
+                    <select className="ts-select" style={{ flex:1 }} value={reasignar[x.codigo] || ''}
+                      onChange={e => setReasignar(r => ({ ...r, [x.codigo]: e.target.value }))}>
+                      <option value="">— Elija la cuenta —</option>
+                      {otras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </div>
+                ))}
+                {!otras.length && <div style={{ fontSize:12, color:'#B91C1C' }}>No hay otra cuenta activa: cree primero la cuenta a la que deben pasar.</div>}
+              </div>
+            )}
           </div>
           {cuenta && (
             <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, fontWeight:700, color:'#334155', cursor:'pointer' }}>
@@ -189,7 +219,7 @@ export default function CuentasTab({ cuentas, cargando, recargar, verMovimientos
         </div>
       )}
       {(editar || nueva) && (
-        <ModalCuenta cuenta={editar} onClose={() => { setEditar(null); setNueva(false) }}
+        <ModalCuenta cuenta={editar} cuentas={cuentas} onClose={() => { setEditar(null); setNueva(false) }}
           onGuardada={() => { setEditar(null); setNueva(false); recargar() }}/>
       )}
     </>

@@ -35,7 +35,7 @@ import { nombrePropio, tituloRespetando, frase } from './textoFormato.js'
 
 const NO = /busc|filtr|e-?mail|correo|usuario|contrase|password|clave|token|smtp|servidor|puerto|phone|\burl\b|enlace|link|sitio web|web\b|sku|c[oó]digo|referencia|\bnit\b|documento|c[eé]dula|n[uú]mero|n\.?\s?°|\bnro\b|\bno\.\s|placa|cuenta|\bpuc\b|tel[eé]f|celular|whatsapp|sigla|prefijo|registro|permiso|licencia|[ií]cono|color|hora|fecha|valor|precio|costo|cantidad|stock|tasa|porcentaje|monto|abono|cuota|orden\b|plantilla|@|aprobaci|autorizaci[oó]n n|serial|lote n|factura/i
 const PERSONA = /apellido|nombres\b|barrio|vereda|nombre completo|primer nombre|segundo nombre|c[oó]nyuge|esposa?\b|padre\b|madre\b|nombre del (titular|contacto|responsable|difunto|fallecido|beneficiario|familiar|conductor|sacerdote|m[eé]dico|declarante)|sacerdote|m[eé]dico tratante|declarante|acompañante|contacto de emergencia/i
-const LUGAR = /raz[oó]n social|iglesia|parroquia|cementerio|lugar|hospital|cl[ií]nica|coro\b|empresa|entidad|aseguradora|eps\b|ocupaci|profesi|cargo\b/i
+const LUGAR = /raz[oó]n social|titular\b|beneficiario\b|iglesia|parroquia|cementerio|lugar|hospital|cl[ií]nica|coro\b|empresa|entidad|aseguradora|eps\b|ocupaci|profesi|cargo\b/i
 
 const TIPOS_TEXTO = new Set(['text', '', 'textarea'])
 

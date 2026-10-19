@@ -25,7 +25,7 @@ import { nombrePropio, tituloRespetando, frase } from './textoFormato.js'
 
 const PERSONA = new Set(['nombres', 'apellidos', 'nombre_conyuge', 'nombre_madre', 'nombre_padre', 'contacto_nombre',
   'responsable_nombre', 'representante_legal', 'medico_certifica', 'cliente_nombre', 'conductor', 'barrio', 'vereda'])
-const LUGAR = new Set(['razon_social', 'nombre_comercial', 'iglesia', 'coro', 'lugar_fallecimiento',
+const LUGAR = new Set(['razon_social', 'nombre_comercial', 'titular', 'iglesia', 'coro', 'lugar_fallecimiento',
   'lugar_recogida', 'lugar_disposicion', 'lugar_exp_documento', 'notaria', 'ocupacion', 'religion', 'nacionalidad',
   'contacto_cargo', 'seguridad_social', 'banco', 'ciudad_registro'])
 const FRASE = /^(observaciones(_\w+)?|convenio_observaciones|notas?(_\w+)?|motivo(_\w+)?|descripcion|concepto|causa_fallecimiento|materiales|resultado|condicion_pago|direccion(_\w+)?|detalle|comentario|justificacion)$/
