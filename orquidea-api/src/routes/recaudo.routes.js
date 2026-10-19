@@ -26,6 +26,7 @@ import {
   misRutas,
   registrarVisitaDetalle,
   cancelarCita,
+  cobroPreview,
   obtenerRecibo,
   calendarioRecaudo,
 } from '../controllers/recaudo.controller.js'
@@ -43,6 +44,7 @@ export default async function recaudoRoutes(fastify) {
   fastify.get('/mis-rutas',                 { preHandler: auth }, misRutas)
   fastify.post('/visitas/detalle',          { preHandler: auth }, registrarVisitaDetalle)
   fastify.patch('/agenda/:id',              { preHandler: auth }, cancelarCita)
+  fastify.get('/cobro-preview',             { preHandler: auth }, cobroPreview)
   fastify.get('/recibos/:id',               { preHandler: auth }, obtenerRecibo)
   fastify.get('/calendario',                { preHandler: auth }, calendarioRecaudo)
 }

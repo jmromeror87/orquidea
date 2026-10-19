@@ -31,6 +31,7 @@ import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import './RecaudoPage.css'
 import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
+import ReciboCobro from '../../components/polizas/ReciboCobro.jsx'
 
 /* ─── Helpers ─── */
 // Fecha LOCAL (toISOString es UTC: después de las 7 p. m. en Colombia daba el día siguiente)
@@ -67,8 +68,7 @@ const RESULTADO_ICONS = {
 // Botones de resultado: Promesa y Aplazado son UNO solo ("Reagendar") que deja
 // una cita en el calendario (fecha y hora opcional), como una cita médica.
 const RESULTADOS_UI = [
-  { id:'COBRADO',  label:'Cobrado',   icon:'✓' },
-  { id:'PARCIAL',  label:'Parcial',   icon:'½' },
+  { id:'COBRADO',  label:'Cobrar',    icon:'💵' },   // completo o parcial lo decide el sistema por el valor
   { id:'AUSENTE',  label:'Ausente',   icon:'—' },
   { id:'NO_PAGA',  label:'No paga',   icon:'✗' },
   { id:'REAGENDAR',label:'Reagendar', icon:'📅' },
@@ -101,6 +101,38 @@ function CamposReagendar({ tipo, setTipo, fecha, setFecha, hora, setHora, soloFe
         <input type="time" className="rc-input" value={hora} onChange={e => setHora(e.target.value)} style={{ width:130 }} title="Hora (opcional)"/>
       </div>
       {fecha && <div style={{ fontSize:12, color:'#4338CA', marginTop:6 }}>📅 Quedará en el calendario el {fmtFecha(fecha)}{hora ? ` a las ${hora}` : ''}.</div>}
+    </div>
+  )
+}
+
+// Qué cubre un valor: lo calcula el servidor con el MISMO cálculo del cobro
+// (tarifa del periodo con el incremento anual, abonos que ya tenía). Avisa al
+// padre lo que falta del próximo periodo (valor sugerido) y si queda parcial.
+function AlcanceCobro({ polizaId, valor, onPreview }) {
+  const [d, setD] = useState(null)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      api.get('/recaudo/cobro-preview', { params: { poliza_id: polizaId, monto: Number(valor) || 0 } })
+        .then(r => { setD(r.data.data); onPreview?.(r.data.data) }).catch(() => {})
+    }, Number(valor) ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [polizaId, valor])
+  if (!d) return null
+  const a = d.alcance, p = d.proxima
+  const fF = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }) : ''
+  let txt = null, color = '#047857', bg = '#ECFDF5'
+  if (a) {
+    if (!a.completas.length && a.abono) { txt = `Abono a ${a.abono.etiqueta}: faltarían ${fmtCOP(a.abono.falta)} para completar ese periodo`; color = '#B45309'; bg = '#FFFBEB' }
+    else txt = `✓ Cubre ${a.completas.length === 1 ? `el periodo ${a.completas[0]}` : `${a.completas.length} periodos (${a.completas[0]} a ${a.completas[a.completas.length - 1]})`}${a.abono ? ` + abono de ${fmtCOP(a.abono.monto)} a ${a.abono.etiqueta}` : ''}`
+  }
+  return (
+    <div style={{ marginTop:6 }}>
+      {p && <div style={{ fontSize:11.5, color:'#64748B', marginBottom:4 }}>
+        Periodo a cobrar: <b>{p.etiqueta}</b> · tarifa {fmtCOP(p.tarifa)}{p.falta < p.tarifa ? <> · ya tiene abono, faltan <b>{fmtCOP(p.falta)}</b></> : null}
+      </div>}
+      {txt && <div style={{ fontSize:12.5, fontWeight:700, color, background:bg, borderRadius:8, padding:'6px 10px' }}>
+        {txt}{a?.cubre_hasta ? <span style={{ fontWeight:600 }}> · queda cubierta hasta el {fF(a.cubre_hasta)}</span> : null}
+      </div>}
     </div>
   )
 }
@@ -512,6 +544,8 @@ function TabMiPanel() {
   const [guardandoVisita, setGuardandoVisita]  = useState(false)
   const [errorVisita,     setErrorVisita]      = useState('')
   const [reciboModal,     setReciboModal]      = useState(null)
+  const [reciboCobro,     setReciboCobro]      = useState(null)   // recibo oficial del cobro (PDF / WhatsApp)
+  const [prevPanel,       setPrevPanel]        = useState(null)   // alcance del cobro (servidor)
   const [reporteRuta,     setReporteRuta]      = useState(null)
   const [cerrandoRuta,    setCerrandoRuta]     = useState(false)
   const [inicioRutaAt,    setInicioRutaAt]     = useState(null)
@@ -607,8 +641,11 @@ function TabMiPanel() {
     }
     setPanelVisita(panelVisita === polizaId && accionVisita === accion ? null : polizaId)
     setAccionVisita(accion)
+    setPrevPanel(null)
+    if (accion === 'COBRADO') api.get('/recaudo/cobro-preview', { params: { poliza_id: polizaId } })
+      .then(r => { const falta = r.data.data?.proxima?.falta; if (falta) setFormPago(fp => ({ ...fp, valor: String(falta) })) }).catch(() => {})
     setFormPago({
-      valor: accion !== 'REAGENDAR' ? String(visitaData?.valor_cuota || '') : '',
+      valor: accion !== 'REAGENDAR' ? String(visitaData?.valor_cuota || '') : '',   // se ajusta con la falta real abajo
       metodo_pago: 'efectivo',
       fecha_promesa: '',
       hora_cita: '',
@@ -649,9 +686,9 @@ function TabMiPanel() {
       setOrdenActiva(nuevaOrden)
       cargarMisRutas(misFecha)
       toast.success('Visita registrada correctamente')
-      // Mostrar recibo solo si hubo cobro real
-      if (r.data.datos_recibo && ['COBRADO','PARCIAL'].includes(resultado)) {
-        setReciboModal(r.data.datos_recibo)
+      // Recibo oficial (ver/imprimir o enviar por WhatsApp) si hubo cobro real
+      if (r.data.pago_id || r.data.lote_id) {
+        setReciboCobro({ polizaId, pagoId: r.data.pago_id, loteId: r.data.lote_id, telefono: visitaData?.titular_cel || '' })
       }
       if (r.data.ruta_agendada) {
         toast.success(`📅 Cita agendada para el ${r.data.ruta_agendada}`, 6000)
@@ -985,13 +1022,6 @@ function TabMiPanel() {
                       ✓ COBRAR
                     </button>
                     <button
-                      className="rp-accion-btn parcial"
-                      onClick={() => abrirAccion(v.poliza_id, 'PARCIAL', v)}
-                      disabled={guardandoVisita}
-                    >
-                      ½ PARCIAL
-                    </button>
-                    <button
                       className="rp-accion-btn promesa"
                       onClick={() => abrirAccion(v.poliza_id, 'REAGENDAR', v)}
                       disabled={guardandoVisita}
@@ -1032,22 +1062,22 @@ function TabMiPanel() {
                 {panelAb && (
                   <div className="rp-pago-panel">
                     <div className="rp-pago-title">
-                      {accionVisita === 'COBRADO' && '✓ Registrar cobro completo'}
-                      {accionVisita === 'PARCIAL' && '½ Registrar pago parcial'}
+                      {accionVisita === 'COBRADO' && '💵 Registrar cobro (completo o abono, según el valor)'}
                       {accionVisita === 'REAGENDAR' && '📅 Reagendar visita'}
                       {accionVisita === 'NO_PAGA' && '✗ Registrar negativa de pago'}
                     </div>
 
                     {/* Valor y método (para cobros) */}
-                    {(accionVisita === 'COBRADO' || accionVisita === 'PARCIAL') && (
+                    {accionVisita === 'COBRADO' && (
                       <div className="rp-pago-row">
                         <div className="rp-pago-field">
                           <label>Valor cobrado</label>
                           <CurrencyInput
                             value={formPago.valor}
                             placeholder={String(v.valor_cuota || 0)}
-                            onChange={v => setFormPago(f => ({ ...f, valor: v }))}
+                            onChange={val => setFormPago(f => ({ ...f, valor: val }))}
                           />
+                          <AlcanceCobro polizaId={v.poliza_id} valor={formPago.valor} onPreview={setPrevPanel}/>
                         </div>
                         <div className="rp-pago-field">
                           <label>Método de pago</label>
@@ -1058,8 +1088,8 @@ function TabMiPanel() {
                     )}
 
                     {/* Reagendar (promesa / volver) o resto de un pago parcial: cita en el calendario */}
-                    {(accionVisita === 'REAGENDAR' || accionVisita === 'PARCIAL') && (
-                      <CamposReagendar soloFecha={accionVisita === 'PARCIAL'}
+                    {(accionVisita === 'REAGENDAR' || (accionVisita === 'COBRADO' && Number(formPago.valor) > 0 && prevPanel?.alcance && !prevPanel.alcance.completas.length)) && (
+                      <CamposReagendar soloFecha={accionVisita !== 'REAGENDAR'}
                         titulo={accionVisita === 'REAGENDAR' ? 'Fecha de la cita *' : 'Agendar el cobro del resto (opcional)'}
                         tipo={formPago.tipoCita} setTipo={t => setFormPago(f => ({ ...f, tipoCita: t }))}
                         fecha={formPago.fecha_promesa} setFecha={v2 => setFormPago(f => ({ ...f, fecha_promesa: v2 }))}
@@ -1114,6 +1144,7 @@ function TabMiPanel() {
       )}
 
       {/* ── Modal de recibo POS-80 ── */}
+      {reciboCobro && <ReciboCobro {...reciboCobro} onClose={() => setReciboCobro(null)}/>}
       {reciboModal && (
         <div className="rp-recibo-overlay">
           <div className="rp-recibo-box">
@@ -1400,6 +1431,7 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
   const [cargando, setCargando] = useState(true)
   const [f, setF] = useState({ resultado: '', valor_cobrado: '', metodo_pago: 'efectivo', fecha_promesa: '', hora_cita: '', tipoCita: 'PROMESA', observaciones: '' })
   const [guardando, setGuardando] = useState(false)
+  const [prev, setPrev] = useState(null)   // preview del servidor (falta del próximo periodo, alcance)
 
   useEffect(() => {
     api.get(`/recaudo/orden-del-dia?ruta_id=${ruta.ruta_id}&fecha=${fecha}`)
@@ -1408,21 +1440,24 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
         const v = (r.data.data.visitas || []).find(x => x.poliza_id === poliza.poliza_id) || null
         setVisita(v)
         if (v?.resultado) setF(x => ({ ...x, resultado: ['PROMESA', 'APLAZADO'].includes(v.resultado) ? 'REAGENDAR' : v.resultado,
-          tipoCita: v.resultado === 'APLAZADO' ? 'APLAZADO' : 'PROMESA', valor_cobrado: v.valor_cobrado || '',
+          tipoCita: v.resultado === 'APLAZADO' ? 'APLAZADO' : 'PROMESA', valor_cobrado: Number(v.valor_cobrado) || '',
           metodo_pago: (v.metodo_pago || 'efectivo').toLowerCase(), observaciones: v.observaciones || '' }))
       })
       .catch(() => toast.error('No se pudo abrir la ruta de ese día'))
       .finally(() => setCargando(false))
+    api.get('/recaudo/cobro-preview', { params: { poliza_id: poliza.poliza_id } }).then(r => setPrev(r.data.data)).catch(() => {})
   }, [fecha, ruta.ruta_id, poliza.poliza_id])
 
   const yaCobrado = ['COBRADO', 'PARCIAL'].includes(visita?.resultado) && Number(visita?.valor_cobrado) > 0
-  const conPago = f.resultado === 'COBRADO' || f.resultado === 'PARCIAL'
+  const conPago = f.resultado === 'COBRADO'
   const reagenda = f.resultado === 'REAGENDAR'
   const resultadoReal = reagenda ? f.tipoCita : f.resultado
   const cuota = Number(poliza.valor_cuota || visita?.valor_cuota || 0)
+  const esParcial = conPago && Number(f.valor_cobrado) > 0 && !!prev?.alcance && !prev.alcance.completas.length
   const hoyIso = hoy()
 
-  const elegir = res => setF(x => ({ ...x, resultado: res, valor_cobrado: res === 'COBRADO' && !x.valor_cobrado ? cuota : x.valor_cobrado }))
+  // Valor sugerido = lo que falta del periodo que toca (con su tarifa), no la cuota fija
+  const elegir = res => setF(x => ({ ...x, resultado: res, valor_cobrado: res === 'COBRADO' && !Number(x.valor_cobrado) ? (prev?.proxima?.falta || cuota) : x.valor_cobrado }))
 
   const guardar = async () => {
     if (!f.resultado) return toast.error('Elija el resultado de la visita')
@@ -1433,13 +1468,13 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
       const r = await api.post('/recaudo/visitas/detalle', {
         orden_id: orden.id, poliza_id: poliza.poliza_id, resultado: resultadoReal,
         valor_cobrado: conPago ? Number(f.valor_cobrado) : 0, metodo_pago: f.metodo_pago,
-        fecha_promesa: (reagenda || f.resultado === 'PARCIAL') && f.fecha_promesa ? f.fecha_promesa : undefined,
+        fecha_promesa: (reagenda || esParcial) && f.fecha_promesa ? f.fecha_promesa : undefined,
         hora_cita: f.hora_cita || undefined, observaciones: f.observaciones || null,
       })
-      const d = r.data.datos_recibo
-      if (conPago && d) {
-        const hasta = d.pago_hasta_nuevo ? new Date(String(d.pago_hasta_nuevo).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' }) : ''
-        toast.success(`Cobro de ${fmtCOP(f.valor_cobrado)} registrado a ${poliza.titular_nombre}${d.periodos_pagados?.length ? ` · ${d.periodos_pagados.join(', ')}` : ''}${hasta ? ` · cubierta hasta el ${hasta}` : ''}`, 7000)
+      if (conPago && (r.data.pago_id || r.data.lote_id)) {
+        toast.success(`${r.data.resultado_final === 'PARCIAL' ? 'Abono parcial' : 'Cobro'} de ${fmtCOP(f.valor_cobrado)} registrado a ${poliza.titular_nombre}`)
+        onGuardado({ polizaId: poliza.poliza_id, pagoId: r.data.pago_id, loteId: r.data.lote_id, telefono: visita?.titular_cel || '' })
+        return
       } else {
         toast.success(`Visita registrada: ${RESULTADO_LABELS[resultadoReal]}${r.data.ruta_agendada ? ` · 📅 cita agendada para el ${r.data.ruta_agendada}` : ''}`, 6000)
       }
@@ -1488,12 +1523,13 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
               {conPago && (
                 <>
                   <div className="cb-sec">Valor cobrado</div>
-                  <div style={{ marginBottom:14 }}><CurrencyInput value={f.valor_cobrado} onChange={v => setF(x => ({ ...x, valor_cobrado: v }))} placeholder={fmtCOP(cuota)}/></div>
+                  <div style={{ marginBottom:14 }}><CurrencyInput value={f.valor_cobrado} onChange={v => setF(x => ({ ...x, valor_cobrado: v }))} placeholder={fmtCOP(cuota)}/>
+                    <AlcanceCobro polizaId={poliza.poliza_id} valor={f.valor_cobrado} onPreview={setPrev}/></div>
                   <div className="cb-sec">Forma de pago</div>
                   <div style={{ marginBottom:14 }}><SelectorFormaPago value={f.metodo_pago} size={18} onChange={c => setF(x => ({ ...x, metodo_pago: c }))}/></div>
                 </>
               )}
-              {(reagenda || f.resultado === 'PARCIAL') && (
+              {(reagenda || esParcial) && (
                 <CamposReagendar soloFecha={!reagenda} titulo={reagenda ? 'Fecha de la cita *' : 'Agendar el cobro del resto (opcional)'}
                   tipo={f.tipoCita} setTipo={t => setF(x => ({ ...x, tipoCita: t }))}
                   fecha={f.fecha_promesa} setFecha={v => setF(x => ({ ...x, fecha_promesa: v }))}
@@ -1527,6 +1563,7 @@ function TabCalendario() {
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
   const [rutaFiltro, setRutaFiltro] = useState('todas')
   const [cobro, setCobro] = useState(null)   // { ruta, poliza } al hacer clic en un titular
+  const [recibo, setRecibo] = useState(null) // recibo del cobro recién registrado
 
   const cargar = useCallback(async (a, m, conservarDia = false) => {
     setLoading(!conservarDia)
@@ -1767,8 +1804,9 @@ function TabCalendario() {
           fecha={`${anio}-${String(mes).padStart(2, '0')}-${String(diaSeleccionado).padStart(2, '0')}`}
           ruta={cobro.ruta} poliza={cobro.poliza}
           onClose={() => setCobro(null)}
-          onGuardado={() => { setCobro(null); cargar(anio, mes, true) }}/>
+          onGuardado={rec => { setCobro(null); cargar(anio, mes, true); if (rec) setRecibo(rec) }}/>
       )}
+      {recibo && <ReciboCobro {...recibo} onClose={() => setRecibo(null)}/>}
     </div>
   )
 }

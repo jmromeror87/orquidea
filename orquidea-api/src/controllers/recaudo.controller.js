@@ -16,7 +16,7 @@
  */
 import pool from '../config/database.js'
 import { resolverSede, rutaPermitida, ordenRecaudoPermitida } from '../utils/sede.js'
-import { aplicarPagoPolizaPorMonto } from '../services/pagosPoliza.service.js'
+import { calcularPlan, aplicarPagoPolizaPorMonto } from '../services/pagosPoliza.service.js'
 
 // GET /api/recaudo/rutas-del-dia?fecha=YYYY-MM-DD
 // Lista las rutas que tienen cobro programado para esa fecha
@@ -449,6 +449,7 @@ export async function registrarVisitaDetalle(req, reply) {
     // 3. Si hubo cobro real → crear recibo + actualizar póliza + insertar en pagos_poliza
     let recibo = null
     let aplicado = null
+    let resultadoFinal = resultado
     if (['COBRADO', 'PARCIAL', 'PROMESA'].includes(resultado)) {
       const saldo_anterior = Number(valor_cuota) * Number(meses_mora || 0)
       const saldo_nuevo    = Math.max(0, saldo_anterior - Number(valor_cobrado))
@@ -475,6 +476,14 @@ export async function registrarVisitaDetalle(req, reply) {
           poliza_id, monto: valor_cobrado, metodo_pago, usuario_id: recaudador_id,
           cobrador_id: recaudador_id, notas: observaciones || null,
         })
+        // El sistema decide si fue completo o parcial según lo que alcanzó el
+        // valor (no lo que se marcó): completa al menos un periodo → COBRADO;
+        // solo abono → PARCIAL. Un valor mayor cubre varios periodos.
+        resultadoFinal = aplicado.periodos.length > 0 ? 'COBRADO' : 'PARCIAL'
+        if (resultadoFinal !== resultado) {
+          await client.query(`UPDATE visitas_recaudo SET resultado = $2 WHERE id = $1`, [visita_id, resultadoFinal])
+          if (recibo) await client.query(`UPDATE recibos_recaudo SET tipo = $2 WHERE id = $1`, [recibo.id, resultadoFinal === 'COBRADO' ? 'PAGO' : 'PARCIAL'])
+        }
       }
     }
 
@@ -513,6 +522,9 @@ export async function registrarVisitaDetalle(req, reply) {
     return reply.send({
       ok: true,
       visita_id,
+      resultado_final: resultadoFinal,
+      pago_id: aplicado?.pago_id || null, lote_id: aplicado?.lote_id || null,
+      numeros_recibo: aplicado?.numeros_recibo || [],
       recibo,
       ruta_agendada: rutaAgendada,
       datos_recibo: recibo ? {
@@ -537,7 +549,7 @@ export async function registrarVisitaDetalle(req, reply) {
         poliza_numero:     pol.poliza_numero,
         plan_nombre:       pol.plan_nombre,
         // Pago
-        resultado,
+        resultado:         resultadoFinal,
         valor_cobrado:     Number(valor_cobrado),
         valor_cuota:       Number(valor_cuota),
         meses_mora_antes:  Number(meses_mora || 0),
@@ -710,4 +722,29 @@ export async function cancelarCita(req, reply) {
     WHERE id = $1 AND estado = 'PENDIENTE' RETURNING id`, [req.params.id, motivo])
   if (!rows.length) return reply.code(404).send({ error: 'La cita no existe o ya fue atendida' })
   return reply.send({ ok: true })
+}
+
+// GET /api/recaudo/cobro-preview?poliza_id=&monto=
+// Lo que cubriría un cobro, con el MISMO cálculo que el registro (tarifa del
+// periodo según el incremento anual, abonos previos): valor sugerido = lo que
+// falta del próximo periodo; con monto → periodos completos, abono y cobertura.
+export async function cobroPreview(req, reply) {
+  const { poliza_id, monto } = req.query
+  const pol = (await pool.query('SELECT * FROM polizas WHERE id = $1', [poliza_id])).rows[0]
+  if (!pol) return reply.code(404).send({ error: 'Póliza no encontrada' })
+  const sig = await calcularPlan(pool, pol, { periodos: 1 })
+  const proxima = sig.items[0] ? { etiqueta: sig.items[0].periodo.etiqueta, falta: sig.items[0].monto,
+    tarifa: sig.cuotaFn(sig.items[0].periodo), desde: sig.items[0].periodo.iso, hasta: sig.items[0].periodo.fin_iso } : null
+  let alcance = null
+  if (Number(monto) > 0) {
+    const plan = await calcularPlan(pool, pol, { monto: Number(monto) })
+    const completas = plan.items.filter(i => i.completa)
+    const abono = plan.items.find(i => !i.completa)
+    alcance = {
+      completas: completas.map(i => i.periodo.etiqueta),
+      abono: abono ? { etiqueta: abono.periodo.etiqueta, monto: abono.monto, falta: Math.round((plan.cuotaFn(abono.periodo) - abono.abonado_antes - abono.monto) * 100) / 100 } : null,
+      cubre_hasta: plan.cubre_hasta ? `${plan.cubre_hasta.y}-${String(plan.cubre_hasta.m + 1).padStart(2, '0')}-${String(plan.cubre_hasta.d).padStart(2, '0')}` : null,
+    }
+  }
+  return reply.send({ data: { proxima, alcance } })
 }

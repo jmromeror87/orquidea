@@ -13,7 +13,11 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import pool from '../config/database.js'
-import { estadoWhatsApp, reiniciarWhatsApp, enviarWhatsApp } from '../utils/whatsapp.js'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { pipeline } from 'stream/promises'
+import { estadoWhatsApp, reiniciarWhatsApp, enviarWhatsApp, enviarWhatsAppDocumento } from '../utils/whatsapp.js'
 import { consultarSaldoSMS, enviarSMS } from '../utils/sms.js'
 
 export async function whatsappEstado(req, reply) {
@@ -90,4 +94,32 @@ export async function listarLog(req, reply) {
     data: dataRes.rows,
     meta: { total: +countRes.rows[0].count, page: +page, limit: +limit },
   })
+}
+
+// POST /api/notificaciones/whatsapp-documento (multipart: archivo PDF + telefono + mensaje)
+// Envía un PDF (ej. el recibo de un cobro) al WhatsApp del cliente. Si el
+// WhatsApp del sistema no está conectado responde 503 y la pantalla ofrece
+// compartirlo desde el equipo.
+export async function enviarDocumentoWhatsApp(req, reply) {
+  const partes = { }
+  let ruta = null, nombre = 'documento.pdf'
+  try {
+    for await (const parte of req.parts()) {
+      if (parte.type === 'file') {
+        nombre = String(parte.filename || nombre).replace(/[^\w.\- ]+/g, '_')
+        if (!/\.pdf$/i.test(nombre)) return reply.code(400).send({ error: 'Solo se pueden enviar archivos PDF' })
+        ruta = path.join(os.tmpdir(), `wa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`)
+        await pipeline(parte.file, fs.createWriteStream(ruta))
+      } else partes[parte.fieldname] = parte.value
+    }
+    const telefono = String(partes.telefono || '').replace(/\D/g, '')
+    if (telefono.length < 10) return reply.code(400).send({ error: 'Número de WhatsApp no válido' })
+    if (!ruta) return reply.code(400).send({ error: 'No se recibió el PDF' })
+    const r = await enviarWhatsAppDocumento({ telefono, mensaje: partes.mensaje || '', archivo_path: ruta, nombre_archivo: nombre, usuarioId: req.user.id })
+    if (!r.enviado) return reply.code(503).send({ error: 'El WhatsApp del sistema no está conectado', motivo: r.motivo })
+    return reply.send({ ok: true })
+  } finally {
+    // El servicio ya leyó el archivo al responder; se borra para no acumular
+    if (ruta) setTimeout(() => fs.unlink(ruta, () => {}), 60_000)
+  }
 }

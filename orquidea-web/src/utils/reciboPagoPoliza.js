@@ -32,7 +32,8 @@ function enLetras(v) {
   return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)} pesos M/CTE` : ''
 }
 
-export async function imprimirReciboPagoPoliza({ pago, poliza, empresa }) {
+// salida: 'ver' (visor con Imprimir) o 'blob' (devuelve el PDF para enviarlo por WhatsApp)
+export async function imprimirReciboPagoPoliza({ pago, poliza, empresa, salida = 'ver' }) {
   const emp = empresa || {}
   const logoDataUrl = await getLogoDataUrl(emp.logo_url)
 
@@ -200,5 +201,7 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa }) {
   doc.setFont('helvetica','normal'); doc.setFontSize(6.8); doc.setTextColor(...LGRAY)
   doc.text('Conserve este recibo como soporte de su pago  ·  Documento generado por Orquídea ERP', W / 2, y, { align:'center' })
 
-  verPDF(doc, `${titulo === 'RECIBO DE PAGO' ? 'Recibo de pago' : titulo.charAt(0) + titulo.slice(1).toLowerCase()} N° ${numero}`, `Recibo-${numero}`)
+  const tituloVisor = `${titulo === 'RECIBO DE PAGO' ? 'Recibo de pago' : titulo.charAt(0) + titulo.slice(1).toLowerCase()} N° ${numero}`
+  if (salida === 'blob') return { blob: doc.output('blob'), nombre: `Recibo-${numero}.pdf`, titulo: tituloVisor, numero, total: totalGrupo, grupo }
+  verPDF(doc, tituloVisor, `Recibo-${numero}`)
 }

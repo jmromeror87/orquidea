@@ -63,3 +63,32 @@ export async function enviarWhatsApp({ telefono, mensaje, usuarioId = null }) {
     return { enviado: false, motivo: e.message }
   }
 }
+
+// Envía un archivo (ej. el PDF de un recibo) por WhatsApp. El archivo debe
+// estar en el disco del servidor: el servicio de WhatsApp corre en la misma
+// máquina y lo lee por su ruta.
+export async function enviarWhatsAppDocumento({ telefono, mensaje, archivo_path, nombre_archivo, usuarioId = null }) {
+  const registrar = (estado, extra = {}) => pool.query(
+    `INSERT INTO notificaciones_log (canal, destinatario, mensaje, estado, proveedor, referencia, error, usuario_id)
+     VALUES ('WHATSAPP',$1,$2,$3,'whatsapp-documento',$4,$5,$6)`,
+    [telefono, `${mensaje || ''} [${nombre_archivo || 'documento'}]`, estado, extra.referencia || null, extra.error || null, usuarioId]
+  ).catch(e => console.error('[whatsapp] no se pudo registrar en log:', e.message))
+
+  if (!env.whatsapp.serviceUrl) return { enviado: false, motivo: 'no_configurado' }
+  try {
+    const r = await fetch(`${env.whatsapp.serviceUrl}/send-doc`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ telefono, mensaje, archivo_path, nombre_archivo }),
+    })
+    const data = await r.json().catch(() => ({}))
+    if (!data.ok) {
+      await registrar('ERROR', { error: data.error || `HTTP ${r.status}` })
+      return { enviado: false, motivo: data.error || `HTTP ${r.status}` }
+    }
+    await registrar('ENVIADO', { referencia: data.numero })
+    return { enviado: true }
+  } catch (e) {
+    await registrar('ERROR', { error: e.message })
+    return { enviado: false, motivo: e.message }
+  }
+}

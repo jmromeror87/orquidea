@@ -166,12 +166,15 @@ export async function aplicarPagoPolizaPorMonto(client, { poliza_id, monto, meto
   if (['CANCELADA', 'EJECUTADA'].includes(pol.estado))
     throw Object.assign(new Error(`La póliza está ${pol.estado} y no puede recibir pagos`), { httpCode: 400 })
   const plan = await calcularPlan(client, pol, { monto: Number(monto) })
-  await registrarPlan(client, pol, plan, {
+  const filas = await registrarPlan(client, pol, plan, {
     metodo_pago: String(metodo_pago || 'efectivo').toLowerCase(), usuario_id, cobrador_id, notas,
   })
   return {
     periodos: plan.items.filter(i => i.completa).map(i => i.periodo),
     abono: plan.items.find(i => !i.completa) ? { periodo: plan.items.find(i => !i.completa).periodo.etiqueta, monto: plan.items.find(i => !i.completa).monto } : null,
     pago_hasta: plan.cubre_hasta ? iso(plan.cubre_hasta) : null,
+    // Para imprimir / enviar el recibo del pago
+    pago_id: filas[0]?.id || null, lote_id: filas[0]?.lote_id || null,
+    numeros_recibo: filas.map(f => f.numero_recibo),
   }
 }
