@@ -27,12 +27,17 @@
 import { useState, useEffect, Fragment } from 'react'
 import {
   Landmark, Search, Plus, ChevronLeft, ChevronRight, X, Trash2, ArrowDownCircle, ArrowUpCircle, Ban, Loader2,
-  UserPlus, AlertTriangle, Eye, Printer,
+  UserPlus, AlertTriangle, Eye, Printer, RefreshCw, ArrowLeftRight, Building2, Wallet,
 } from 'lucide-react'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { ventanaDocumento } from '../../store/visorPdf.store.js'
+import CuentasTab from '../../components/tesoreria/CuentasTab.jsx'
+import MovimientosTab from '../../components/tesoreria/MovimientosTab.jsx'
+import TrasladosTab from '../../components/tesoreria/TrasladosTab.jsx'
+import ConciliacionTab from '../../components/tesoreria/ConciliacionTab.jsx'
+import { CSS_TES, fmt as fmtTes } from '../../components/tesoreria/comun.js'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
 const fmtFecha = (d) => d ? new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -612,7 +617,7 @@ function ModalAnular({ comprobante, onClose, onAnulado }) {
   )
 }
 
-export default function TesoreriaPage() {
+function ComprobantesTesoreria({ embebido = false }) {
   const [comprobantes, setComprobantes] = useState([])
   const [meta, setMeta] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -681,14 +686,14 @@ export default function TesoreriaPage() {
   const totalPaginas = Math.max(1, Math.ceil((meta?.total || 0) / LIMIT))
 
   return (
-    <div className="ctb-page">
+    <div className={embebido ? '' : 'ctb-page'}>
       <style>{CSS}</style>
 
-      <div className="ctb-eyebrow"><Landmark size={12} /> TESORERÍA</div>
+      {!embebido && <div className="ctb-eyebrow"><Landmark size={12} /> TESORERÍA</div>}
 
-      <div className="ctb-head-row">
+      <div className="ctb-head-row" style={embebido ? { marginBottom:14, alignItems:'center' } : undefined}>
         <div>
-          <div className="ctb-title">Comprobantes de Ingreso y Egreso</div>
+          <div className="ctb-title" style={embebido ? { fontSize:17 } : undefined}>Comprobantes de ingreso y egreso</div>
           <div className="ctb-sub">Caja y bancos — se contabiliza automáticamente al registrarlos</div>
         </div>
         <div className="ctb-actions">
@@ -848,6 +853,90 @@ export default function TesoreriaPage() {
       {anulando && (
         <ModalAnular comprobante={anulando} onClose={() => setAnulando(null)}
           onAnulado={() => { setAnulando(null); setDetalle(prev => { const n = { ...prev }; delete n[anulando.id]; return n }); cargar(pagina) }} />
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Módulo de Tesorería: Cuentas · Movimientos · Traslados · Conciliación ·
+// Comprobantes. Saldos y movimientos salen de la contabilidad (cada cuenta =
+// una subcuenta del PUC), como el módulo de Tesorería de YaROM POS.
+// ══════════════════════════════════════════════════════════════════════════
+const TABS_TES = [
+  { id:'cuentas',      label:'Cuentas' },
+  { id:'movimientos',  label:'Movimientos' },
+  { id:'traslados',    label:'Traslados' },
+  { id:'conciliacion', label:'Conciliación' },
+  { id:'comprobantes', label:'Comprobantes CI / CE' },
+]
+
+export default function TesoreriaPage() {
+  const [tab, setTab] = useState(() => { try { return localStorage.getItem('tes-tab') || 'cuentas' } catch { return 'cuentas' } })
+  const [cuentas, setCuentas] = useState([])
+  const [kpis, setKpis] = useState(null)
+  const [cargando, setCargando] = useState(true)
+  const [nuevaCuenta, setNuevaCuenta] = useState(false)
+  const [nuevoTraslado, setNuevoTraslado] = useState(false)
+  const [origenTraslado, setOrigenTraslado] = useState('')
+  const [cuentaMov, setCuentaMov] = useState('')
+  useEffect(() => { try { localStorage.setItem('tes-tab', tab) } catch { /* sin almacenamiento */ } }, [tab])
+
+  const cargar = async () => {
+    setCargando(true)
+    try { const r = await api.get('/tesoreria/cuentas'); setCuentas(r.data.data || []); setKpis(r.data.kpis) }
+    catch (e) { toast.error(e.response?.data?.error || 'No se pudieron cargar las cuentas') }
+    finally { setCargando(false) }
+  }
+  useEffect(() => { cargar() }, [])
+
+  const Kpi = ({ icon, bg, color, titulo, valor, sub }) => (
+    <div className="ts-kpi"><div className="ts-kpi-ic" style={{ background:bg }}>{icon}</div>
+      <div><small>{titulo}</small><b style={{ color }}>{valor}</b><span>{sub}</span></div></div>
+  )
+
+  return (
+    <div className="ts-page">
+      <style>{CSS_TES}</style>
+      <div className="ts-head">
+        <div className="ts-hicon"><Landmark size={26} color="#fff"/></div>
+        <div><h1>Tesorería</h1><p>Cuentas · Movimientos · Traslados · Conciliación bancaria · Comprobantes</p></div>
+        <div className="ts-head-acc">
+          <button className="ts-btn sec" onClick={cargar} disabled={cargando}><RefreshCw size={14} className={cargando ? 'pl-spin' : ''}/> Actualizar</button>
+          <button className="ts-btn sec" onClick={() => { setOrigenTraslado(''); setNuevoTraslado(true); setTab('traslados') }}><ArrowLeftRight size={14}/> Nuevo traslado</button>
+          <button className="ts-btn pri" onClick={() => { setTab('cuentas'); setNuevaCuenta(true) }}><Plus size={15}/> Nueva cuenta</button>
+        </div>
+      </div>
+
+      {kpis && (
+        <div className="ts-kpis">
+          <Kpi icon={<Landmark size={20} color="#047857"/>} bg="#ECFDF5" color={kpis.saldo_total < 0 ? '#DC2626' : '#065F46'} titulo="Saldo total" valor={fmtTes(kpis.saldo_total)} sub={`${kpis.cuentas} cuenta${kpis.cuentas === 1 ? '' : 's'} activas`}/>
+          <Kpi icon={<Building2 size={20} color="#1D4ED8"/>} bg="#DBEAFE" color={kpis.bancos < 0 ? '#DC2626' : '#1E3A8A'} titulo="Bancos y cooperativas" valor={fmtTes(kpis.bancos)} sub="Ahorros, corriente, cooperativas"/>
+          <Kpi icon={<Wallet size={20} color="#B45309"/>} bg="#FEF3C7" color={kpis.caja < 0 ? '#DC2626' : '#92400E'} titulo="Caja" valor={fmtTes(kpis.caja)} sub="Efectivo en caja general y menor"/>
+          <Kpi icon={<AlertTriangle size={20} color="#DC2626"/>} bg="#FEE2E2" color="#B91C1C" titulo="Sin conciliar" valor={kpis.sin_conciliar} sub="Movimientos pendientes"/>
+        </div>
+      )}
+
+      <div className="ts-tabs">
+        {TABS_TES.map(t => (
+          <button key={t.id} className={`ts-tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)}>
+            {t.label}{t.id === 'conciliacion' && kpis?.sin_conciliar > 0 && <em>{kpis.sin_conciliar}</em>}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'cuentas' && <CuentasTab cuentas={cuentas} cargando={cargando} recargar={cargar} nueva={nuevaCuenta} setNueva={setNuevaCuenta}
+        verMovimientos={c => { setCuentaMov(c.id); setTab('movimientos') }}
+        trasladar={c => { setOrigenTraslado(c.id); setNuevoTraslado(true); setTab('traslados') }}/>}
+      {tab === 'movimientos' && <MovimientosTab cuentas={cuentas} cuentaInicial={cuentaMov}/>}
+      {tab === 'traslados' && <TrasladosTab cuentas={cuentas} recargarCuentas={cargar} nuevo={nuevoTraslado} setNuevo={setNuevoTraslado} origen={origenTraslado}/>}
+      {tab === 'conciliacion' && <ConciliacionTab cuentas={cuentas} recargarCuentas={cargar}/>}
+      {tab === 'comprobantes' && (
+        <div className="tes-comp">
+          <style>{`.tes-comp .tbl td:nth-child(2), .tes-comp .tbl td:nth-child(3), .tes-comp .tbl td:nth-child(7) { white-space:nowrap; }
+            .tes-comp .tbl td:nth-child(5) { min-width:150px; }`}</style>
+          <ComprobantesTesoreria embebido/>
+        </div>
       )}
     </div>
   )

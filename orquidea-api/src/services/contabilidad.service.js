@@ -55,6 +55,7 @@ const PREFIJOS_COMPROBANTE = {
   APERTURA: 'AP',
   NOMINA: 'NM',
   REVERSION: 'RV',
+  TRASLADO: 'TR',   // Traslado entre cuentas de tesorería
 }
 
 async function obtenerRegla(client, evento_codigo) {
@@ -296,6 +297,39 @@ export async function crearComprobanteManual(client, {
   }
 
   return comprobante
+}
+
+/**
+ * Traslado de dinero entre dos cuentas de caja/banco (ej. consignar la caja
+ * en Bancolombia): débito a la cuenta destino, crédito a la de origen.
+ */
+export async function crearComprobanteTraslado(client, {
+  cuenta_origen_codigo, cuenta_destino_codigo, monto, concepto, referencia = null,
+  sede_id = null, usuario_id, fecha = null,
+}) {
+  monto = Math.round(Number(monto) * 100) / 100
+  if (!(monto > 0)) throw Object.assign(new Error('El valor del traslado debe ser mayor a 0'), { httpCode: 400 })
+  if (cuenta_origen_codigo === cuenta_destino_codigo)
+    throw Object.assign(new Error('La cuenta de origen y la de destino deben ser distintas'), { httpCode: 400 })
+  const fechaComp = fecha || new Date().toISOString().slice(0, 10)
+  await verificarPeriodoAbierto(client, fechaComp)
+
+  const numero = await siguienteNumero(client, 'TRASLADO')
+  const comp = await client.query(
+    `INSERT INTO comprobantes_contables (
+       numero, tipo, fecha, fecha_contable, concepto, referencia, estado,
+       documento_origen_tipo, sede_id, total_debe, total_haber, usuario_creador, usuario_contabiliza
+     ) VALUES ($1,'TRASLADO',$2,$2,$3,$4,'CONTABILIZADO','tesoreria_traslados',$5,$6,$6,$7,$7)
+     RETURNING *`,
+    [numero, fechaComp, concepto, referencia, sede_id, monto, usuario_id]
+  )
+  const c = comp.rows[0]
+  await client.query(
+    `INSERT INTO asientos_contables (comprobante_id, orden, cuenta_codigo, sede_id, debe, haber, descripcion)
+     VALUES ($1,1,$2,$4,$5,0,$6), ($1,2,$3,$4,0,$5,$6)`,
+    [c.id, cuenta_destino_codigo, cuenta_origen_codigo, sede_id, monto, concepto]
+  )
+  return c
 }
 
 /**
