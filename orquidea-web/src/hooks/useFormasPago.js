@@ -15,31 +15,39 @@ import { useState, useEffect } from 'react'
 import api from '../services/api.js'
 
 // Cache en memoria para evitar múltiples llamadas en la misma sesión
-let _cache = null
+let _cache = null      // TODAS (activas e inactivas): para mostrar pagos viejos con su ícono
+let _promesa = null
+
+// Códigos antiguos o técnicos que corresponden a una forma configurada
+const ALIAS = { pse_online: 'pse', wompi: 'pse', banco: 'transferencia', tarjeta_credito: 'tarjeta', tarjeta_debito: 'tarjeta' }
 
 export function useFormasPago() {
-  const [formas, setFormas] = useState(_cache || [])
+  const [todas, setTodas] = useState(_cache || [])
   const [loading, setLoading] = useState(!_cache)
 
   useEffect(() => {
     if (_cache) return
-    api.get('/formas-pago')
-      .then(r => {
-        _cache = r.data.data || []
-        setFormas(_cache)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    _promesa = _promesa || api.get('/formas-pago', { params: { todas: 1 } }).then(r => { _cache = r.data.data || []; return _cache })
+    _promesa.then(setTodas).catch(() => { _promesa = null }).finally(() => setLoading(false))
   }, [])
 
-  /** Nombre legible de una forma por su código */
-  const label = (codigo) => {
-    const f = formas.find(x => x.codigo === codigo)
-    return f ? `${f.icono} ${f.nombre}` : codigo
+  const formas = todas.filter(f => f.activo !== false)
+
+  /** La forma configurada para un código (también códigos antiguos) */
+  const buscar = (codigo) => {
+    if (!codigo) return null
+    const c = String(codigo).toLowerCase()
+    return todas.find(x => x.codigo === c) || todas.find(x => x.codigo === ALIAS[c]) || null
   }
+
+  /** Nombre legible (texto) de una forma por su código — para textos y avisos */
+  const label = (codigo) => buscar(codigo)?.nombre || codigo
 
   /** Objeto {codigo} para usar como value inicial */
   const defaultCodigo = formas[0]?.codigo || 'efectivo'
 
-  return { formas, loading, label, defaultCodigo }
+  return { formas, todas, loading, label, buscar, defaultCodigo }
 }
+
+// Configuración → Formas de pago llama esto al guardar para refrescar íconos
+export function invalidarFormasPago() { _cache = null; _promesa = null }

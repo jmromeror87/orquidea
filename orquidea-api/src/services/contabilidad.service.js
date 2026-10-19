@@ -91,8 +91,11 @@ async function resolverCuenta(client, origen, cuentaFija, forma_pago_codigo) {
       { httpCode: 400, code: 'FORMA_PAGO_REQUERIDA' }
     )
   }
+  // Sin importar mayúsculas: Compras y Recaudo enviaban "Efectivo" / "NEQUI"
+  // y la búsqueda exacta fallaba ("no tiene cuenta contable configurada")
   const { rows } = await client.query(
-    `SELECT cuenta_contable_codigo FROM formas_pago WHERE codigo = $1`,
+    `SELECT cuenta_contable_codigo FROM formas_pago WHERE lower(codigo) = lower($1)
+     ORDER BY (codigo = $1) DESC LIMIT 1`,
     [forma_pago_codigo]
   )
   if (!rows.length || !rows[0].cuenta_contable_codigo) {

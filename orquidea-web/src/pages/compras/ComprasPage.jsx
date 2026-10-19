@@ -28,6 +28,7 @@ import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PercentInput from '../../components/ui/PercentInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
+import { SelectorFormaPago } from '../../components/ui/FormaPago.jsx'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = v => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0)
@@ -1182,7 +1183,7 @@ function ModalNuevaRecepcion({ onClose, onOk }) {
 function ModalPagarCuenta({ cuenta, onClose, onOk }) {
   const [form, setForm] = useState({
     monto: parseFloat(cuenta.monto_pendiente) || 0,
-    metodo_pago: 'Efectivo',
+    metodo_pago: 'efectivo',
     referencia_pago: '',
     fecha_pago: new Date().toISOString().slice(0, 10),
     notas: '',
@@ -1233,11 +1234,9 @@ function ModalPagarCuenta({ cuenta, onClose, onOk }) {
         <div className="cmp-row">
           <div className="cmp-field">
             <label className="cmp-label">Método de pago</label>
-            <select className="cmp-select" value={form.metodo_pago} onChange={e => setForm(p => ({ ...p, metodo_pago: e.target.value }))}>
-              {['Efectivo','Transferencia','Cheque','Nequi','Daviplata'].map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <SelectorFormaPago value={form.metodo_pago} onChange={c => setForm(p => ({ ...p, metodo_pago: c }))} size={18}/>
           </div>
-          {form.metodo_pago !== 'Efectivo' && (
+          {form.metodo_pago !== 'efectivo' && (
             <div className="cmp-field">
               <label className="cmp-label">Referencia</label>
               <input className="cmp-input cmp-full" value={form.referencia_pago} onChange={e => setForm(p => ({ ...p, referencia_pago: e.target.value }))} placeholder="N° transacción…" />

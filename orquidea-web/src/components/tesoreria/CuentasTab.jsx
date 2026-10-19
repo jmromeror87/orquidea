@@ -25,6 +25,8 @@ import { X, Loader2, Save, Pencil, ListChecks, ArrowLeftRight } from 'lucide-rea
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import { fmt, fFecha, TIPOS_CUENTA } from './comun.js'
+import { IconoFormaPago } from '../ui/FormaPago.jsx'
+import { useFormasPago } from '../../hooks/useFormasPago.js'
 
 const CSS = `
 .tc-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:16px; }
@@ -42,7 +44,7 @@ const CSS = `
 .tc-saldo b { display:block; font-size:24px; font-weight:900; line-height:1.2; }
 .tc-mes { display:flex; gap:14px; font-size:11.5px; margin-top:4px; }
 .tc-formas { display:flex; gap:5px; flex-wrap:wrap; }
-.tc-forma { font-size:11px; font-weight:700; background:#EEF2FF; color:#4338CA; border-radius:20px; padding:2px 9px; }
+.tc-forma { font-size:11px; font-weight:700; background:#EEF2FF; color:#4338CA; border-radius:20px; padding:2px 9px 2px 4px; display:inline-flex; align-items:center; gap:5px; }
 .tc-acc { display:flex; gap:8px; }
 .tc-acc button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; border:1.5px solid #E2E8F0; background:#fff; border-radius:10px; padding:8px; font-size:12.5px; font-weight:700; color:#334155; cursor:pointer; font-family:inherit; }
 .tc-acc button:hover { background:#F8FAFC; }
@@ -53,6 +55,7 @@ const CSS = `
 `
 
 function ModalCuenta({ cuenta, cuentas = [], onClose, onGuardada }) {
+  const { buscar } = useFormasPago()
   const [f, setF] = useState(cuenta ? {
     nombre: cuenta.nombre, banco: cuenta.banco || '', tipo: cuenta.tipo, numero_cuenta: cuenta.numero_cuenta || '',
     titular: cuenta.titular || '', cuenta_contable_codigo: cuenta.cuenta_contable_codigo, activa: cuenta.activa,
@@ -125,7 +128,7 @@ function ModalCuenta({ cuenta, cuentas = [], onClose, onGuardada }) {
                 const marcada = f.formas_pago.includes(x.codigo)
                 return (
                   <label key={x.codigo} className={marcada ? 'on' : ''} title={enOtra ? `Hoy entra a ${enOtra.nombre}` : ''}>
-                    <input type="checkbox" checked={marcada} onChange={() => toggleForma(x.codigo)}/>{x.icono} {x.nombre}
+                    <input type="checkbox" checked={marcada} onChange={() => toggleForma(x.codigo)}/><IconoFormaPago forma={buscar(x.codigo) || x} size={18}/> {x.nombre}
                     {marcada && enOtra && <span style={{ fontSize:10.5, color:'#B45309', fontWeight:700 }}>· sale de {enOtra.nombre}</span>}
                   </label>
                 )
@@ -137,7 +140,7 @@ function ModalCuenta({ cuenta, cuentas = [], onClose, onGuardada }) {
                 <div style={{ fontSize:12, fontWeight:800, color:'#92400E', marginBottom:6 }}>Quitó formas de pago de esta cuenta: ¿a qué cuenta pasan esos pagos?</div>
                 {quitadas.map(x => (
                   <div key={x.codigo} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                    <span style={{ minWidth:120, fontSize:12.5, fontWeight:700, color:'#334155' }}>{x.icono} {x.nombre} →</span>
+                    <span style={{ minWidth:120, fontSize:12.5, fontWeight:700, color:'#334155', display:'flex', alignItems:'center', gap:6 }}><IconoFormaPago forma={buscar(x.codigo) || x} size={18}/> {x.nombre} →</span>
                     <select className="ts-select" style={{ flex:1 }} value={reasignar[x.codigo] || ''}
                       onChange={e => setReasignar(r => ({ ...r, [x.codigo]: e.target.value }))}>
                       <option value="">— Elija la cuenta —</option>
@@ -165,6 +168,7 @@ function ModalCuenta({ cuenta, cuentas = [], onClose, onGuardada }) {
 }
 
 export default function CuentasTab({ cuentas, cargando, recargar, verMovimientos, trasladar, nueva, setNueva }) {
+  const { buscar } = useFormasPago()
   const [editar, setEditar] = useState(null)
   const mask = n => n ? `•••• ${String(n).replace(/\D/g, '').slice(-4)}` : null
 
@@ -205,7 +209,7 @@ export default function CuentasTab({ cuentas, cargando, recargar, verMovimientos
                 </div>
                 <div className="tc-formas">
                   {(c.formas_pago || []).length
-                    ? c.formas_pago.map(x => <span key={x.codigo} className="tc-forma">{x.icono} {x.nombre}</span>)
+                    ? c.formas_pago.map(x => <span key={x.codigo} className="tc-forma"><IconoFormaPago forma={buscar(x.codigo) || x} size={16}/> {x.nombre}</span>)
                     : <span style={{ fontSize:11.5, color:'#94A3B8' }}>Ninguna forma de pago entra aquí</span>}
                 </div>
                 <div className="tc-acc">

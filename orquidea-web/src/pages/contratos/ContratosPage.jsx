@@ -31,6 +31,7 @@ import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
 import { ModalPago, CSS_PAGOS } from '../pagos/PagosPage.jsx'
+import { FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -907,7 +908,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                           {p.numero_recibo && <span style={{ fontSize:10, fontWeight:700, color:'#059669' }}>N° {String(p.numero_recibo).padStart(6,'0')}</span>}
                         </div>
                         <div style={{ fontSize:11.5, color:'#6B7280', marginTop:2 }}>
-                          {fmtMetodo(p.metodo_pago)} · {fmtDate(p.fecha_pago)}{p.cajero && ` · ${p.cajero}`}
+                          <FormaPagoTag codigo={p.metodo_pago} size={14}/> · {fmtDate(p.fecha_pago)}{p.cajero && ` · ${p.cajero}`}
                         </div>
                       </div>
                       {p.referencia && (

@@ -30,6 +30,7 @@ import { aplicarColoresTema } from '../../context/ThemeContext.jsx'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { coincide, sinTildes } from '../../utils/textoFormato.js'
 import IncrementoAnual from '../../components/polizas/IncrementoAnual.jsx'
+import { invalidarFormasPago } from '../../hooks/useFormasPago.js'
 
 const TABS = [
   { id:'empresa',        label:'Empresa',           sub:'Datos legales',        Icon:Building2, color:'#6366F1' },
@@ -3470,6 +3471,7 @@ function TabFormasPago() {
     try {
       if (editando) { await api.put(`/formas-pago/${editando.id}`, form); toast.success('Forma de pago actualizada con éxito') }
       else          { await api.post('/formas-pago', form); toast.success('Forma de pago creada con éxito') }
+      invalidarFormasPago()   // que todo el sistema tome el ícono/nombre nuevo
       setModal(false); cargar()
     } catch(e) {
       setMsg(e.response?.data?.error || 'Error al guardar')
@@ -3480,6 +3482,7 @@ function TabFormasPago() {
 
   const toggleActivo = async (f) => {
     await api.patch(`/formas-pago/${f.id}`)
+    invalidarFormasPago()
     toast.success(f.activo ? 'Forma de pago desactivada con éxito' : 'Forma de pago activada con éxito')
     cargar()
   }

@@ -102,6 +102,7 @@ const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
   : normalizarInicio(pago.mes_correspondiente, diaAncla(poliza)).etiqueta
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { verPDF } from '../../store/visorPdf.store.js'
+import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -925,14 +926,11 @@ function ModalPago({ poliza, onClose, onSaved }) {
             })()}
 
             {paso(3, 'Forma de pago', formaSel?.requiere_referencia || formaSel?.requiere_soporte ? `${formaSel.nombre} pide ${[formaSel.requiere_referencia && 'número de referencia', formaSel.requiere_soporte && 'soporte'].filter(Boolean).join(' y ')}.` : null)}
+            <div className="pl-field">
+              <SelectorFormaPago formas={formas} value={form.metodo_pago}
+                onChange={c => { setForm(p => ({...p, metodo_pago:c, referencia:''})); setArchivo(null); setArchivoNombre('') }}/>
+            </div>
             <div className="pl-grid2">
-              <div className="pl-field">
-                <label>Forma de pago</label>
-                <select value={form.metodo_pago}
-                  onChange={e => { setForm(p => ({...p, metodo_pago:e.target.value, referencia:''})); setArchivo(null); setArchivoNombre('') }}>
-                  {formas.map(f => <option key={f.codigo} value={f.codigo}>{f.icono} {f.nombre}</option>)}
-                </select>
-              </div>
               {modo === 'mes' ? (
                 <div className="pl-field">
                   <label>Fecha de pago</label>
@@ -976,7 +974,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
             <div className="pg-resumen">
               <small>Total a recibir</small>
               <strong>{fmt(totalRecibir)}</strong>
-              <span>{formaSel ? `${formaSel.icono || ''} ${formaSel.nombre}` : ''}</span>
+              <span>{formaSel && <FormaPagoTag codigo={formaSel.codigo} size={18} style={{ color:'#fff' }}/>}</span>
             </div>
 
             <div className="pg-detalle">

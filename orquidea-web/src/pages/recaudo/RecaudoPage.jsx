@@ -30,6 +30,7 @@ import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import './RecaudoPage.css'
+import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 
 /* ─── Helpers ─── */
 const hoy = () => new Date().toISOString().slice(0, 10)
@@ -61,7 +62,6 @@ const RESULTADO_LABELS = {
 const RESULTADO_ICONS = {
   COBRADO: '✓', AUSENTE: '—', PROMESA: '◷', PARCIAL: '½', NO_PAGA: '✗', APLAZADO: '↷',
 }
-const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'OTRO']
 
 /* ─── Componente Badge resultado ─── */
 function BadgeResultado({ resultado }) {
@@ -96,7 +96,7 @@ function TabOrden() {
   const [cargandoRutas, setCargandoRutas] = useState(false)
   const [visitaActiva, setVisitaActiva] = useState(null)
   const [formVisita, setFormVisita] = useState({
-    resultado: '', valor_cobrado: '', metodo_pago: 'EFECTIVO', observaciones: '',
+    resultado: '', valor_cobrado: '', metodo_pago: 'efectivo', observaciones: '',
   })
   const [guardando, setGuardando] = useState(false)
   const [msgGuardado, setMsgGuardado] = useState('')
@@ -144,14 +144,14 @@ function TabOrden() {
         poliza_id: polizaId,
         resultado: formVisita.resultado,
         valor_cobrado: parseFloat(formVisita.valor_cobrado) || 0,
-        metodo_pago: formVisita.metodo_pago || 'EFECTIVO',
+        metodo_pago: formVisita.metodo_pago || 'efectivo',
         observaciones: formVisita.observaciones,
       })
       toast.success('Visita registrada correctamente')
       setMsgGuardado('Guardado')
       setTimeout(() => setMsgGuardado(''), 2000)
       setVisitaActiva(null)
-      setFormVisita({ resultado: '', valor_cobrado: '', metodo_pago: 'EFECTIVO', observaciones: '' })
+      setFormVisita({ resultado: '', valor_cobrado: '', metodo_pago: 'efectivo', observaciones: '' })
       await cargarOrden(rutaId, fecha)
     } catch { toast.error('Error al guardar la visita') }
     finally { setGuardando(false) }
@@ -163,7 +163,7 @@ function TabOrden() {
     setFormVisita({
       resultado: visitaExistente?.resultado || '',
       valor_cobrado: visitaExistente?.valor_cobrado || '',
-      metodo_pago: visitaExistente?.metodo_pago || 'EFECTIVO',
+      metodo_pago: visitaExistente?.metodo_pago || 'efectivo',
       observaciones: visitaExistente?.observaciones || '',
     })
   }
@@ -380,7 +380,7 @@ function TabOrden() {
                             </span>
                           )}
                           {v.metodo_pago && (
-                            <span style={{ fontSize: 11, color: '#9CA3AF' }}>{v.metodo_pago}</span>
+                            <FormaPagoTag codigo={v.metodo_pago} size={14} style={{ fontSize: 11, color: '#6B7280' }}/>
                           )}
                           {v.visitado_en && (
                             <span style={{ fontSize: 11, color: '#9CA3AF' }}>
@@ -438,13 +438,8 @@ function TabOrden() {
                           </div>
                           <div className="rc-panel-field">
                             <label className="rc-panel-label">Método de pago</label>
-                            <select
-                              className="rc-panel-input"
-                              value={formVisita.metodo_pago}
-                              onChange={e => setFormVisita(f => ({ ...f, metodo_pago: e.target.value }))}
-                            >
-                              {METODOS_PAGO.map(m => <option key={m}>{m}</option>)}
-                            </select>
+                            <SelectorFormaPago value={formVisita.metodo_pago} size={18}
+                              onChange={c => setFormVisita(f => ({ ...f, metodo_pago: c }))}/>
                           </div>
                         </div>
                       )}
@@ -871,7 +866,7 @@ function TabMiPanel() {
   const [accionVisita,    setAccionVisita]     = useState('')
   const [mostrarMas,      setMostrarMas]       = useState(null)
   const [formPago,        setFormPago]         = useState({
-    valor: '', metodo_pago: 'EFECTIVO', fecha_promesa: '', observaciones: '',
+    valor: '', metodo_pago: 'efectivo', fecha_promesa: '', observaciones: '',
   })
   const [guardandoVisita, setGuardandoVisita]  = useState(false)
   const [errorVisita,     setErrorVisita]      = useState('')
@@ -973,7 +968,7 @@ function TabMiPanel() {
     setAccionVisita(accion)
     setFormPago({
       valor: accion !== 'PROMESA' ? String(visitaData?.valor_cuota || '') : '',
-      metodo_pago: 'EFECTIVO',
+      metodo_pago: 'efectivo',
       fecha_promesa: '',
       observaciones: '',
     })
@@ -993,7 +988,7 @@ function TabMiPanel() {
         poliza_id:      polizaId,
         resultado,
         valor_cobrado:  valorCobrado,
-        metodo_pago:    formPago.metodo_pago || 'EFECTIVO',
+        metodo_pago:    formPago.metodo_pago || 'efectivo',
         fecha_promesa:  formPago.fecha_promesa || undefined,
         observaciones:  formPago.observaciones || undefined,
       })
@@ -1071,10 +1066,6 @@ function TabMiPanel() {
   }
 
   // ── Colores acción
-  const METODO_LABELS = {
-    EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia',
-    NEQUI: 'Nequi', DAVIPLATA: 'Daviplata', OTRO: 'Otro',
-  }
 
   // ── Progreso de ruta
   const pctRuta = (ruta) => {
@@ -1289,7 +1280,7 @@ function TabMiPanel() {
                             </span>
                           )}
                           {v.metodo_pago && (
-                            <span style={{ fontSize: 11, color: '#9CA3AF' }}>{METODO_LABELS[v.metodo_pago] || v.metodo_pago}</span>
+                            <FormaPagoTag codigo={v.metodo_pago} size={14} style={{ fontSize: 11, color: '#6B7280' }}/>
                           )}
                           {v.visitado_en && (
                             <span style={{ fontSize: 11, color: '#9CA3AF' }}>
@@ -1420,12 +1411,8 @@ function TabMiPanel() {
                         </div>
                         <div className="rp-pago-field">
                           <label>Método de pago</label>
-                          <select
-                            value={formPago.metodo_pago}
-                            onChange={e => setFormPago(f => ({ ...f, metodo_pago: e.target.value }))}
-                          >
-                            {METODOS_PAGO.map(m => <option key={m} value={m}>{METODO_LABELS[m]}</option>)}
-                          </select>
+                          <SelectorFormaPago value={formPago.metodo_pago} size={18}
+                            onChange={c => setFormPago(f => ({ ...f, metodo_pago: c }))}/>
                         </div>
                       </div>
                     )}
@@ -1608,7 +1595,7 @@ function TabMiPanel() {
                   </div>
                   <div className="rp-ticket-row">
                     <span>Forma de pago</span>
-                    <span>{METODO_LABELS[reciboModal.metodo_pago] || reciboModal.metodo_pago}</span>
+                    <FormaPagoTag codigo={reciboModal.metodo_pago}/>
                   </div>
                   {reciboModal.pago_hasta_nuevo && (
                     <div className="rp-ticket-row">

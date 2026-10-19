@@ -21,6 +21,7 @@ import { useAuthStore } from '../../store/auth.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
 import { toast } from '../../store/toast.store.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
 // Exportado para usar la ventana de pago (ModalPago) desde otras pantallas, p. ej. la ficha del contrato
@@ -390,7 +391,7 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
           </>}
           <div className="pg-recibo-row">
             <span>Forma de pago</span>
-            <span>{formaSel ? `${formaSel.icono} ${formaSel.nombre}` : metodo}</span>
+            <span><FormaPagoTag codigo={metodo}/></span>
           </div>
           {referencia && <div className="pg-recibo-row"><span>Referencia</span><span>{referencia}</span></div>}
           {archivoNombre && <div className="pg-recibo-row"><span>Soporte</span><span style={{color:'#059669'}}>✓ Adjunto</span></div>}
@@ -513,11 +514,8 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
           )}
           <div className="pg-field">
             <label className="pg-label">Forma de pago</label>
-            <select className="pg-select" value={metodo} onChange={e => { setMetodo(e.target.value); setReferencia(''); setArchivo(null); setArchivoNombre('') }}>
-              {formasPago.map(f => (
-                <option key={f.codigo} value={f.codigo}>{f.icono} {f.nombre}</option>
-              ))}
-            </select>
+            <SelectorFormaPago formas={formasPago} value={metodo}
+              onChange={c => { setMetodo(c); setReferencia(''); setArchivo(null); setArchivoNombre('') }}/>
           </div>
         </div>
 
@@ -748,7 +746,7 @@ function TabHistorial() {
                   <td>
                     <span style={{display:'flex',alignItems:'center',gap:5,fontSize:12}}>
                       {METODO_ICON[r.metodo_pago]||<DollarSign size={13}/>}
-                      {fmtMetodo(r.metodo_pago)}
+                      <FormaPagoTag codigo={r.metodo_pago}/>
                     </span>
                   </td>
                   <td><strong style={{color:'#059669'}}>{fmt(r.total)}</strong></td>

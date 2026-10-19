@@ -25,6 +25,7 @@ import { useState } from 'react'
 import { Printer, Ban, Eye, Search } from 'lucide-react'
 import { diaAncla, normalizarInicio, diasQueCubre, addDias, iso } from '../../utils/periodosPoliza.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import { FormaPagoTag } from '../ui/FormaPago.jsx'
 
 const CSS = `
 .tp-filtros { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
@@ -208,7 +209,7 @@ export default function TablaPagosPoliza({ pagos = [], poliza, fmtMetodo = x => 
                       )}
                     </td>
                     <td style={{ whiteSpace:'nowrap' }}>
-                      {fmtMetodo(p.metodo_pago)}
+                      <FormaPagoTag codigo={p.metodo_pago}/>
                       {p.referencia && <div className="tp-rango">Ref: {p.referencia}</div>}
                     </td>
                     <td className="num"><span className="tp-valor" style={p.anulado ? { color:'#94a3b8' } : undefined}>{fmt(p.monto)}</span></td>

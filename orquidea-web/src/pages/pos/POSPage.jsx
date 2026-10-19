@@ -30,6 +30,7 @@ import PhoneInput from '../../components/ui/PhoneInput.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { imprimirReciboPOS } from '../../utils/recibo.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import { IconoFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 
 const fmt = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n || 0)
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('es-CO', { dateStyle:'medium', timeStyle:'short' }) : '—'
@@ -910,7 +911,7 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
                   <button key={f.codigo}
                     className={`pos-pay-pill${pagos[0].metodo_pago === f.codigo ? ' active' : ''}`}
                     onClick={() => actualizarPago(0, 'metodo_pago', f.codigo)}>
-                    {f.icono_url ? <img src={f.icono_url} alt="" style={{ width:16, height:16, objectFit:'contain' }}/> : <span>{f.icono}</span>} {f.nombre}
+                    <IconoFormaPago forma={f} size={18}/> {f.nombre}
                   </button>
                 ))}
               </div>
@@ -920,11 +921,15 @@ function VentaActiva({ caja, onCajaActualizada, onCerrarCaja, onVerHistorial }) 
               return (
                 <div key={idx} style={{ marginBottom:6 }}>
                   <div style={{ display:'flex', gap:6 }}>
-                    <select value={p.metodo_pago}
-                      onChange={e => actualizarPago(idx, 'metodo_pago', e.target.value)}
-                      style={{ flex:1.3, padding:'7px 8px', border:'1.5px solid #E2E5F0', borderRadius:8, fontSize:12 }}>
-                      {formas.map(f => <option key={f.codigo} value={f.codigo}>{f.icono} {f.nombre}</option>)}
-                    </select>
+                    {/* Un <select> no muestra imágenes: el ícono de la forma elegida va al lado */}
+                    <span style={{ display:'flex', alignItems:'center', flex:1.3, gap:6, border:'1.5px solid #E2E5F0', borderRadius:8, padding:'0 0 0 7px', background:'#fff' }}>
+                      <IconoFormaPago forma={formas.find(f => f.codigo === p.metodo_pago)} size={18}/>
+                      <select value={p.metodo_pago}
+                        onChange={e => actualizarPago(idx, 'metodo_pago', e.target.value)}
+                        style={{ flex:1, padding:'7px 6px', border:'none', outline:'none', fontSize:12, background:'transparent', minWidth:0 }}>
+                        {formas.map(f => <option key={f.codigo} value={f.codigo}>{f.nombre}</option>)}
+                      </select>
+                    </span>
                     <CurrencyInput value={p.monto}
                       onChange={v => actualizarPago(idx, 'monto', v)}
                       placeholder="Monto" ayuda={false}
@@ -1158,7 +1163,7 @@ function ReporteAuditoriaCaja({ cajaId, onCerrar }) {
                 <tr><td colSpan={3} style={{ padding:10, color:'#9CA3AF', textAlign:'center' }}>Sin pagos registrados</td></tr>
               ) : por_metodo_pago.map((m, i) => (
                 <tr key={i} style={{ borderBottom:'1px solid #F3F4F6' }}>
-                  <td style={{ padding:'7px 10px', textTransform:'capitalize' }}>{m.metodo_pago}</td>
+                  <td style={{ padding:'7px 10px' }}><FormaPagoTag codigo={m.metodo_pago}/></td>
                   <td style={{ padding:'7px 10px', textAlign:'center' }}>{m.cantidad_pagos}</td>
                   <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:700 }}>{fmt(m.total)}</td>
                 </tr>
@@ -1238,8 +1243,8 @@ function ReporteAuditoriaCaja({ cajaId, onCerrar }) {
                   <td style={{ padding:'6px 8px', fontWeight:700 }}>POS-{v.numero}</td>
                   <td style={{ padding:'6px 8px' }}>{new Date(v.creado_en).toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })}</td>
                   <td style={{ padding:'6px 8px' }}>{v.cliente_registrado_nombre || v.cliente_nombre || 'Consumidor final'}</td>
-                  <td style={{ padding:'6px 8px', textTransform:'capitalize' }}>
-                    {v.metodo_pago}
+                  <td style={{ padding:'6px 8px' }}>
+                    <FormaPagoTag codigo={v.metodo_pago} size={14}/>
                     {(v.pagos || []).some(p => p.soporte_url) && (
                       <a href={archivoUrl((v.pagos.find(p => p.soporte_url)||{}).soporte_url)} target="_blank" rel="noreferrer"
                         style={{ marginLeft:5, color:'#6366F1' }}>[ver]</a>
