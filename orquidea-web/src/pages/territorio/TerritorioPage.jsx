@@ -1198,14 +1198,19 @@ export default function TerritorioPage() {
     setMetaSuger(null)
     setLoadingPol(true)
     try {
-      const [polQ, sugQ] = await Promise.all([
+      // Por separado: si una falla, la otra igual se muestra (antes un error en
+      // las sugeridas dejaba también las asignadas en 0)
+      const [polQ, sugQ] = await Promise.allSettled([
         api.get(`/zonas-recaudo/rutas/${ruta.id}/polizas`),
         api.get(`/zonas-recaudo/rutas/${ruta.id}/sugeridas`)
       ])
-      setPolizasRuta(polQ.data.data)
-      setSugeridas(sugQ.data.data)
-      setMetaSuger(sugQ.data.meta)
-      setSelSugeridas(new Set(sugQ.data.data.map(p => p.id)))
+      if (polQ.status === 'fulfilled') setPolizasRuta(polQ.value.data.data)
+      else { setPolizasRuta([]); toast.error('No se pudieron cargar las pólizas asignadas') }
+      if (sugQ.status === 'fulfilled') {
+        setSugeridas(sugQ.value.data.data)
+        setMetaSuger(sugQ.value.data.meta)
+        setSelSugeridas(new Set(sugQ.value.data.data.filter(p => p.score > 0).map(p => p.id)))
+      }
     } finally {
       setLoadingPol(false)
     }
@@ -1217,7 +1222,8 @@ export default function TerritorioPage() {
       const r = await api.get(`/zonas-recaudo/rutas/${rutaId}/sugeridas`)
       setSugeridas(r.data.data)
       setMetaSuger(r.data.meta)
-      setSelSugeridas(new Set(r.data.data.map(p => p.id)))
+      // Marcadas de entrada solo las que coinciden (zona o dirección)
+      setSelSugeridas(new Set(r.data.data.filter(p => p.score > 0).map(p => p.id)))
     } finally {
       setLoadingSug(false)
     }
@@ -1799,11 +1805,11 @@ export default function TerritorioPage() {
                                         {p.meses_mora > 0 ? <span style={{color:'#EF4444',fontWeight:700}}> · ⚠ {p.meses_mora} meses mora</span> : ''}
                                       </div>
                                     </div>
-                                    {p.score > 0 && (
-                                      <span style={{fontSize:10,background:'#ECFDF5',color:'#059669',padding:'2px 6px',borderRadius:6,fontWeight:700}}>
-                                        {p.score === 1 ? '1 match' : `${p.score} matches`}
-                                      </span>
-                                    )}
+                                    {p.misma_zona ? (
+                                      <span style={{fontSize:10,background:'#ECFDF5',color:'#059669',padding:'2px 6px',borderRadius:6,fontWeight:700}}>Misma zona</span>
+                                    ) : p.score > 0 ? (
+                                      <span style={{fontSize:10,background:'#EEF2FF',color:'#4338CA',padding:'2px 6px',borderRadius:6,fontWeight:700}}>Dirección coincide</span>
+                                    ) : null}
                                   </div>
                                 ))}
                               </div>

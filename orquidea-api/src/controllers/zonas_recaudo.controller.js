@@ -195,12 +195,12 @@ export async function polizasSugeridas(req, reply) {
 
   // Obtener info de la ruta y su zona
   const rutaQ = await pool.query(`
-    SELECT r.nombre AS ruta_nombre, z.nombre AS zona_nombre, z.tipo, z.sede_id
+    SELECT r.nombre AS ruta_nombre, z.id AS zona_id, z.nombre AS zona_nombre, z.tipo, z.sede_id
     FROM rutas_recaudo r JOIN zonas_recaudo z ON z.id = r.zona_id WHERE r.id = $1
   `, [id])
   if (!rutaQ.rows.length) return reply.code(404).send({ error: 'Ruta no encontrada' })
 
-  const { ruta_nombre, zona_nombre, tipo, sede_id: rutaSedeId } = rutaQ.rows[0]
+  const { ruta_nombre, zona_id, zona_nombre, tipo, sede_id: rutaSedeId } = rutaQ.rows[0]
 
   // Construir palabras clave desde el nombre de la ruta y zona
   // Eliminar palabras genéricas y extraer términos significativos
@@ -228,9 +228,11 @@ export async function polizasSugeridas(req, reply) {
         p.id, p.numero, p.estado, p.valor_cuota, p.meses_mora,
         COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS titular_nombre,
         t.numero_documento AS titular_doc,
-        t.celular AS titular_cel,
+        t.telefono AS titular_cel,
         t.direccion AS titular_dir,
-        (
+        (t.zona_recaudo_id = $2) AS misma_zona,
+        -- El titular está en la zona de esta ruta: la mejor señal (vale más que la dirección)
+        (CASE WHEN t.zona_recaudo_id = $2 THEN 10 ELSE 0 END) + (
           ${allKeywords.length > 0
             ? allKeywords.map(kw => `
           CASE WHEN busca(LOWER(COALESCE(t.direccion,'')), '%${kw}%') THEN 1 ELSE 0 END`).join(' + ')
@@ -242,11 +244,12 @@ export async function polizasSugeridas(req, reply) {
         AND p.id NOT IN (SELECT poliza_id FROM ya_asignadas)
         AND ($1::uuid IS NULL OR p.sede_id = $1)
     )
+    -- Primero las de la zona y las que coinciden por dirección; después el resto
+    -- de pólizas SIN ruta (antes no salían y la lista quedaba vacía)
     SELECT * FROM candidatas
-    WHERE score > 0 OR ${allKeywords.length === 0 ? 'TRUE' : 'FALSE'}
     ORDER BY score DESC, meses_mora DESC NULLS LAST, titular_nombre
-    LIMIT 30
-  `, [rutaSedeId || null])
+    LIMIT 50
+  `, [rutaSedeId || null, zona_id])
 
   return reply.send({
     data: r.rows,
