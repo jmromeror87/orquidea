@@ -123,7 +123,10 @@ export async function ordenDelDia(req, reply) {
     JOIN polizas p ON p.id = pr.poliza_id
     JOIN terceros t ON t.id = p.titular_id
     LEFT JOIN visitas_recaudo v ON v.orden_id = $1 AND v.poliza_id = pr.poliza_id
-    LEFT JOIN recibos_recaudo rr ON rr.visita_id = v.id
+    -- Solo el último recibo de la visita (con "cobrar el resto" puede haber varios
+    -- y el JOIN directo duplicaba la póliza en la lista)
+    LEFT JOIN LATERAL (SELECT fecha_promesa FROM recibos_recaudo WHERE visita_id = v.id
+                       ORDER BY creado_en DESC LIMIT 1) rr ON TRUE
     WHERE pr.ruta_id = $2 AND pr.activa
     ORDER BY v.resultado NULLS FIRST, t.apellidos, t.nombres
   `, [orden.rows[0].id, ruta_id])
@@ -367,6 +370,7 @@ export async function registrarVisitaDetalle(req, reply) {
     fecha_promesa,
     hora_cita,
     observaciones,
+    adicional = false,   // cobrar el resto de un abono: suma al valor ya cobrado en la visita
   } = req.body
   // Código de la forma de pago configurada (antes se forzaba EFECTIVO/NEQUI… en mayúsculas)
   const metodo_pago = String(metodoRecibido || 'efectivo').toLowerCase()
@@ -426,12 +430,13 @@ export async function registrarVisitaDetalle(req, reply) {
       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
       ON CONFLICT (orden_id, poliza_id) DO UPDATE SET
         resultado     = EXCLUDED.resultado,
-        valor_cobrado = EXCLUDED.valor_cobrado,
+        valor_cobrado = CASE WHEN $8 THEN COALESCE(visitas_recaudo.valor_cobrado, 0) + EXCLUDED.valor_cobrado
+                             ELSE EXCLUDED.valor_cobrado END,
         metodo_pago   = EXCLUDED.metodo_pago,
-        observaciones = EXCLUDED.observaciones,
+        observaciones = COALESCE(EXCLUDED.observaciones, visitas_recaudo.observaciones),
         visitado_en   = NOW()
       RETURNING id
-    `, [orden_id, poliza_id, resultado, valor_cobrado, valor_cuota, metodo_pago, observaciones])
+    `, [orden_id, poliza_id, resultado, valor_cobrado, valor_cuota, metodo_pago, observaciones, !!adicional])
     const visita_id = vRes.rows[0].id
 
     // 2. Actualizar totales de la orden
@@ -480,6 +485,9 @@ export async function registrarVisitaDetalle(req, reply) {
         // valor (no lo que se marcó): completa al menos un periodo → COBRADO;
         // solo abono → PARCIAL. Un valor mayor cubre varios periodos.
         resultadoFinal = aplicado.periodos.length > 0 ? 'COBRADO' : 'PARCIAL'
+        // Los pagos quedan enlazados a la visita (recibos de la visita)
+        await client.query(`UPDATE pagos_poliza SET visita_id = $1 WHERE id = $2 OR ($3::uuid IS NOT NULL AND lote_id = $3)`,
+          [visita_id, aplicado.pago_id, aplicado.lote_id || null])
         if (resultadoFinal !== resultado) {
           await client.query(`UPDATE visitas_recaudo SET resultado = $2 WHERE id = $1`, [visita_id, resultadoFinal])
           if (recibo) await client.query(`UPDATE recibos_recaudo SET tipo = $2 WHERE id = $1`, [recibo.id, resultadoFinal === 'COBRADO' ? 'PAGO' : 'PARCIAL'])

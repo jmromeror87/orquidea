@@ -31,7 +31,7 @@ import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import { toast } from '../../store/toast.store.js'
 import './RecaudoPage.css'
 import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
-import ReciboCobro from '../../components/polizas/ReciboCobro.jsx'
+import ReciboCobro, { PanelRecibo, agruparRecibos } from '../../components/polizas/ReciboCobro.jsx'
 
 /* ─── Helpers ─── */
 // Fecha LOCAL (toISOString es UTC: después de las 7 p. m. en Colombia daba el día siguiente)
@@ -688,7 +688,7 @@ function TabMiPanel() {
       toast.success('Visita registrada correctamente')
       // Recibo oficial (ver/imprimir o enviar por WhatsApp) si hubo cobro real
       if (r.data.pago_id || r.data.lote_id) {
-        setReciboCobro({ polizaId, pagoId: r.data.pago_id, loteId: r.data.lote_id, telefono: visitaData?.titular_cel || '' })
+        setReciboCobro({ polizaId, pagoId: r.data.pago_id, loteId: r.data.lote_id, telefono: visitaData?.titular_cel || '', resultado: r.data.resultado_final })
       }
       if (r.data.ruta_agendada) {
         toast.success(`📅 Cita agendada para el ${r.data.ruta_agendada}`, 6000)
@@ -1409,7 +1409,7 @@ const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agos
    ═══════════════════════════════════════════════════════════════════════════ */
 const CSS_COBRO = `
 .cb-ov { position:fixed; inset:0; background:rgba(15,16,53,.45); backdrop-filter:blur(3px); z-index:1300; display:flex; align-items:center; justify-content:center; padding:16px; }
-.cb-modal { background:#fff; border-radius:20px; width:100%; max-width:620px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.28); overflow:hidden; }
+.cb-modal { background:#fff; border-radius:20px; width:100%; max-width:680px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.28); overflow:hidden; }
 .cb-head { display:flex; gap:12px; align-items:flex-start; padding:16px 20px; background:linear-gradient(135deg,#4F46E5,#7C3AED); color:#fff; }
 .cb-av { width:46px; height:46px; border-radius:14px; background:rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:15px; flex-shrink:0; }
 .cb-head b { display:block; font-size:16.5px; line-height:1.25; }
@@ -1422,42 +1422,89 @@ const CSS_COBRO = `
 .cb-sec { font-size:11px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:.05em; margin:4px 0 8px; }
 .cb-pie { display:flex; justify-content:flex-end; gap:10px; padding:12px 20px; border-top:1px solid #EEF2F7; }
 .cb-aviso { padding:10px 12px; border-radius:10px; font-size:12.5px; line-height:1.45; margin-bottom:12px; }
-@media (max-width:640px) { .cb-datos { grid-template-columns:1fr 1fr; } }
+.cb-estado { display:flex; gap:12px; align-items:flex-start; padding:14px; border:1.5px solid; border-radius:14px; margin-bottom:16px; }
+.cb-estado-ic { width:38px; height:38px; border-radius:12px; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.cb-estado small { display:block; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+.cb-estado b { font-size:14px; }
+.cb-estado p { margin:4px 0 0; font-size:12.5px; line-height:1.45; color:#475569; }
+.cb-estado-valor { font-size:24px; font-weight:900; line-height:1.15; }
+.cb-cober { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px; margin-bottom:16px; }
+.cb-cober > div { border:1.5px solid #EEF2F7; border-radius:12px; padding:9px 11px; min-width:0; }
+.cb-cober small { display:block; font-size:10px; font-weight:800; color:#94A3B8; text-transform:uppercase; letter-spacing:.05em; margin-bottom:3px; }
+.cb-cober span { font-size:13px; font-weight:800; color:#0F172A; }
+.cb-cober em { display:block; font-style:normal; font-size:11px; font-weight:600; color:#64748B; margin-top:1px; }
+.cb-chip { display:inline-block; padding:2px 8px; border-radius:7px; font-size:12px !important; }
+@media (max-width:640px) { .cb-datos, .cb-cober { grid-template-columns:1fr 1fr; } }
 `
+
+// Fecha local (YYYY-MM-DD) de una marca de tiempo
+const diaLocal = ts => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const ESTADO_POL = { VIGENTE: ['Vigente', '#047857', '#ECFDF5'], VENCIDA: ['Vencida', '#B91C1C', '#FEF2F2'],
+  SUSPENDIDA: ['Suspendida', '#B91C1C', '#FEF2F2'], CANCELADA: ['Cancelada', '#475569', '#F1F5F9'], EJECUTADA: ['Ejecutada', '#4338CA', '#EEF2FF'] }
 
 function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
   const [orden, setOrden] = useState(null)
   const [visita, setVisita] = useState(null)
   const [cargando, setCargando] = useState(true)
+  const [det, setDet] = useState(null)     // { poliza, empresa }: cobertura, pagos y envíos de recibos
+  const [modo, setModo] = useState('form') // 'resumen' (visita ya registrada) | 'form'
+  const [adicional, setAdicional] = useState(false)  // cobrar el resto de un abono
   const [f, setF] = useState({ resultado: '', valor_cobrado: '', metodo_pago: 'efectivo', fecha_promesa: '', hora_cita: '', tipoCita: 'PROMESA', observaciones: '' })
   const [guardando, setGuardando] = useState(false)
   const [prev, setPrev] = useState(null)   // preview del servidor (falta del próximo periodo, alcance)
 
   useEffect(() => {
-    api.get(`/recaudo/orden-del-dia?ruta_id=${ruta.ruta_id}&fecha=${fecha}`)
-      .then(r => {
+    Promise.all([
+      api.get(`/recaudo/orden-del-dia?ruta_id=${ruta.ruta_id}&fecha=${fecha}`).then(r => {
         setOrden(r.data.data.orden)
         const v = (r.data.data.visitas || []).find(x => x.poliza_id === poliza.poliza_id) || null
         setVisita(v)
-        if (v?.resultado) setF(x => ({ ...x, resultado: ['PROMESA', 'APLAZADO'].includes(v.resultado) ? 'REAGENDAR' : v.resultado,
-          tipoCita: v.resultado === 'APLAZADO' ? 'APLAZADO' : 'PROMESA', valor_cobrado: Number(v.valor_cobrado) || '',
-          metodo_pago: (v.metodo_pago || 'efectivo').toLowerCase(), observaciones: v.observaciones || '' }))
-      })
-      .catch(() => toast.error('No se pudo abrir la ruta de ese día'))
-      .finally(() => setCargando(false))
+        if (v?.resultado) setModo('resumen')
+      }).catch(() => toast.error('No se pudo abrir la ruta de ese día')),
+      Promise.all([api.get(`/polizas/${poliza.poliza_id}`), api.get('/empresa')])
+        .then(([pq, eq]) => setDet({ poliza: pq.data.data, empresa: eq.data.data || {} })).catch(() => {}),
+    ]).finally(() => setCargando(false))
     api.get('/recaudo/cobro-preview', { params: { poliza_id: poliza.poliza_id } }).then(r => setPrev(r.data.data)).catch(() => {})
   }, [fecha, ruta.ruta_id, poliza.poliza_id])
 
-  const yaCobrado = ['COBRADO', 'PARCIAL'].includes(visita?.resultado) && Number(visita?.valor_cobrado) > 0
+  // ── Lo que pasó en la visita: una cosa es la visita y otra el dinero ──
+  const pol = det?.poliza
+  const diaVisita = visita?.visitado_en ? diaLocal(visita.visitado_en) : fecha
+  // Pagos enlazados a esta visita; las visitas anteriores al enlace muestran los pagos del día
+  const cuotas = (pol?.pagos || []).filter(x => x.tipo === 'CUOTA')
+  const enlazados = visita?.visita_id ? cuotas.filter(x => x.visita_id === visita.visita_id) : []
+  const delDia = !enlazados.length
+  const recibos = agruparRecibos(delDia ? cuotas.filter(x => diaLocal(x.creado_en) === diaVisita) : enlazados)
+    .sort((a, b) => String(b.creado_en).localeCompare(String(a.creado_en)))
+  const recibosVigentes = recibos.filter(r => !r.anulado)
+  const totalRecibido = delDia ? Number(visita?.valor_cobrado || 0) : recibosVigentes.reduce((t, r) => t + r.total, 0)
+  const conDinero = ['COBRADO', 'PARCIAL'].includes(visita?.resultado) && Number(visita?.valor_cobrado) > 0
+  const anulado = conDinero && recibos.length > 0 && !recibosVigentes.length
+  const esAbono = conDinero && !anulado && visita.resultado === 'PARCIAL'
+  const falta = Number(prev?.proxima?.falta || 0)
+  const ultimoPago = pol ? (pol.pagos || []).filter(x => x.tipo === 'CUOTA' && !x.anulado)
+    .sort((a, b) => String(b.creado_en).localeCompare(String(a.creado_en)))[0] : null
+
   const conPago = f.resultado === 'COBRADO'
   const reagenda = f.resultado === 'REAGENDAR'
   const resultadoReal = reagenda ? f.tipoCita : f.resultado
   const cuota = Number(poliza.valor_cuota || visita?.valor_cuota || 0)
   const esParcial = conPago && Number(f.valor_cobrado) > 0 && !!prev?.alcance && !prev.alcance.completas.length
   const hoyIso = hoy()
+  const telefono = visita?.titular_cel || pol?.titular_tel || ''
+  const meses = pol ? Number(pol.meses_mora || 0) : Number(poliza.meses_mora || 0)
 
   // Valor sugerido = lo que falta del periodo que toca (con su tarifa), no la cuota fija
   const elegir = res => setF(x => ({ ...x, resultado: res, valor_cobrado: res === 'COBRADO' && !Number(x.valor_cobrado) ? (prev?.proxima?.falta || cuota) : x.valor_cobrado }))
+
+  const irAFormulario = (extra) => {
+    setAdicional(!!extra?.adicional)
+    if (extra?.adicional) setF(x => ({ ...x, resultado: 'COBRADO', valor_cobrado: falta || '', observaciones: '' }))
+    else if (visita?.resultado && !conDinero) setF(x => ({ ...x, resultado: ['PROMESA', 'APLAZADO'].includes(visita.resultado) ? 'REAGENDAR' : visita.resultado,
+      tipoCita: visita.resultado === 'APLAZADO' ? 'APLAZADO' : 'PROMESA', observaciones: visita.observaciones || '' }))
+    else setF(x => ({ ...x, resultado: '', valor_cobrado: '' }))
+    setModo('form')
+  }
 
   const guardar = async () => {
     if (!f.resultado) return toast.error('Elija el resultado de la visita')
@@ -1469,11 +1516,11 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
         orden_id: orden.id, poliza_id: poliza.poliza_id, resultado: resultadoReal,
         valor_cobrado: conPago ? Number(f.valor_cobrado) : 0, metodo_pago: f.metodo_pago,
         fecha_promesa: (reagenda || esParcial) && f.fecha_promesa ? f.fecha_promesa : undefined,
-        hora_cita: f.hora_cita || undefined, observaciones: f.observaciones || null,
+        hora_cita: f.hora_cita || undefined, observaciones: f.observaciones || null, adicional,
       })
       if (conPago && (r.data.pago_id || r.data.lote_id)) {
         toast.success(`${r.data.resultado_final === 'PARCIAL' ? 'Abono parcial' : 'Cobro'} de ${fmtCOP(f.valor_cobrado)} registrado a ${poliza.titular_nombre}`)
-        onGuardado({ polizaId: poliza.poliza_id, pagoId: r.data.pago_id, loteId: r.data.lote_id, telefono: visita?.titular_cel || '' })
+        onGuardado({ polizaId: poliza.poliza_id, pagoId: r.data.pago_id, loteId: r.data.lote_id, telefono, resultado: r.data.resultado_final })
         return
       } else {
         toast.success(`Visita registrada: ${RESULTADO_LABELS[resultadoReal]}${r.data.ruta_agendada ? ` · 📅 cita agendada para el ${r.data.ruta_agendada}` : ''}`, 6000)
@@ -1483,6 +1530,9 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
     finally { setGuardando(false) }
   }
 
+  const estado = pol && (ESTADO_POL[pol.estado] || [pol.estado, '#475569', '#F1F5F9'])
+  const horaVisita = visita?.visitado_en ? new Date(visita.visitado_en).toLocaleTimeString('es-CO', { hour:'numeric', minute:'2-digit' }) : ''
+
   return (
     <div className="cb-ov">
       <style>{CSS_COBRO}</style>
@@ -1491,35 +1541,93 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
           <div className="cb-av">{iniciales(poliza.titular_nombre)}</div>
           <div style={{ minWidth:0 }}>
             <b>{poliza.titular_nombre}</b>
-            <small>Póliza #{poliza.numero} · {ruta.ruta_nombre} · {fmtFecha(fecha)}</small>
+            <small>Póliza #{pol?.numero_legado || poliza.numero} · {ruta.ruta_nombre} · {fmtFecha(fecha)}</small>
           </div>
           <button onClick={onClose} title="Cerrar">✕</button>
         </div>
         <div className="cb-datos">
           <div className="cb-dato"><small>Cuota</small><span>{fmtCOP(cuota)}</span></div>
-          <div className="cb-dato"><small>Mora</small><span style={{ color: poliza.meses_mora > 0 ? '#DC2626' : '#059669' }}>{poliza.meses_mora > 0 ? `${poliza.meses_mora} mes${poliza.meses_mora > 1 ? 'es' : ''} · ${fmtCOP(poliza.saldo_mora)}` : 'Al día'}</span></div>
+          <div className="cb-dato"><small>Mora</small><span style={{ color: meses > 0 ? '#DC2626' : '#059669' }}>{meses > 0 ? `${meses} mes${meses > 1 ? 'es' : ''}` : 'Al día'}</span></div>
           <div className="cb-dato"><small>Recaudador</small><span>{ruta.recaudador || '—'}</span></div>
-          {visita?.titular_cel && <div className="cb-dato"><small>Teléfono</small><span><a href={`tel:${visita.titular_cel}`} style={{ color:'#4F46E5' }}>{visita.titular_cel}</a></span></div>}
+          {telefono && <div className="cb-dato"><small>Teléfono</small><span><a href={`tel:${telefono}`} style={{ color:'#4F46E5' }}>{telefono}</a></span></div>}
           {visita?.titular_dir && <div className="cb-dato" style={{ gridColumn:'span 2' }}><small>Dirección</small><span>{visita.titular_dir}</span></div>}
         </div>
         <div className="cb-body">
-          {cargando ? <div style={{ textAlign:'center', padding:30 }}><Loader2 size={22} className="spin"/></div> : yaCobrado ? (
-            <div className="cb-aviso" style={{ background:'#ECFDF5', border:'1px solid #A7F3D0', color:'#065F46' }}>
-              ✓ Ya se registró el cobro de este día: <b>{fmtCOP(visita.valor_cobrado)}</b> ({RESULTADO_LABELS[visita.resultado]})
-              {visita.metodo_pago && <> · <FormaPagoTag codigo={visita.metodo_pago} size={14}/></>}.
-              <div style={{ marginTop:6, color:'#047857' }}>Para corregirlo, anule el pago desde la póliza (Pagos → Anular); así no se cobra dos veces.</div>
-            </div>
+          {cargando ? <div style={{ textAlign:'center', padding:30 }}><Loader2 size={22} className="spin"/></div> : modo === 'resumen' ? (
+            <>
+              {/* 1. Qué pasó en la visita */}
+              {anulado ? (
+                <div className="cb-estado" style={{ background:'#FEF2F2', borderColor:'#FECACA' }}>
+                  <div className="cb-estado-ic" style={{ background:'#DC2626' }}><XCircle size={20}/></div>
+                  <div><b style={{ color:'#991B1B' }}>El pago de esta visita fue anulado</b>
+                    <p>Se había recibido {fmtCOP(visita.valor_cobrado)}, pero el pago se anuló en la póliza. Puede registrar el cobro de nuevo.</p></div>
+                </div>
+              ) : conDinero ? (
+                <div className="cb-estado" style={{ background: esAbono ? '#FFFBEB' : '#ECFDF5', borderColor: esAbono ? '#FDE68A' : '#A7F3D0' }}>
+                  <div className="cb-estado-ic" style={{ background: esAbono ? '#D97706' : '#059669' }}>{esAbono ? <Clock size={20}/> : <CheckCircle2 size={20}/>}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <small style={{ color: esAbono ? '#92400E' : '#065F46' }}>{esAbono ? 'Abono parcial recibido' : 'Pago recibido'}{horaVisita ? ` · ${horaVisita}` : ''}</small>
+                    <div className="cb-estado-valor" style={{ color: esAbono ? '#92400E' : '#065F46' }}>{fmtCOP(totalRecibido)}</div>
+                    {esAbono && falta > 0 && <p style={{ color:'#92400E' }}>Faltan <b>{fmtCOP(falta)}</b> para completar el periodo {prev?.proxima?.etiqueta}.</p>}
+                    {!esAbono && <p style={{ color:'#047857' }}>La cuota quedó paga. {visita.observaciones ? `“${visita.observaciones}”` : ''}</p>}
+                  </div>
+                </div>
+              ) : (
+                <div className="cb-estado" style={{ background:'#F8FAFC', borderColor:'#E2E8F0' }}>
+                  <div className="cb-estado-ic" style={{ background:'#64748B' }}><MapPin size={20}/></div>
+                  <div><b style={{ color:'#0F172A' }}>Visita registrada: {RESULTADO_LABELS[visita.resultado] || visita.resultado}{horaVisita ? ` · ${horaVisita}` : ''}</b>
+                    <p>No se recibió dinero en esta visita.{visita.observaciones ? ` “${visita.observaciones}”` : ''}</p></div>
+                </div>
+              )}
+
+              {/* 2. Cómo queda la póliza */}
+              {pol && (
+                <>
+                  <div className="cb-sec">Estado de la póliza</div>
+                  <div className="cb-cober">
+                    <div><small>Estado</small><span className="cb-chip" style={{ color: estado[1], background: estado[2] }}>{estado[0]}</span></div>
+                    <div><small>Cubierta hasta</small><span style={{ color: pol.pago_hasta ? '#047857' : '#B91C1C' }}>{pol.pago_hasta ? fmtFecha(String(pol.pago_hasta).slice(0, 10)) : 'Sin cobertura'}</span></div>
+                    <div><small>Último pago</small><span>{ultimoPago ? <>{fmtCOP(ultimoPago.monto)}<em>{fmtFecha(diaLocal(ultimoPago.creado_en))} · N.° {String(ultimoPago.numero_recibo).padStart(6, '0')}</em></> : '—'}</span></div>
+                    <div><small>Próximo a pagar</small><span>{prev?.proxima ? <>{fmtCOP(falta)}<em>{prev.proxima.etiqueta}</em></> : '—'}</span></div>
+                  </div>
+                </>
+              )}
+
+              {/* 3. Recibos: imprimir y WhatsApp (con su estado de envío) */}
+              {recibos.length > 0 && (
+                <>
+                  <div className="cb-sec">{delDia ? `Recibos del ${fmtFecha(diaVisita)}` : recibos.length > 1 ? 'Recibos de la visita' : 'Recibo de la visita'}</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {recibos.map(r => <PanelRecibo key={r.key} compacto poliza={pol} empresa={det.empresa} recibo={r} telefono={telefono}/>)}
+                  </div>
+                </>
+              )}
+              {conDinero && !recibos.length && pol && (
+                <div className="cb-aviso" style={{ background:'#F8FAFC', border:'1px solid #E2E8F0', color:'#475569' }}>
+                  El recibo de este cobro está en la póliza (pestaña Pagos).
+                </div>
+              )}
+            </>
           ) : (
             <>
+              {adicional && (
+                <div className="cb-aviso" style={{ background:'#FFFBEB', border:'1px solid #FDE68A', color:'#92400E' }}>
+                  Completar el abono: ya se recibieron <b>{fmtCOP(totalRecibido || visita?.valor_cobrado)}</b> en esta visita; el nuevo valor se suma y genera su propio recibo.
+                </div>
+              )}
               {fecha > hoyIso && <div className="cb-aviso" style={{ background:'#FFFBEB', border:'1px solid #FDE68A', color:'#92400E' }}>Esta ruta es del {fmtFecha(fecha)}: el cobro se registra con fecha de hoy.</div>}
-              <div className="cb-sec">Resultado de la visita</div>
-              <div className="rc-resultado-btns" style={{ marginBottom:14 }}>
-                {RESULTADOS_UI.map(r => (
-                  <button key={r.id} className={`rc-res-btn ${r.id === 'REAGENDAR' ? 'PROMESA' : r.id}${f.resultado === r.id ? ' sel' : ''}`} onClick={() => elegir(r.id)}>
-                    {r.icon} {r.label}
-                  </button>
-                ))}
-              </div>
+              {!adicional && (
+                <>
+                  <div className="cb-sec">Resultado de la visita</div>
+                  <div className="rc-resultado-btns" style={{ marginBottom:14 }}>
+                    {RESULTADOS_UI.map(r => (
+                      <button key={r.id} className={`rc-res-btn ${r.id === 'REAGENDAR' ? 'PROMESA' : r.id}${f.resultado === r.id ? ' sel' : ''}`} onClick={() => elegir(r.id)}>
+                        {r.icon} {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
               {conPago && (
                 <>
                   <div className="cb-sec">Valor cobrado</div>
@@ -1541,12 +1649,32 @@ function ModalCobro({ fecha, ruta, poliza, onClose, onGuardado }) {
           )}
         </div>
         <div className="cb-pie">
-          <button className="rc-btn rc-btn-ghost" onClick={onClose} disabled={guardando}>{yaCobrado ? 'Cerrar' : 'Cancelar'}</button>
-          {!yaCobrado && !cargando && (
-            <button className="rc-btn rc-btn-primary" onClick={guardar} disabled={guardando || !f.resultado || !orden}>
-              {guardando ? <Loader2 size={13} className="spin"/> : <CheckCircle2 size={13}/>}
-              {conPago && Number(f.valor_cobrado) > 0 ? ` Registrar cobro de ${fmtCOP(f.valor_cobrado)}` : ' Guardar visita'}
-            </button>
+          {modo === 'resumen' ? (
+            <>
+              <button className="rc-btn rc-btn-ghost" onClick={onClose}>Cerrar</button>
+              {esAbono && falta > 0 && (
+                <button className="rc-btn rc-btn-primary" onClick={() => irAFormulario({ adicional: true })} disabled={!orden}>
+                  <DollarSign size={13}/> Cobrar el resto · {fmtCOP(falta)}
+                </button>
+              )}
+              {(!conDinero || anulado) && (
+                <button className="rc-btn rc-btn-primary" onClick={() => irAFormulario()} disabled={!orden}>
+                  <RefreshCw size={13}/> {anulado ? 'Registrar el cobro de nuevo' : 'Cambiar resultado / cobrar'}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button className="rc-btn rc-btn-ghost" onClick={() => (visita?.resultado ? setModo('resumen') : onClose())} disabled={guardando}>
+                {visita?.resultado ? 'Volver' : 'Cancelar'}
+              </button>
+              {!cargando && (
+                <button className="rc-btn rc-btn-primary" onClick={guardar} disabled={guardando || !f.resultado || !orden}>
+                  {guardando ? <Loader2 size={13} className="spin"/> : <CheckCircle2 size={13}/>}
+                  {conPago && Number(f.valor_cobrado) > 0 ? ` Registrar cobro de ${fmtCOP(f.valor_cobrado)}` : ' Guardar visita'}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

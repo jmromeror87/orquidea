@@ -100,6 +100,28 @@ export async function listarLog(req, reply) {
 // Envía un PDF (ej. el recibo de un cobro) al WhatsApp del cliente. Si el
 // WhatsApp del sistema no está conectado responde 503 y la pantalla ofrece
 // compartirlo desde el equipo.
+const UUID = /^[0-9a-f-]{36}$/i
+async function anotarEnvioRecibo({ poliza_id, pago_id, lote_id, telefono, canal, usuario_id }) {
+  if (!UUID.test(poliza_id || '')) return null
+  const r = await pool.query(`
+    INSERT INTO recibos_envios (poliza_id, pago_id, lote_id, telefono, canal, usuario_id)
+    VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [poliza_id, UUID.test(pago_id || '') ? pago_id : null, UUID.test(lote_id || '') ? lote_id : null,
+     String(telefono).replace(/\D/g, '').slice(0, 20), canal, usuario_id])
+  return r.rows[0]
+}
+
+// POST /notificaciones/recibo-envio — el recibo se abrió en WhatsApp desde el
+// equipo (WhatsApp Web o Compartir): se anota, aunque sin confirmación de entrega.
+export async function registrarEnvioRecibo(req, reply) {
+  const { poliza_id, pago_id, lote_id, telefono, canal } = req.body || {}
+  if (!['WHATSAPP_WEB', 'COMPARTIR'].includes(canal)) return reply.code(400).send({ error: 'Canal no válido' })
+  if (String(telefono || '').replace(/\D/g, '').length < 10) return reply.code(400).send({ error: 'Número de WhatsApp no válido' })
+  const row = await anotarEnvioRecibo({ poliza_id, pago_id, lote_id, telefono, canal, usuario_id: req.user.id })
+  if (!row) return reply.code(400).send({ error: 'Póliza no válida' })
+  return reply.send({ data: row })
+}
+
 export async function enviarDocumentoWhatsApp(req, reply) {
   const partes = { }
   let ruta = null, nombre = 'documento.pdf'
@@ -117,6 +139,8 @@ export async function enviarDocumentoWhatsApp(req, reply) {
     if (!ruta) return reply.code(400).send({ error: 'No se recibió el PDF' })
     const r = await enviarWhatsAppDocumento({ telefono, mensaje: partes.mensaje || '', archivo_path: ruta, nombre_archivo: nombre, usuarioId: req.user.id })
     if (!r.enviado) return reply.code(503).send({ error: 'El WhatsApp del sistema no está conectado', motivo: r.motivo })
+    // Si es un recibo de póliza, queda anotado que se le entregó al cliente
+    if (partes.poliza_id) await anotarEnvioRecibo({ ...partes, telefono, canal: 'SISTEMA', usuario_id: req.user.id })
     return reply.send({ ok: true })
   } finally {
     // El servicio ya leyó el archivo al responder; se borra para no acumular

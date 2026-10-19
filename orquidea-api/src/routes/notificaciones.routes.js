@@ -15,7 +15,7 @@
 import { verifyToken } from '../middlewares/auth.middleware.js'
 import { requireRole } from '../middlewares/role.middleware.js'
 import {
-  whatsappEstado, whatsappReiniciar, smsSaldo, listarLog, enviarManual, enviarDocumentoWhatsApp,
+  whatsappEstado, whatsappReiniciar, smsSaldo, listarLog, enviarManual, enviarDocumentoWhatsApp, registrarEnvioRecibo,
 } from '../controllers/notificaciones.controller.js'
 
 export default async function notificacionesRoutes(fastify) {
@@ -27,5 +27,7 @@ export default async function notificacionesRoutes(fastify) {
   fastify.get('/sms/saldo',            { preHandler: admins },   smsSaldo)
   fastify.get('/log',                  { preHandler: admins },   listarLog)
   fastify.post('/enviar',              { preHandler: editores }, enviarManual)
-  fastify.post('/whatsapp-documento',  { preHandler: editores }, enviarDocumentoWhatsApp)
+  // Recibos al cliente: también los recaudadores (cobran en la calle)
+  fastify.post('/whatsapp-documento',  { preHandler: [verifyToken] }, enviarDocumentoWhatsApp)
+  fastify.post('/recibo-envio',        { preHandler: [verifyToken] }, registrarEnvioRecibo)
 }

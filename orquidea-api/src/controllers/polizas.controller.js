@@ -311,10 +311,14 @@ export async function obtener(req, reply) {
   const renov = await pool.query(`
     SELECT r.*, u.nombre AS usuario_nombre FROM poliza_renovaciones r LEFT JOIN usuarios u ON u.id = r.usuario_id
     WHERE r.poliza_id = $1 ORDER BY r.fecha DESC`, [id])
+  // Recibos enviados al cliente (WhatsApp)
+  const envios = await pool.query(`
+    SELECT e.*, u.nombre AS usuario_nombre FROM recibos_envios e LEFT JOIN usuarios u ON u.id = e.usuario_id
+    WHERE e.poliza_id = $1 ORDER BY e.creado_en DESC`, [id])
 
   return reply.send({
     data: { ...pol, beneficiarios: benRes.rows, pagos: pagosRes.rows,
-      tarifas, incremento_modo: cfgInc.modo, renovaciones: renov.rows },
+      tarifas, incremento_modo: cfgInc.modo, renovaciones: renov.rows, envios: envios.rows },
   })
 }
 
