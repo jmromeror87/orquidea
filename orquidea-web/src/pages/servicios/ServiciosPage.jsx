@@ -1825,6 +1825,11 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                       </select>
                     </div>
                   </div>
+                  {conMedicinaLegal(defForm.tipo_muerte) && (
+                    <div style={{ margin:'-4px 0 12px', padding:'9px 12px', borderRadius:10, background:'#FFFBEB', border:'1px solid #FDE68A', color:'#92400E', fontSize:12, lineHeight:1.5 }}>
+                      ⚖️ Interviene <b>Medicina Legal</b>: el certificado lo expide el médico legista y el cuerpo se entrega después de la necropsia.
+                    </div>
+                  )}
 
                   <div className="sv-field">
                     <label style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -1865,7 +1870,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
 
                   <div className="sv-grid2">
                     <div className="sv-field">
-                      <label>Médico que certifica</label>
+                      <label>{conMedicinaLegal(defForm.tipo_muerte) ? 'Médico legista (Medicina Legal)' : 'Médico que certifica'}</label>
                       <ListaInteligente tipo="MEDICO" titulo="médicos" value={defForm.medico_certifica} onChange={v => setDef('medico_certifica', v)} placeholder="Buscar médico…" cap="persona" onElegir={it => { if (it.detalle && !defForm.registro_medico) setDef('registro_medico', it.detalle) }}/>
                     </div>
                     <div className="sv-field">
@@ -2196,6 +2201,21 @@ const MATRIMONIO_OPTS = [
   { v:'UNION_LIBRE',l:'Unión libre' },
 ]
 
+// ── Formulario inteligente del fallecido ──────────────────────────────────────
+// Cada campo aparece solo cuando aplica (soltero no tiene tipo de matrimonio, un
+// niño no tiene estado civil ni ocupación, etc.)
+const EDAD_SIN_ESTADO_CIVIL = 12
+const conyugeDe = ec => ({ CASADO:'Nombre del cónyuge', UNION_LIBRE:'Compañero(a) permanente', VIUDO:'Cónyuge fallecido(a)' }[ec] || null)
+const LUGAR_DETALLE = {
+  HOSPITAL:         { label:'Hospital o clínica', lista:'HOSPITAL' },
+  CLINICA:          { label:'Hospital o clínica', lista:'HOSPITAL' },
+  HOGAR_GERIATRICO: { label:'Nombre del hogar geriátrico' },
+  DOMICILIO:        { label:'Dirección del domicilio' },
+  VIA_PUBLICA:      { label:'Lugar o dirección (vía pública)' },
+  OTRO:             { label:'¿Dónde ocurrió?' },
+}
+const conMedicinaLegal = tm => ['VIOLENTA', 'EN_ESTUDIO'].includes(tm)
+
 function calcEdad(fechaNac, fechaMuerte) {
   if (!fechaNac) return null
   const nac  = new Date(fechaNac)
@@ -2367,12 +2387,25 @@ function TabFallecido({ data, servicioId, onSaved }) {
     })
   }, [data, def])
 
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+  // Al cambiar el estado civil se limpian los datos que dejan de aplicar
+  const set = (k, v) => setForm(p => {
+    const n = { ...p, [k]: v }
+    if (k === 'estado_civil') {
+      if (v !== 'CASADO') n.tipo_matrimonio = v === 'UNION_LIBRE' ? 'UNION_LIBRE' : ''
+      if (!conyugeDe(v)) n.nombre_conyuge = ''
+    }
+    return n
+  })
 
   const guardar = async () => {
     setSaving(true); setErr(''); setOk(false)
     try {
-      await api.put(`/servicios/${servicioId}/fallecido`, form)
+      // Menor de edad: estado civil, matrimonio, cónyuge, hijos y ocupación no aplican
+      const e = calcEdad(form.fecha_nacimiento, form.fecha_fallecimiento)
+      const datos = e !== null && e < EDAD_SIN_ESTADO_CIVIL
+        ? { ...form, estado_civil: form.estado_civil || 'SOLTERO', tipo_matrimonio: '', nombre_conyuge: '', num_hijos: '' }
+        : form
+      await api.put(`/servicios/${servicioId}/fallecido`, datos)
       setOk(true); setEditMode(false)
       toast.success('Datos del fallecido actualizados')
       onSaved()
@@ -2392,6 +2425,8 @@ function TabFallecido({ data, servicioId, onSaved }) {
   const campos = camposFallecido(data)
   const hechos = campos.filter(c => c.ok).length
   const faltan = campos.filter(c => !c.ok).map(c => c.label)
+  const edadForm = calcEdad(form.fecha_nacimiento, form.fecha_fallecimiento)
+  const menorForm = edadForm !== null && edadForm < EDAD_SIN_ESTADO_CIVIL
   const g2 = { display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:'0 16px' }
   const g3 = { display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:'0 16px' }
 
@@ -2447,21 +2482,27 @@ function TabFallecido({ data, servicioId, onSaved }) {
             </div>
           </Seccion>
 
-          <Seccion icon="👤" titulo="Datos personales" ayuda="Información sociodemográfica que pide el certificado." cols={0}>
+          <Seccion icon="👤" titulo="Datos personales" ayuda={menorForm
+              ? `Tiene ${edadForm} años: no aplican estado civil, cónyuge, hijos ni ocupación.`
+              : 'Información sociodemográfica que pide el certificado. Los campos cambian según el estado civil.'} cols={0}>
             <div style={g3}>
-              <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={form.estado_civil} onChange={v => set('estado_civil', v)} />
-              <FField label="Tipo de matrimonio" campo="tipo_matrimonio" opts={MATRIMONIO_OPTS} form={form} onChange={set} />
-              <FField label="Número de hijos" campo="num_hijos" type="number" form={form} onChange={set} />
+              {!menorForm && <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={form.estado_civil} onChange={v => set('estado_civil', v)} />}
+              {!menorForm && form.estado_civil === 'CASADO' && (
+                <FField label="Tipo de matrimonio" campo="tipo_matrimonio" opts={MATRIMONIO_OPTS.filter(o => o.v !== 'UNION_LIBRE')} form={form} onChange={set} />
+              )}
+              {!menorForm && conyugeDe(form.estado_civil) && (
+                <FField label={conyugeDe(form.estado_civil)} campo="nombre_conyuge" form={form} onChange={set} />
+              )}
+              {!menorForm && <FField label="Número de hijos" campo="num_hijos" type="number" form={form} onChange={set} />}
               <FField label="Nivel de estudios" campo="nivel_estudios" opts={NIVEL_EST_OPTS} form={form} onChange={set} />
-              <FFieldLista label="Ocupación" tipo="OCUPACION" value={form.ocupacion} onChange={v => set('ocupacion', v)} />
+              {!menorForm && <FFieldLista label="Ocupación" tipo="OCUPACION" value={form.ocupacion} onChange={v => set('ocupacion', v)} />}
               <FFieldInteligente label="Religión / credo" campo="religion" tipo="RELIGION" titulo="religiones" form={form} onChange={set} />
               <FFieldInteligente label="Seguridad social (EPS)" campo="seguridad_social" tipo="EPS" titulo="EPS" form={form} onChange={set} />
             </div>
           </Seccion>
 
-          <Seccion icon="👨‍👩‍👧" titulo="Familia" ayuda="Nombres completos, como figuran en el registro civil." cols={0}>
+          <Seccion icon="👨‍👩‍👧" titulo="Padres" ayuda="Nombres completos, como figuran en el registro civil." cols={0}>
             <div style={g3}>
-              <FField label="Cónyuge" campo="nombre_conyuge" form={form} onChange={set} />
               <FField label="Padre" campo="nombre_padre" form={form} onChange={set} />
               <FField label="Madre" campo="nombre_madre" form={form} onChange={set} />
             </div>
@@ -2474,11 +2515,15 @@ function TabFallecido({ data, servicioId, onSaved }) {
               <FField label="Tipo de lugar" campo="tipo_lugar" opts={TIPO_LUGAR_OPTS} form={form} onChange={set} />
               <FField label="Tipo de muerte" campo="tipo_muerte" opts={TIPO_MUERTE_OPTS} form={form} onChange={set} />
               <FField label="Causa" campo="causa_fallecimiento" form={form} onChange={set} />
-              <FFieldInteligente label="Médico que certifica" campo="medico_certifica" tipo="MEDICO" titulo="médicos" cap="persona" form={form} onChange={set}
+              <FFieldInteligente label={conMedicinaLegal(form.tipo_muerte) ? 'Médico legista (Medicina Legal)' : 'Médico que certifica'}
+                campo="medico_certifica" tipo="MEDICO" titulo="médicos" cap="persona" form={form} onChange={set}
                 onElegir={it => { if (it.detalle && !form.registro_medico) set('registro_medico', it.detalle) }} />
             </div>
-            {['HOSPITAL','CLINICA'].includes(form.tipo_lugar) && (
-              <FFieldInteligente label="Hospital o clínica" campo="direccion_fallecimiento" tipo="HOSPITAL" titulo="hospitales y clínicas" form={form} onChange={set} />
+            {LUGAR_DETALLE[form.tipo_lugar] && (LUGAR_DETALLE[form.tipo_lugar].lista
+              ? <FFieldInteligente label={LUGAR_DETALLE[form.tipo_lugar].label} campo="direccion_fallecimiento" tipo="HOSPITAL" titulo="hospitales y clínicas" form={form} onChange={set} />
+              : <FField label={LUGAR_DETALLE[form.tipo_lugar].label} campo="direccion_fallecimiento" form={form} onChange={set} />)}
+            {conMedicinaLegal(form.tipo_muerte) && (
+              <Ayuda tipo="aviso">Muerte {form.tipo_muerte === 'VIOLENTA' ? 'violenta' : 'en estudio'}: interviene <b>Medicina Legal</b>. El certificado lo expide el médico legista y el cuerpo se entrega después de la necropsia.</Ayuda>
             )}
           </Seccion>
 
@@ -2517,22 +2562,22 @@ function TabFallecido({ data, servicioId, onSaved }) {
               <Dato label="Lugar" valor={op(TIPO_LUGAR_OPTS, def.tipo_lugar)} nota={def.direccion_fallecimiento || null}/>
               <Dato label="Tipo de muerte" valor={op(TIPO_MUERTE_OPTS, def.tipo_muerte)}/>
               <Dato label="Causa" valor={def.causa_fallecimiento}/>
-              <Dato label="Médico que certifica" valor={def.medico_certifica} ancho/>
+              <Dato label={conMedicinaLegal(def.tipo_muerte) ? 'Médico legista' : 'Médico que certifica'} valor={def.medico_certifica} ancho/>
             </Seccion>
           </div>
 
           <Seccion icon="👤" titulo="Datos personales" ayuda="Información sociodemográfica del certificado." cols={3}>
-            <Dato label="Estado civil" valor={op(ESTADO_CIVIL_OPTS, data?.difunto_estado_civil)}/>
-            <Dato label="Matrimonio" valor={op(MATRIMONIO_OPTS, data?.difunto_tipo_matrimonio)}/>
-            <Dato label="Hijos" valor={data?.difunto_num_hijos}/>
+            {!menorFallecido(data) && <Dato label="Estado civil" valor={op(ESTADO_CIVIL_OPTS, data?.difunto_estado_civil)}/>}
+            {data?.difunto_estado_civil === 'CASADO' && <Dato label="Matrimonio" valor={op(MATRIMONIO_OPTS, data?.difunto_tipo_matrimonio)}/>}
+            {conyugeDe(data?.difunto_estado_civil) && <Dato label={conyugeDe(data?.difunto_estado_civil)} valor={data?.difunto_nombre_conyuge}/>}
+            {!menorFallecido(data) && <Dato label="Hijos" valor={data?.difunto_num_hijos}/>}
             <Dato label="Nivel de estudios" valor={op(NIVEL_EST_OPTS, data?.difunto_nivel_estudios)}/>
-            <Dato label="Ocupación" valor={data?.difunto_ocupacion}/>
+            {!menorFallecido(data) && <Dato label="Ocupación" valor={data?.difunto_ocupacion}/>}
             <Dato label="Religión" valor={data?.difunto_religion}/>
             <Dato label="EPS" valor={data?.difunto_seguridad_social}/>
           </Seccion>
 
-          <Seccion icon="👨‍👩‍👧" titulo="Familia" ayuda="Para el registro civil de defunción." cols={3}>
-            <Dato label="Cónyuge" valor={data?.difunto_nombre_conyuge}/>
+          <Seccion icon="👨‍👩‍👧" titulo="Padres" ayuda="Para el registro civil de defunción." cols={2}>
             <Dato label="Padre" valor={data?.difunto_nombre_padre}/>
             <Dato label="Madre" valor={data?.difunto_nombre_madre}/>
           </Seccion>
@@ -2557,12 +2602,18 @@ function TabFallecido({ data, servicioId, onSaved }) {
 
 // Datos del fallecido que pide el registro civil / certificado de defunción:
 // se usan para el avance en Fallecido, el menú y "lo que falta" en Información
+function menorFallecido(data) {
+  const e = calcEdad(data?.difunto_nacimiento, data?.defuncion?.fecha_fallecimiento)
+  return e !== null && e < EDAD_SIN_ESTADO_CIVIL
+}
 function camposFallecido(data) {
   const d = data?.defuncion || {}
   return [
     ['Documento de identidad', data?.difunto_documento], ['Fecha de nacimiento', data?.difunto_nacimiento],
-    ['Sexo', data?.difunto_sexo], ['Estado civil', data?.difunto_estado_civil], ['Nacionalidad', data?.difunto_nacionalidad],
-    ['Ocupación', data?.difunto_ocupacion], ['Nombre del padre', data?.difunto_nombre_padre], ['Nombre de la madre', data?.difunto_nombre_madre],
+    ['Sexo', data?.difunto_sexo], ['Nacionalidad', data?.difunto_nacionalidad],
+    // Estado civil y ocupación no aplican a los niños
+    ...(menorFallecido(data) ? [] : [['Estado civil', data?.difunto_estado_civil], ['Ocupación', data?.difunto_ocupacion]]),
+    ['Nombre del padre', data?.difunto_nombre_padre], ['Nombre de la madre', data?.difunto_nombre_madre],
     ['Fecha de fallecimiento', d.fecha_fallecimiento], ['Hora de fallecimiento', d.hora_fallecimiento],
     ['Tipo de lugar', d.tipo_lugar], ['Causa de la muerte', d.causa_fallecimiento], ['Tipo de muerte', d.tipo_muerte],
     ['Médico que certifica', d.medico_certifica], ['N.° certificado de defunción', d.cert_defuncion_num],
