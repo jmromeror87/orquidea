@@ -29,7 +29,7 @@ import {
   agregarItem, actualizarItem, eliminarItem, descargarInventarioPendiente,
   listarPersonal, asignarPersonal, quitarPersonal, listarOperadores, historialServicio,
   subirSoporteDocumento,
-  listarDocumentos, subirDocumento, eliminarDocumento,
+  listarDocumentos, actualizarTramite, clasificarDocumento, subirDocumento, eliminarDocumento,
 } from '../controllers/servicios.controller.js'
 
 const auth     = [verifyToken]
@@ -63,9 +63,11 @@ export default async function serviciosRoutes(fastify) {
   fastify.post('/:id/tanatopraxia/sugerencia-ia', { preHandler: editores }, sugerenciaTanatopraxiaIA)
   fastify.patch('/:id/checklist',                { preHandler: editores }, actualizarChecklist)
   fastify.put('/:id/fallecido',                  { preHandler: editores }, actualizarFallecido)
+  fastify.patch('/:id/tramites',                 { preHandler: editores }, actualizarTramite)
   fastify.post('/:id/documentos/soporte',        { preHandler: editores }, subirSoporteDocumento)
   fastify.get('/:id/documentos',                 { preHandler: auth },     listarDocumentos)
   fastify.post('/:id/documentos',                { preHandler: editores }, subirDocumento)
+  fastify.patch('/:id/documentos/:docId',        { preHandler: editores }, clasificarDocumento)
   fastify.delete('/:id/documentos/:docId',       { preHandler: editores }, eliminarDocumento)
   fastify.put('/:id/contratante',                { preHandler: editores }, actualizarContratante)
   fastify.put('/:id/responsable',                { preHandler: editores }, asignarResponsable)

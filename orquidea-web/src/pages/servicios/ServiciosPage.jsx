@@ -2531,7 +2531,7 @@ function TabFallecido({ data, servicioId, onSaved }) {
             <Dato label="Madre" valor={data?.difunto_nombre_madre}/>
           </Seccion>
 
-          <Seccion icon="📋" titulo="Registro legal" ayuda="Certificado, licencia y registro en notaría o registraduría." cols={4}>
+          <Seccion icon="📋" titulo="Registro legal" ayuda="Certificado, licencia y registro en notaría o registraduría. Son los mismos números de la pestaña Trámites." cols={4}>
             <Dato label="Registro médico" valor={def.registro_medico}/>
             <Dato label="Cert. de defunción" valor={def.cert_defuncion_num}/>
             <Dato label="Licencia de inhumación" valor={def.licencia_inhumacion}/>
@@ -2653,14 +2653,13 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
     ]
     const fall = camposFallecido(data)
     const fallOk = fall.filter(c => c.ok).length
-    const checklist = Array.isArray(data?.checklist) ? data.checklist : []
-    const tramOk = checklist.filter(i => i.done).length
+    const tramReq = (data?.tramites || []).filter(t => t.requerido)
+    const tramOk = tramReq.filter(t => t.ok).length
     const faltan = [
       { label:`Datos del fallecido (${fallOk} de ${fall.length})`, ok: fallOk === fall.length, ir:() => onIr('fallecido') },
       { label:'Contratante o responsable', ok: !!(data?.contratante_id || data?.convenio_id), ir:() => onIr('contratante'), accion:'Asignar' },
       { label:'Recogida, velación y destino final con fecha', ok: pasos.filter(p => !p.opcional).every(p => p.ok), ir: esEditor && !bloqueado ? iniciarEdicion : null, accion:'Editar' },
-      { label: checklist.length ? `Trámites legales (${tramOk} de ${checklist.length})` : 'Trámites legales', ok: checklist.length > 0 && tramOk === checklist.length, ir:() => onIr('tramites') },
-      { label: documentos ? `Documentos soporte (${documentos})` : 'Documentos soporte (certificado, licencia…)', ok: documentos > 0, ir:() => onIr('documentos'), accion:'Subir' },
+      { label:`Trámites legales (${tramOk} de ${tramReq.length})`, ok: tramReq.length > 0 && tramOk === tramReq.length, ir:() => onIr('tramites') },
     ]
     const nFaltan = faltan.filter(f => !f.ok).length
     const iEstado = PASOS_ESTADO.findIndex(p => p.k === data?.estado)
@@ -2875,6 +2874,167 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
       </Seccion>
 
       <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>{botones}</div>
+    </div>
+  )
+}
+
+// ── TabTramites ───────────────────────────────────────────────────────────────
+// Trámites legales del servicio. Los números son los mismos de Fallecido →
+// Registro legal (se guardan en un solo lugar) y el soporte se sube aquí mismo
+// (queda también en Documentos). Completo = número + soporte.
+const TRAMITE_ESTADO = {
+  COMPLETO:      ['Completo',        '#047857', '#D1FAE5'],
+  FALTA_NUMERO:  ['Falta el número', '#B45309', '#FEF3C7'],
+  FALTA_SOPORTE: ['Falta el soporte','#B45309', '#FEF3C7'],
+  PENDIENTE:     ['Pendiente',       '#B91C1C', '#FEE2E2'],
+}
+function TabTramites({ data, servicioId, documentos, esEditor, onCambio }) {
+  const tramites = data?.tramites || []
+  const req = tramites.filter(t => t.requerido)
+  const listos = req.filter(t => t.ok).length
+  const [numeros, setNumeros] = useState({})
+  const [guardando, setGuardando] = useState(null)
+  const [subiendo, setSubiendo] = useState(null)
+  useEffect(() => {
+    const n = {}
+    for (const t of tramites) if (t.campo) n[t.campo] = t.numero || ''
+    const reg = tramites.find(t => t.clave === 'registro')
+    n.notaria = reg?.extra?.notaria || ''
+    setNumeros(n)
+  }, [data]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const original = campo => campo === 'notaria' ? (tramites.find(t => t.clave === 'registro')?.extra?.notaria || '') : (tramites.find(t => t.campo === campo)?.numero || '')
+  const guardarNumero = async campo => {
+    if ((numeros[campo] || '').trim() === original(campo)) return
+    setGuardando(campo)
+    try {
+      await api.patch(`/servicios/${servicioId}/tramites`, { campo, valor: numeros[campo] })
+      toast.success('Trámite actualizado')
+      onCambio()
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo guardar') }
+    finally { setGuardando(null) }
+  }
+  const subir = async (t, archivo) => {
+    if (!archivo) return
+    setSubiendo(t.clave)
+    try {
+      const fd = new FormData()
+      fd.append('nombre', t.titulo)
+      fd.append('tipo_codigo', t.doc_tipo)
+      fd.append('archivo', archivo)
+      await api.post(`/servicios/${servicioId}/documentos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      toast.success(`Soporte de "${t.titulo}" cargado`)
+      onCambio()
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo subir el soporte') }
+    finally { setSubiendo(null) }
+  }
+  const usarExistente = async (t, docId) => {
+    if (!docId) return
+    try {
+      await api.patch(`/servicios/${servicioId}/documentos/${docId}`, { tipo_codigo: t.doc_tipo })
+      toast.success(`Documento asignado a "${t.titulo}"`)
+      onCambio()
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo asignar el documento') }
+  }
+  // Documentos subidos sin clasificar (u "Otro") que podrían ser el soporte
+  const sueltos = documentos.filter(d => !d.tipo_codigo || d.tipo_codigo === 'OTRO')
+  const inpN = { width:'100%', boxSizing:'border-box', padding:'9px 12px', border:'1.5px solid #E2E5F0', borderRadius:10, fontSize:13, outline:'none', fontFamily:'inherit', background:'#fff' }
+
+  return (
+    <div>
+      <style>{CSS_FICHA}</style>
+      <div className="fx-hero" style={{ alignItems:'center' }}>
+        <div className="fx-hero-av" style={{ background: listos === req.length && req.length ? 'linear-gradient(135deg,#10B981,#047857)' : 'linear-gradient(135deg,#F59E0B,#B45309)' }}>
+          {listos === req.length && req.length ? '✓' : `${listos}/${req.length}`}
+        </div>
+        <div className="fx-hero-txt">
+          <div className="fx-hero-kicker">📝 Trámites legales</div>
+          <div className="fx-hero-nom" style={{ fontSize:17 }}>
+            {listos === req.length && req.length ? 'Todos los trámites obligatorios están completos' : `Faltan ${req.length - listos} de ${req.length} trámites obligatorios`}
+          </div>
+          <div style={{ fontSize:12, color:'#6B7280', marginTop:4 }}>Un trámite queda completo con su número y el soporte (PDF o foto) cargado.</div>
+        </div>
+        <div className="fx-hero-side"><Progreso hechos={listos} total={req.length} titulo="Obligatorios"/></div>
+      </div>
+
+      <Ayuda>Los números son los mismos de <b>Fallecido → Registro legal</b>: se guardan en un solo lugar, así que si los cambia aquí también cambian allá. Los soportes quedan además en <b>Documentos</b>.</Ayuda>
+
+      {tramites.map(t => {
+        const [est, c, bg] = !t.requerido && !t.ok ? ['Opcional', '#6B7280', '#F3F4F6'] : TRAMITE_ESTADO[t.estado]
+        return (
+          <div key={t.clave} className="fx-sec" style={{ borderColor: t.ok ? '#A7F3D0' : undefined }}>
+            <div className="fx-sec-head" style={{ background: t.ok ? '#F0FDF4' : undefined }}>
+              <div className="fx-sec-ic" style={{ background: t.ok ? '#D1FAE5' : '#FEF3C7' }}>{t.ok ? '✅' : t.requerido ? '⏳' : '📄'}</div>
+              <div style={{ minWidth:0 }}>
+                <div className="fx-sec-tit" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  {t.titulo}<span style={{ fontSize:10.5, fontWeight:800, padding:'2px 8px', borderRadius:6, background:bg, color:c }}>{est}</span>
+                </div>
+                <div className="fx-sec-sub">{t.ayuda}</div>
+              </div>
+            </div>
+            <div className="fx-sec-body" style={{ display:'grid', gridTemplateColumns: t.campo ? 'minmax(0,1fr) minmax(0,1.3fr)' : '1fr', gap:16 }}>
+              {t.campo && (
+                <div>
+                  <label style={{ fontSize:11, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>
+                    {t.clave === 'registro' ? 'Serial del registro' : 'Número'}
+                  </label>
+                  <div style={{ position:'relative' }}>
+                    <input style={inpN} value={numeros[t.campo] || ''} disabled={!esEditor} data-cap="no" placeholder="Escriba el número…"
+                      onChange={e => setNumeros(n => ({ ...n, [t.campo]: e.target.value }))}
+                      onBlur={() => guardarNumero(t.campo)} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
+                    {guardando === t.campo && <Loader2 size={14} className="sv-spin" style={{ position:'absolute', right:10, top:11, color:'#7C3AED' }}/>}
+                  </div>
+                  {t.clave === 'registro' && (
+                    <div style={{ marginTop:8 }}>
+                      <label style={{ fontSize:11, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Notaría o registraduría</label>
+                      <ListaInteligente tipo="NOTARIA" titulo="notarías" value={numeros.notaria || ''} disabled={!esEditor}
+                        onChange={v => setNumeros(n => ({ ...n, notaria: v }))}
+                        onElegir={it => { setNumeros(n => ({ ...n, notaria: it.etiqueta })); setTimeout(() => guardarNumero('notaria'), 0) }}/>
+                      {(numeros.notaria || '') !== original('notaria') && (
+                        <button className="fx-btn" style={{ marginTop:6 }} onClick={() => guardarNumero('notaria')}>Guardar notaría</button>
+                      )}
+                    </div>
+                  )}
+                  <span style={{ display:'block', fontSize:11, color:'#9CA3AF', marginTop:4 }}>Se guarda al salir del campo.</span>
+                </div>
+              )}
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }}>Soporte</label>
+                {t.soportes.length > 0 && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:8 }}>
+                    {t.soportes.map(d => (
+                      <a key={d.id} href={archivoUrl(d.url)} target="_blank" rel="noreferrer"
+                        style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:10, border:'1.5px solid #D1FAE5', background:'#F0FDF4',
+                          color:'#065F46', fontSize:12.5, fontWeight:700, textDecoration:'none' }}>
+                        <FileText size={14}/> <span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.nombre}</span>
+                        <span style={{ fontSize:11, color:'#047857' }}>{fmtDate(d.creado_en)} · Ver</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {esEditor && (
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                    <label className="fx-btn" style={{ cursor:'pointer' }}>
+                      {subiendo === t.clave ? <Loader2 size={13} className="sv-spin"/> : <FileText size={13}/>}
+                      {t.soportes.length ? 'Subir otro' : 'Subir soporte'}
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display:'none' }}
+                        onChange={e => { subir(t, e.target.files?.[0]); e.target.value = '' }}/>
+                    </label>
+                    {sueltos.length > 0 && (
+                      <select defaultValue="" onChange={e => { usarExistente(t, e.target.value); e.target.value = '' }}
+                        style={{ padding:'7px 10px', borderRadius:9, border:'1.5px solid #E4E6F0', fontSize:12, fontFamily:'inherit', maxWidth:260 }}>
+                        <option value="">o usar un documento ya subido…</option>
+                        {sueltos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
+                {!t.soportes.length && !esEditor && <span style={{ fontSize:12.5, color:'#9CA3AF' }}>Sin soporte cargado.</span>}
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -4465,11 +4625,6 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   const [sugerenciaIA, setSugerenciaIA] = useState(null)
   const [cargandoIA, setCargandoIA] = useState(false)
   const [aplicandoIA, setAplicandoIA] = useState(false)
-  // Checklist
-  const [checklist, setChecklist] = useState([])
-  const [certMedico, setCertMedico] = useState('')
-  const [regCivil, setRegCivil] = useState('')
-  const [savingCheck, setSavingCheck] = useState(false)
   // Imprimir
   const [showPrint, setShowPrint] = useState(false)
   // Documentos
@@ -4492,9 +4647,6 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
       const r = await api.get(`/servicios/${id}`)
       const d = r.data.data
       setData(d)
-      setChecklist(d.checklist || [])
-      setCertMedico(d.certificado_medico || '')
-      setRegCivil(d.registro_civil || '')
       if (d.tanatopraxia) {
         const t = d.tanatopraxia
         setTana({
@@ -4684,19 +4836,6 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
     finally { setAplicandoIA(false) }
   }
 
-  const guardarChecklist = async () => {
-    setSavingCheck(true)
-    try {
-      await api.patch(`/servicios/${id}/checklist`, {
-        checklist, certificado_medico: certMedico, registro_civil: regCivil,
-        acta_defuncion: data?.acta_defuncion, permiso_inhumacion: data?.permiso_inhumacion,
-      })
-      toast.success('Checklist actualizado')
-      cargar()
-    } catch (e) { toast.error(e.response?.data?.error || 'Error al guardar checklist') }
-    finally { setSavingCheck(false) }
-  }
-
   const abrirFormato = async (formato) => {
     setCargandoFormato(formato.clave)
     try {
@@ -4746,7 +4885,8 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
   // seguimiento. `aviso` = falta algo ahí (punto ámbar); `ok` = completo.
   const fallC = data ? camposFallecido(data) : []
   const fallOk = fallC.filter(c => c.ok).length
-  const tramOk = checklist.filter(i => i.done).length
+  const tramReq = (data?.tramites || []).filter(t => t.requerido)
+  const tramOk = tramReq.filter(t => t.ok).length
   const GRUPOS_TABS = [
     { titulo:'Servicio', tabs:[
       { key:'info',        icon:'📋', label:'Información', sub:'Etapas y estado' },
@@ -4764,8 +4904,8 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
       { key:'tanatopraxia', icon:'🩺', label:'Tanatopraxia', sub:'Preparación del cuerpo' },
     ]},
     { titulo:'Soportes', tabs:[
-      { key:'tramites',   icon:'📝', label:'Trámites', sub: checklist.length ? `${tramOk} de ${checklist.length} listos` : 'Legales',
-        aviso: checklist.length > 0 && tramOk < checklist.length, ok: checklist.length > 0 && tramOk === checklist.length },
+      { key:'tramites',   icon:'📝', label:'Trámites', sub: tramReq.length ? `${tramOk} de ${tramReq.length} completos` : 'Legales',
+        aviso: tramReq.length > 0 && tramOk < tramReq.length, ok: tramReq.length > 0 && tramOk === tramReq.length },
       { key:'documentos', icon:'🗂️', label:'Documentos', cuenta:documentos.length, sub:'Certificados y licencias', aviso: !documentos.length },
     ]},
     { titulo:'Seguimiento', tabs:[
@@ -5281,80 +5421,8 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
             </div>
 
           ) : tab === 'tramites' ? (
-            /* ── Tab Trámites ── */
-            <div>
-              {/* Resumen estado */}
-              <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', marginBottom:16,
-                borderRadius:12, border:'1.5px solid',
-                borderColor: data.tramites_completos ? '#A7F3D0' : '#FDE68A',
-                background: data.tramites_completos ? '#D1FAE5' : '#FFFBEB' }}>
-                <div style={{ fontSize:22 }}>{data.tramites_completos ? '✅' : '⏳'}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:800, color: data.tramites_completos ? '#065F46' : '#92400E' }}>
-                    {data.tramites_completos
-                      ? 'Todos los trámites están completos'
-                      : `${checklist.filter(i=>i.done).length} de ${checklist.length} trámites completados`}
-                  </div>
-                  <div style={{ fontSize:11, color: data.tramites_completos ? '#047857' : '#B45309', marginTop:2 }}>
-                    {data.tramites_completos ? 'Documentos legales en orden' : 'Marca cada ítem al obtenerlo'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Checklist */}
-              <div style={{ marginBottom:16 }}>
-                {checklist.map((item, i) => (
-                  <div key={item.id} onClick={() => {
-                    const next = [...checklist]
-                    next[i] = { ...item, done: !item.done }
-                    setChecklist(next)
-                  }} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 14px',
-                    background: item.done ? '#F0FDF4' : '#fff',
-                    border:`1.5px solid ${item.done ? '#A7F3D0' : '#ECEDF8'}`,
-                    borderRadius:10, marginBottom:8, cursor:'pointer', transition:'all .15s',
-                    userSelect:'none' }}>
-                    <div style={{ width:22, height:22, borderRadius:6, flexShrink:0,
-                      background: item.done ? '#059669' : '#F3F4F6',
-                      border:`2px solid ${item.done ? '#059669' : '#D1D5DB'}`,
-                      display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      {item.done && <CheckCircle2 size={14} color="#fff"/>}
-                    </div>
-                    <span style={{ fontSize:13, fontWeight: item.done ? 700 : 500,
-                      color: item.done ? '#065F46' : '#374151',
-                      textDecoration: item.done ? 'none' : 'none' }}>
-                      {item.label}
-                    </span>
-                    {item.done && <span style={{ marginLeft:'auto', fontSize:11, color:'#059669', fontWeight:700 }}>✓</span>}
-                  </div>
-                ))}
-              </div>
-
-              {/* Números de documentos */}
-              <div style={{ background:'#F8F9FC', border:'1.5px solid #ECEDF8', borderRadius:12, padding:14, marginBottom:14 }}>
-                <div style={{ fontSize:10, fontWeight:800, color:'#6B7280', textTransform:'uppercase', letterSpacing:.5, marginBottom:12 }}>
-                  Números de documento
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                  <div className="sv-field" style={{ marginBottom:0 }}>
-                    <label>Certificado médico</label>
-                    <input value={certMedico} placeholder="N° certificado…" onChange={e=>setCertMedico(e.target.value)}/>
-                  </div>
-                  <div className="sv-field" style={{ marginBottom:0 }}>
-                    <label>Registro civil defunción</label>
-                    <input value={regCivil} placeholder="N° registro…" onChange={e=>setRegCivil(e.target.value)}/>
-                  </div>
-                </div>
-              </div>
-
-              {esEditor && (
-                <div style={{ display:'flex', justifyContent:'flex-end' }}>
-                  <button className="sv-btn sv-btn-primary" onClick={guardarChecklist} disabled={savingCheck}>
-                    {savingCheck ? <Loader2 size={14} className="sv-spin"/> : <CheckCircle2 size={14}/>}
-                    Guardar trámites
-                  </button>
-                </div>
-              )}
-            </div>
+            <TabTramites data={data} servicioId={id} documentos={documentos} esEditor={esEditor}
+              onCambio={() => { cargar(); cargarDocumentos() }}/>
           ) : (
             /* ── Tab Documentos ── */
             <div>

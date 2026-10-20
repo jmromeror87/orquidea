@@ -97,6 +97,84 @@ export async function subirSoporteDocumento(req, reply) {
 // por servicio — sin duplicar los campos fijos de acta/permiso de arriba.
 const DOCUMENTOS_DIR = path.join(__dirname, '..', 'uploads', 'documentos')
 
+// ── Trámites legales ────────────────────────────────────────────────────────
+// Cada trámite toma su número de los datos de la defunción (los mismos de la
+// pestaña Fallecido — no se escriben dos veces) y su soporte de Documentos.
+// Está completo cuando tiene número (si aplica) y soporte cargado.
+const TRAMITES_DEF = [
+  { clave:'certificado', titulo:'Certificado médico de defunción', campo:'cert_defuncion_num', doc:'CERTIFICADO_DEFUNCION', requerido:true,
+    ayuda:'Lo expide el médico que certifica el fallecimiento (formato del DANE). Es el primer documento y se necesita para todo lo demás.' },
+  { clave:'registro', titulo:'Registro civil de defunción', campo:'serial_registro', doc:'REGISTRO_CIVIL_DEFUNCION', requerido:true,
+    ayuda:'Se inscribe en notaría o registraduría con el certificado médico. Anote el serial y la notaría.' },
+  { clave:'licencia', titulo:'Licencia de inhumación o cremación', campo:'licencia_inhumacion', doc:'PERMISO_INHUMACION', requerido:true,
+    ayuda:'Autorización para inhumar o cremar; la expide la autoridad (registraduría o alcaldía) con el registro civil.' },
+  { clave:'parroquia', titulo:'Contrato o recibo de la parroquia', campo:null, doc:'CONTRATO_PARROQUIA', requerido:false, siIglesia:true,
+    ayuda:'Si hay misa o exequias en una iglesia: el soporte del acuerdo con la parroquia.' },
+  { clave:'datos', titulo:'Autorización de uso de datos e imágenes', campo:null, doc:'AUTORIZACION_DATOS', requerido:false,
+    ayuda:'Firmada por la familia; necesaria para publicar el memorial u homenaje virtual.' },
+]
+const CAMPOS_TRAMITE = ['cert_defuncion_num', 'serial_registro', 'licencia_inhumacion', 'notaria', 'ciudad_registro', 'fecha_registro']
+
+async function tramitesDe(db, servicioId) {
+  const sf = (await db.query(`SELECT difunto_id, iglesia FROM servicios_funerarios WHERE id = $1`, [servicioId])).rows[0]
+  if (!sf) return []
+  const def = sf.difunto_id ? (await db.query(`SELECT * FROM defunciones WHERE tercero_id = $1`, [sf.difunto_id])).rows[0] || {} : {}
+  const docs = (await db.query(`SELECT id, tipo_codigo, nombre, url, mime_type, creado_en FROM documentos_servicio WHERE servicio_id = $1 ORDER BY creado_en DESC`, [servicioId])).rows
+  return TRAMITES_DEF.map(t => {
+    const numero = t.campo ? (def[t.campo] || null) : null
+    const soportes = docs.filter(d => d.tipo_codigo === t.doc)
+    const requerido = !!(t.requerido || (t.siIglesia && sf.iglesia))
+    const ok = (!t.campo || !!numero) && soportes.length > 0
+    return { clave:t.clave, titulo:t.titulo, ayuda:t.ayuda, campo:t.campo, doc_tipo:t.doc, requerido, numero, soportes, ok,
+      extra: t.clave === 'registro' ? { notaria: def.notaria || null, ciudad_registro: def.ciudad_registro || null, fecha_registro: def.fecha_registro || null } : null,
+      estado: ok ? 'COMPLETO' : t.campo && !numero && !soportes.length ? 'PENDIENTE' : t.campo && !numero ? 'FALTA_NUMERO' : 'FALTA_SOPORTE' }
+  })
+}
+
+// Recalcula "trámites completos" (los requeridos) y deja los números en el
+// servicio sincronizados con la defunción (los usan reportes e impresiones)
+async function recalcularTramites(db, servicioId) {
+  const lista = await tramitesDe(db, servicioId)
+  const req = lista.filter(t => t.requerido)
+  const num = c => lista.find(t => t.campo === c)?.numero || null
+  await db.query(`
+    UPDATE servicios_funerarios SET tramites_completos = $2,
+      certificado_medico = $3, registro_civil = $4, permiso_inhumacion = $5
+    WHERE id = $1`, [servicioId, req.length > 0 && req.every(t => t.ok),
+      num('cert_defuncion_num'), num('serial_registro'), num('licencia_inhumacion')])
+  return lista
+}
+
+// PATCH /servicios/:id/tramites — guarda un número del trámite en la defunción
+export async function actualizarTramite(req, reply) {
+  const { id } = req.params
+  const { campo, valor } = req.body || {}
+  if (!CAMPOS_TRAMITE.includes(campo)) return reply.code(400).send({ error: 'Dato de trámite no válido' })
+  const sf = (await pool.query(`SELECT difunto_id FROM servicios_funerarios WHERE id = $1`, [id])).rows[0]
+  if (!sf) return reply.code(404).send({ error: 'Servicio no encontrado' })
+  if (!sf.difunto_id) return reply.code(400).send({ error: 'El servicio no tiene fallecido registrado' })
+  const v = String(valor ?? '').trim() || null
+  await pool.query(`
+    INSERT INTO defunciones (tercero_id, ${campo}) VALUES ($1, $2)
+    ON CONFLICT (tercero_id) DO UPDATE SET ${campo} = EXCLUDED.${campo}`, [sf.difunto_id, v])
+  const tramites = await recalcularTramites(pool, id)
+  const t = TRAMITES_DEF.find(x => x.campo === campo)
+  await audit(id, req.user?.id, 'tramites', `${t ? t.titulo : campo}: ${v ? `N.° ${v}` : 'número borrado'}`)
+  return reply.send({ data: tramites })
+}
+
+// PATCH /servicios/:id/documentos/:docId — clasificar un documento ya subido
+// (p. ej. la licencia que se subió como "Otro") sin volver a cargarlo
+export async function clasificarDocumento(req, reply) {
+  const { id, docId } = req.params
+  const tipo = String(req.body?.tipo_codigo || '').trim() || null
+  const r = await pool.query(`UPDATE documentos_servicio SET tipo_codigo = $3 WHERE id = $1 AND servicio_id = $2 RETURNING *`, [docId, id, tipo])
+  if (!r.rows.length) return reply.code(404).send({ error: 'Documento no encontrado' })
+  await audit(id, req.user?.id, 'documentos', `Clasificó el documento "${r.rows[0].nombre}"`)
+  const tramites = await recalcularTramites(pool, id)
+  return reply.send({ data: r.rows[0], tramites })
+}
+
 export async function listarDocumentos(req, reply) {
   const { id } = req.params
   const { rows } = await pool.query(`
@@ -152,6 +230,7 @@ export async function subirDocumento(req, reply) {
   )
 
   await audit(id, req.user?.id, 'documentos', `Subió documento: "${nombreDoc}"`)
+  await recalcularTramites(pool, id).catch(() => {})
   return reply.code(201).send({ data: res.rows[0] })
 }
 
@@ -165,6 +244,7 @@ export async function eliminarDocumento(req, reply) {
   fs.unlink(rutaLocal, () => {})
 
   await audit(id, req.user?.id, 'documentos', `Eliminó documento: "${doc.rows[0].nombre}"`)
+  await recalcularTramites(pool, id).catch(() => {})
   return reply.send({ ok: true })
 }
 
@@ -485,10 +565,12 @@ export async function obtener(req, reply) {
   ])
 
   if (!sfRes.rows.length) return reply.code(404).send({ error: 'Servicio no encontrado' })
+  const tramites = await tramitesDe(pool, id)
 
   return reply.send({
     data: {
       ...sfRes.rows[0],
+      tramites,
       defuncion:           defRes.rows[0] || null,
       traslados:           trasRes.rows,
       items:               itemsRes.rows,
@@ -1765,6 +1847,7 @@ export async function actualizarFallecido(req, reply) {
 
     await db.query('COMMIT')
     await audit(id, req.user?.id, 'fallecido', 'Actualizó datos del fallecido')
+    await recalcularTramites(pool, id).catch(() => {})
     return reply.send({ ok: true })
   } catch (e) {
     await db.query('ROLLBACK')
