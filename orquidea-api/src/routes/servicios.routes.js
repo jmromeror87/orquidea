@@ -26,7 +26,7 @@ import {
   duracionEstimadaTanatopraxia, sugerenciaTanatopraxiaIA,
   actualizarChecklist, ordenImpresion,
   actualizarFallecido, actualizarContratante, asignarResponsable, recalcularConvenioCobertura,
-  agregarItem, actualizarItem, eliminarItem,
+  agregarItem, actualizarItem, eliminarItem, descargarInventarioPendiente,
   listarPersonal, asignarPersonal, quitarPersonal, listarOperadores, historialServicio,
   subirSoporteDocumento,
   listarDocumentos, subirDocumento, eliminarDocumento,
@@ -73,6 +73,7 @@ export default async function serviciosRoutes(fastify) {
   fastify.post('/:id/items',                     { preHandler: editores }, agregarItem)
   fastify.put('/:id/items/:itemId',              { preHandler: editores }, actualizarItem)
   fastify.delete('/:id/items/:itemId',           { preHandler: editores }, eliminarItem)
+  fastify.post('/:id/inventario/descargar',       { preHandler: editores }, descargarInventarioPendiente)
   // Personal
   fastify.get('/:id/historial',                  { preHandler: auth },     historialServicio)
   fastify.get('/:id/personal',                   { preHandler: auth },     listarPersonal)

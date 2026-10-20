@@ -3361,6 +3361,73 @@ const CAT_COL2 = {
 }
 const catCol = cat => CAT_COL2[cat] || '#374151'
 
+// Estado de inventario de un ítem del servicio:
+//  · descargado → salió de bodega (producto, cantidad y fecha)
+//  · pendiente  → maneja inventario pero aún no se descontó (sin existencias o
+//                 sin bodega única cuando se agregó)
+//  · servicio   → no maneja inventario (mano de obra, trámites, sala…)
+const estadoInv = it => it.movimiento_id || it.producto_id ? 'descargado' : it.inv_producto_id ? 'pendiente' : 'servicio'
+const fInv = d => d ? new Date(d).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }) : ''
+function InvBadge({ it }) {
+  const e = estadoInv(it)
+  const base = { display:'inline-flex', alignItems:'center', gap:4, marginTop:4, padding:'2px 8px', borderRadius:7, fontSize:10.5, fontWeight:800 }
+  if (e === 'descargado') return (
+    <span style={{ ...base, background:'#E0F2FE', color:'#0369A1' }}
+      title={`${it.inv_producto || 'Producto'}${it.inv_descargado_en ? ` · salió de bodega el ${fInv(it.inv_descargado_en)}` : ''}`}>
+      <Package size={11}/> Descargó inventario · {Number(it.cantidad)} {it.inv_unidad || 'und'}
+    </span>
+  )
+  if (e === 'pendiente') return (
+    <span style={{ ...base, background:'#FEF3C7', color:'#B45309' }}
+      title={`${it.inv_producto} · existencias: ${Number(it.inv_stock || 0)}`}>
+      <AlertTriangle size={11}/> Pendiente de descargar · existencias {Number(it.inv_stock || 0)}
+    </span>
+  )
+  return (
+    <span style={{ ...base, background:'#F1F5F9', color:'#64748B' }} title="Servicio: no maneja inventario">
+      <Wrench size={11}/> Servicio · sin inventario
+    </span>
+  )
+}
+
+function ResumenInventario({ items, servicioId, esEditor, bloqueado, onSaved }) {
+  const [descargando, setDescargando] = useState(false)
+  const n = { descargado:0, pendiente:0, servicio:0 }
+  items.forEach(it => { n[estadoInv(it)]++ })
+  if (!n.descargado && !n.pendiente) return null
+  const descargar = async () => {
+    setDescargando(true)
+    try {
+      const r = await api.post(`/servicios/${servicioId}/inventario/descargar`)
+      const { procesados, pendientes } = r.data.data
+      if (procesados) toast.success(`Se descargaron ${procesados} ítem${procesados > 1 ? 's' : ''} del inventario`)
+      if (pendientes.length) toast.error(`Siguen pendientes ${pendientes.length}: ${pendientes.slice(0, 3).map(p => `${p.descripcion} (${p.motivo})`).join('; ')}${pendientes.length > 3 ? '…' : ''}`, 9000)
+      else if (!procesados) toast.success('No hay ítems pendientes de descargar')
+      onSaved()
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo descargar del inventario') }
+    finally { setDescargando(false) }
+  }
+  const chip = (bg, color, txt) => <span style={{ padding:'4px 10px', borderRadius:20, background:bg, color, fontSize:11.5, fontWeight:800 }}>{txt}</span>
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', padding:'10px 14px', marginBottom:12,
+      border:`1.5px solid ${n.pendiente ? '#FDE68A' : '#BAE6FD'}`, background: n.pendiente ? '#FFFBEB' : '#F0F9FF', borderRadius:12 }}>
+      <Package size={16} color={n.pendiente ? '#B45309' : '#0369A1'}/>
+      <b style={{ fontSize:12.5, color:'#0F172A', marginRight:4 }}>Inventario</b>
+      {chip('#E0F2FE', '#0369A1', `${n.descargado} descargado${n.descargado !== 1 ? 's' : ''}`)}
+      {n.pendiente > 0 && chip('#FEF3C7', '#B45309', `${n.pendiente} pendiente${n.pendiente !== 1 ? 's' : ''}`)}
+      {chip('#F1F5F9', '#64748B', `${n.servicio} sin inventario`)}
+      {n.pendiente > 0 && esEditor && !bloqueado && (
+        <button onClick={descargar} disabled={descargando}
+          style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:10, border:'none',
+            background:'#B45309', color:'#fff', fontWeight:800, fontSize:12, cursor:'pointer', fontFamily:'inherit', opacity: descargando ? .6 : 1 }}
+          title="Descuenta ahora de la bodega los ítems pendientes que ya tengan existencias">
+          {descargando ? <Loader2 size={13} className="spin"/> : <Package size={13}/>} Descargar pendientes
+        </button>
+      )}
+    </div>
+  )
+}
+
 function TabServicios({ data, servicioId, onSaved, esEditor }) {
   const fmtCOP = v => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(v||0)
 
@@ -3478,8 +3545,8 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
                   {it.catalogo_codigo && <span style={{ marginRight:5 }}>{it.catalogo_codigo} ·</span>}
                   {it.categoria || '—'}
                   {it.es_cobertura && <span style={{ color:'#059669', marginLeft:5 }}>· {etiquetaIncluido}</span>}
-                  {it.producto_id && <span style={{ color:'#0891B2', marginLeft:5 }}>· 📦 Descontado de inventario</span>}
                 </div>
+                <InvBadge it={it}/>
               </>
           }
         </div>
@@ -3702,6 +3769,7 @@ function TabServicios({ data, servicioId, onSaved, esEditor }) {
       )}
 
       {/* Lista */}
+      <ResumenInventario items={items} servicioId={servicioId} esEditor={esEditor} bloqueado={bloqueado} onSaved={onSaved}/>
       {items.length === 0 ? (
         <div style={{ textAlign:'center', padding:'40px 0', color:'#CBD5E1' }}>
           <div style={{ fontSize:32, marginBottom:10 }}>📦</div>

@@ -440,9 +440,16 @@ export async function obtener(req, reply) {
       LEFT JOIN flota_conductores c ON c.id = tr.conductor_id
       WHERE tr.servicio_id = $1 ORDER BY tr.fecha_hora NULLS LAST`, [id]),
     pool.query(`
-      SELECT i.*, sc.codigo AS catalogo_codigo, sc.categoria
+      SELECT i.*, sc.codigo AS catalogo_codigo, sc.categoria,
+        -- Inventario: producto que descarga el ítem, existencias y si ya salió de bodega
+        ip.id AS inv_producto_id, ip.nombre AS inv_producto, ip.codigo_sku AS inv_sku, ip.unidad_medida AS inv_unidad,
+        CASE WHEN ip.id IS NULL THEN NULL
+             ELSE COALESCE((SELECT SUM(st.cantidad) FROM inv_stock st WHERE st.producto_id = ip.id), 0) END AS inv_stock,
+        mv.fecha AS inv_descargado_en
       FROM items_servicio i
       LEFT JOIN servicios_catalogo sc ON sc.id = i.catalogo_id
+      LEFT JOIN inv_productos ip ON ip.id = COALESCE(i.producto_id, sc.producto_id)
+      LEFT JOIN inv_movimientos mv ON mv.id = i.movimiento_id
       WHERE i.servicio_id = $1 ORDER BY i.creado_en
     `, [id]),
     pool.query(`
@@ -1908,6 +1915,40 @@ export async function ejecutarInventarioPendiente(client, servicioId, usuarioId)
     } catch { /* sin stock suficiente — se deja pendiente, no bloquea la ejecución */ }
   }
   return { procesados, pendientes: pendientes.length - procesados }
+}
+
+// POST /servicios/:id/inventario/descargar — descarga ahora los ítems que
+// manejan inventario y quedaron pendientes (sin existencias o sin bodega
+// única al agregarlos). Lo que siga sin poderse, se informa por qué.
+export async function descargarInventarioPendiente(req, reply) {
+  const { id } = req.params
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const r = await ejecutarInventarioPendiente(client, id, req.user.id)
+    await client.query('COMMIT')
+    if (r.procesados) await audit(id, req.user.id, 'items', `Descargó del inventario ${r.procesados} ítem${r.procesados > 1 ? 's' : ''} pendiente${r.procesados > 1 ? 's' : ''}`)
+    // Por qué quedan pendientes: sin existencias suficientes o bodega no definida
+    const { rows } = await pool.query(`
+      SELECT i.descripcion, i.cantidad, ip.nombre AS producto,
+        COALESCE((SELECT SUM(st.cantidad) FROM inv_stock st WHERE st.producto_id = ip.id), 0) AS stock,
+        (SELECT COUNT(*) FROM inv_bodegas b WHERE b.sede_id = sf.sede_id AND b.activo)::int AS bodegas
+      FROM items_servicio i
+      JOIN servicios_funerarios sf ON sf.id = i.servicio_id
+      JOIN servicios_catalogo sc ON sc.id = i.catalogo_id
+      JOIN inv_productos ip ON ip.id = sc.producto_id
+      WHERE i.servicio_id = $1 AND i.producto_id IS NULL`, [id])
+    const motivos = rows.map(x => ({
+      descripcion: x.descripcion,
+      motivo: +x.stock < +x.cantidad ? `sin existencias (hay ${+x.stock}, se necesitan ${+x.cantidad})`
+        : x.bodegas !== 1 ? (x.bodegas ? 'la sede tiene varias bodegas: descárguelo en Inventario' : 'la sede no tiene bodega activa')
+        : 'no se pudo descontar',
+    }))
+    return reply.send({ data: { procesados: r.procesados, pendientes: motivos } })
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {})
+    throw e
+  } finally { client.release() }
 }
 
 async function revertirInventarioItem(client, item, { usuario_id, motivo }) {
