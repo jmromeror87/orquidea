@@ -15,7 +15,13 @@
  */
 import pool from '../config/database.js'
 
-export const TIPOS_VALIDOS = ['SEXO', 'ESTADO_CIVIL', 'OCUPACION', 'PARENTESCO', 'DOCUMENTO_SERVICIO']
+export const TIPOS_VALIDOS = ['SEXO', 'ESTADO_CIVIL', 'OCUPACION', 'PARENTESCO', 'DOCUMENTO_SERVICIO',
+  // Listas inteligentes (servicios): se buscan y se amplían desde el mismo campo
+  'HOSPITAL', 'MEDICO', 'IGLESIA', 'CEMENTERIO', 'CORO', 'EPS', 'RELIGION', 'NOTARIA']
+
+// Código estable a partir del nombre: "Nueva EPS" → NUEVA_EPS
+const codigoDe = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  .replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 120)
 
 export async function listar(req, reply) {
   const { tipo, activo } = req.query
@@ -36,25 +42,36 @@ export async function select(req, reply) {
   if (!tipo || !TIPOS_VALIDOS.includes(tipo.toUpperCase()))
     return reply.code(400).send({ data:null, error:`tipo es requerido y debe ser uno de: ${TIPOS_VALIDOS.join(', ')}` })
   const { rows } = await pool.query(
-    `SELECT id, codigo, etiqueta FROM listas_valores WHERE tipo=$1 AND activo=TRUE ORDER BY orden, etiqueta`,
+    `SELECT id, codigo, etiqueta, detalle FROM listas_valores WHERE tipo=$1 AND activo=TRUE ORDER BY orden, etiqueta`,
     [tipo.toUpperCase()]
   )
   return reply.send({ data: rows, error: null })
 }
 
 export async function crear(req, reply) {
-  const { tipo, codigo, etiqueta, orden } = req.body
+  const { tipo, codigo, etiqueta, orden, detalle } = req.body
   if (!tipo || !TIPOS_VALIDOS.includes(tipo.toUpperCase()))
     return reply.code(400).send({ data:null, error:`tipo es requerido y debe ser uno de: ${TIPOS_VALIDOS.join(', ')}` })
   if (!etiqueta?.trim())
     return reply.code(400).send({ data:null, error:'etiqueta es requerida' })
 
-  const cod = (codigo?.trim() || etiqueta.trim())
+  // Ya existe escrito de otra forma ("nueva eps" = "Nueva EPS"): se reutiliza
+  // en vez de duplicarlo (y si estaba desactivado, se reactiva)
+  const ya = await pool.query(
+    `SELECT * FROM listas_valores WHERE tipo = $1 AND sin_tildes(lower(etiqueta)) = sin_tildes(lower($2)) LIMIT 1`,
+    [tipo.toUpperCase(), etiqueta.trim()])
+  if (ya.rows[0]) {
+    const r = await pool.query(`UPDATE listas_valores SET activo = TRUE, detalle = COALESCE(detalle, $2) WHERE id = $1 RETURNING *`,
+      [ya.rows[0].id, detalle?.trim() || null])
+    return reply.send({ data: r.rows[0], existente: true, error: null })
+  }
+  const INTELIGENTES = ['HOSPITAL', 'MEDICO', 'IGLESIA', 'CEMENTERIO', 'CORO', 'EPS', 'RELIGION', 'NOTARIA']
+  const cod = (codigo?.trim() || (INTELIGENTES.includes(tipo.toUpperCase()) ? codigoDe(etiqueta) : etiqueta.trim()) || etiqueta.trim()).slice(0, 120)
   try {
     const { rows } = await pool.query(
-      `INSERT INTO listas_valores (tipo, codigo, etiqueta, orden)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [tipo.toUpperCase(), cod, etiqueta.trim(), orden || 0]
+      `INSERT INTO listas_valores (tipo, codigo, etiqueta, orden, detalle)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [tipo.toUpperCase(), cod, etiqueta.trim(), orden || 0, detalle?.trim() || null]
     )
     return reply.code(201).send({ data: rows[0], error: null })
   } catch (e) {
@@ -65,14 +82,15 @@ export async function crear(req, reply) {
 
 export async function actualizar(req, reply) {
   const { id } = req.params
-  const { etiqueta, orden, activo } = req.body
+  const { etiqueta, orden, activo, detalle } = req.body
   const { rows } = await pool.query(
     `UPDATE listas_valores SET
        etiqueta = COALESCE($2, etiqueta),
        orden    = COALESCE($3, orden),
-       activo   = COALESCE($4, activo)
+       activo   = COALESCE($4, activo),
+       detalle  = CASE WHEN $5 THEN NULLIF(btrim($6), '') ELSE detalle END
      WHERE id = $1 RETURNING *`,
-    [id, etiqueta?.trim() || null, orden ?? null, activo ?? null]
+    [id, etiqueta?.trim() || null, orden ?? null, activo ?? null, detalle !== undefined, detalle ?? null]
   )
   if (!rows.length) return reply.code(404).send({ data:null, error:'No encontrado' })
   return reply.send({ data: rows[0], error: null })

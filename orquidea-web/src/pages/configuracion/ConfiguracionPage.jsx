@@ -2614,6 +2614,15 @@ const LISTAS_TIPOS = [
   { tipo:'OCUPACION',    label:'Ocupación' },
   { tipo:'PARENTESCO',   label:'Parentesco' },
   { tipo:'DOCUMENTO_SERVICIO', label:'Tipos de documento (servicios)' },
+  // Listas inteligentes de servicios (se buscan y amplían desde el mismo campo)
+  { tipo:'HOSPITAL',   label:'Hospitales y clínicas', detalle:'Dirección', grupo:'servicios' },
+  { tipo:'MEDICO',     label:'Médicos',               detalle:'Registro médico', grupo:'servicios' },
+  { tipo:'IGLESIA',    label:'Iglesias',              detalle:'Dirección', grupo:'servicios' },
+  { tipo:'CEMENTERIO', label:'Cementerios y crematorios', detalle:'Dirección / municipio', grupo:'servicios' },
+  { tipo:'CORO',       label:'Coros',                 detalle:'Teléfono', grupo:'servicios' },
+  { tipo:'NOTARIA',    label:'Notarías',              detalle:'Municipio', grupo:'servicios' },
+  { tipo:'EPS',        label:'EPS',                   grupo:'servicios' },
+  { tipo:'RELIGION',   label:'Religiones',            grupo:'servicios' },
 ]
 
 function TabListasValores() {
@@ -2623,7 +2632,9 @@ function TabListasValores() {
   const [saving,  setSaving]  = useState(false)
   const [show,    setShow]    = useState(false)
   const [editId,  setEditId]  = useState(null)
-  const [f,       setF]       = useState({ etiqueta:'', orden:0 })
+  const [f,       setF]       = useState({ etiqueta:'', orden:0, detalle:'' })
+  const [buscar,  setBuscar]  = useState('')
+  const tipoCfg = LISTAS_TIPOS.find(t => t.tipo === tipo) || {}
 
   const cargar = useCallback(() => {
     setLoading(true)
@@ -2634,7 +2645,7 @@ function TabListasValores() {
   useEffect(() => { cargar() }, [cargar])
 
   const abrir = (it=null) => {
-    setF(it ? { etiqueta: it.etiqueta, orden: it.orden } : { etiqueta:'', orden: items.length })
+    setF(it ? { etiqueta: it.etiqueta, orden: it.orden, detalle: it.detalle || '' } : { etiqueta:'', orden: items.length, detalle:'' })
     setEditId(it?.id || null)
     setShow(true)
   }
@@ -2644,7 +2655,10 @@ function TabListasValores() {
     setSaving(true)
     try {
       if (editId) { await api.put(`/listas-valores/${editId}`, f); toast.success('Valor actualizado con éxito') }
-      else        { await api.post('/listas-valores', { tipo, ...f }); toast.success('Valor creado con éxito') }
+      else {
+        const r = await api.post('/listas-valores', { tipo, ...f })
+        toast.success(r.data.existente ? `"${r.data.data.etiqueta}" ya existía en la lista` : 'Valor creado con éxito')
+      }
       setShow(false); cargar()
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Error al guardar')
@@ -2663,12 +2677,13 @@ function TabListasValores() {
 
   return (
     <>
-    <SecCard titulo="Listas de Valores" sub="Catálogos usados en los formularios de terceros — cualquier usuario puede agregar un valor nuevo al vuelo desde el mismo campo" Icon={UserSquare2} color="#DB2777">
+    <SecCard titulo="Listas de Valores" sub="Catálogos de los formularios (terceros y servicios funerarios) — cualquier usuario puede agregar un valor nuevo al vuelo desde el mismo campo" Icon={UserSquare2} color="#DB2777">
 
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, gap:12, flexWrap:'wrap' }}>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {LISTAS_TIPOS.map(t => (
-            <button key={t.tipo} onClick={() => setTipo(t.tipo)}
+          {LISTAS_TIPOS.map((t, i) => (<span key={t.tipo} style={{ display:'contents' }}>
+            {t.grupo && !LISTAS_TIPOS[i - 1]?.grupo && <span style={{ flexBasis:'100%', fontSize:10.5, fontWeight:800, color:'#9CA3AF', letterSpacing:'.08em', textTransform:'uppercase', marginTop:6 }}>Servicios funerarios · listas inteligentes</span>}
+            <button key={t.tipo} onClick={() => { setTipo(t.tipo); setBuscar('') }}
               style={{ padding:'7px 14px', borderRadius:9, border:'1.5px solid',
                 borderColor: tipo===t.tipo ? '#DB2777' : '#E5E7EB',
                 background: tipo===t.tipo ? '#FDF2F8' : '#fff',
@@ -2676,7 +2691,7 @@ function TabListasValores() {
                 fontSize:12.5, fontWeight:700, cursor:'pointer' }}>
               {t.label}
             </button>
-          ))}
+          </span>))}
         </div>
         <div style={{ display:'flex', gap:10, alignItems:'center' }}>
           <div style={{ background:'#FDF2F8', border:'1px solid #FBCFE8', borderRadius:10, padding:'6px 14px', textAlign:'center' }}>
@@ -2687,11 +2702,16 @@ function TabListasValores() {
         </div>
       </div>
 
+      {items.length > 8 && (
+        <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder={`Buscar en ${tipoCfg.label?.toLowerCase() || 'la lista'}…`} data-cap="no"
+          style={{ width:'100%', maxWidth:340, boxSizing:'border-box', padding:'8px 12px', border:'1.5px solid #E5E7EB', borderRadius:9, fontSize:13, marginBottom:10, outline:'none', fontFamily:'inherit' }}/>
+      )}
       <div className="tbl-wrap">
         <table className="tbl">
           <thead>
             <tr>
               <th>Etiqueta</th>
+              {tipoCfg.detalle && <th>{tipoCfg.detalle}</th>}
               <th>Código</th>
               <th style={{textAlign:'center'}}>Orden</th>
               <th style={{textAlign:'center'}}>Estado</th>
@@ -2699,9 +2719,10 @@ function TabListasValores() {
             </tr>
           </thead>
           <tbody>
-            {!loading && items.map(it => (
+            {!loading && items.filter(it => coincide(buscar, it.etiqueta, it.detalle)).map(it => (
               <tr key={it.id} style={{ opacity: it.activo ? 1 : 0.55 }}>
                 <td style={{ fontWeight:700 }}>{it.etiqueta}</td>
+                {tipoCfg.detalle && <td style={{ color: it.detalle ? '#374151' : '#CBD5E1' }}>{it.detalle || '—'}</td>}
                 <td><span className="code-tag">{it.codigo}</span></td>
                 <td style={{ textAlign:'center' }}>{it.orden}</td>
                 <td style={{ textAlign:'center' }}>
@@ -2744,6 +2765,12 @@ function TabListasValores() {
                 <input autoFocus value={f.etiqueta} onChange={e=>setF(p=>({...p,etiqueta:e.target.value}))}
                   placeholder="Ej: Soltero/a…"/>
               </div>
+              {tipoCfg.detalle && (
+                <div className="campo span3">
+                  <label>{tipoCfg.detalle}</label>
+                  <input value={f.detalle} onChange={e=>setF(p=>({...p,detalle:e.target.value}))} placeholder="Opcional"/>
+                </div>
+              )}
               <div className="campo">
                 <label>Orden</label>
                 <input value={f.orden} onChange={e=>setF(p=>({...p,orden:Number(e.target.value)}))} type="number" min={0}/>

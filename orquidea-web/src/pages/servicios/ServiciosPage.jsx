@@ -33,6 +33,7 @@ import {
   Wrench, PackageSearch, ClipboardList, Users, UserPlus, UserMinus,
 } from 'lucide-react'
 import { CSS_FICHA, Seccion, Dato, Progreso, Ayuda, ListaFaltantes, iniciales } from './fichaUI.jsx'
+import ListaInteligente from '../../components/ui/ListaInteligente.jsx'
 import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
@@ -1745,8 +1746,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                               </button>
                             )}
                           </label>
-                          <input value={form.lugar_recogida} placeholder="Hospital, domicilio…"
-                            onChange={e => setForm(p => ({...p, lugar_recogida:e.target.value}))}/>
+                          <ListaInteligente tipo="HOSPITAL" titulo="hospitales y clínicas" value={form.lugar_recogida} onChange={v => setForm(p => ({...p, lugar_recogida:v}))} placeholder="Hospital, clínica o domicilio…"/>
                         </div>
                         <div className="sv-field" style={{ marginBottom:0 }}>
                           <label>Fecha / hora recogida</label>
@@ -1844,10 +1844,8 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
 
                   {['HOSPITAL','CLINICA'].includes(defForm.tipo_lugar) && (
                     <div className="sv-field">
-                      <label>Dirección del establecimiento</label>
-                      <input value={defForm.direccion_fallecimiento}
-                        onChange={e => setDef('direccion_fallecimiento', e.target.value)}
-                        placeholder="Calle, carrera, barrio…"/>
+                      <label>Hospital o clínica</label>
+                      <ListaInteligente tipo="HOSPITAL" titulo="hospitales y clínicas" value={defForm.direccion_fallecimiento} onChange={v => setDef('direccion_fallecimiento', v)} placeholder="Buscar hospital o clínica…"/>
                     </div>
                   )}
 
@@ -1861,9 +1859,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                   <div className="sv-grid2">
                     <div className="sv-field">
                       <label>Médico que certifica</label>
-                      <input value={defForm.medico_certifica}
-                        onChange={e => setDef('medico_certifica', e.target.value)}
-                        placeholder="Nombre del médico…"/>
+                      <ListaInteligente tipo="MEDICO" titulo="médicos" value={defForm.medico_certifica} onChange={v => setDef('medico_certifica', v)} placeholder="Buscar médico…" cap="persona" onElegir={it => { if (it.detalle && !defForm.registro_medico) setDef('registro_medico', it.detalle) }}/>
                     </div>
                     <div className="sv-field">
                       <label>Registro médico</label>
@@ -1944,8 +1940,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                       </button>
                     )}
                   </label>
-                  <input value={form.lugar_recogida} placeholder="Hospital, domicilio…"
-                    onChange={e => setForm(p => ({...p, lugar_recogida:e.target.value}))}/>
+                  <ListaInteligente tipo="HOSPITAL" titulo="hospitales y clínicas" value={form.lugar_recogida} onChange={v => setForm(p => ({...p, lugar_recogida:v}))} placeholder="Hospital, clínica o domicilio…"/>
                 </div>
                 <div className="sv-field" style={{ marginBottom:0 }}>
                   <label>Fecha / hora recogida</label>
@@ -1956,8 +1951,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
               <div className="sv-grid2" style={{ marginTop:14 }}>
                 <div className="sv-field" style={{ marginBottom:0 }}>
                   <label>Lugar de {form.tipo_disposicion === 'CREMACION' ? 'cremación' : 'inhumación'}</label>
-                  <input value={form.lugar_disposicion} placeholder="Cementerio, crematorio…"
-                    onChange={e => setForm(p => ({...p, lugar_disposicion:e.target.value}))}/>
+                  <ListaInteligente tipo="CEMENTERIO" titulo="cementerios y crematorios" value={form.lugar_disposicion} onChange={v => setForm(p => ({...p, lugar_disposicion:v}))} placeholder="Cementerio, crematorio u osario…"/>
                 </div>
                 <div className="sv-field" style={{ marginBottom:0 }}>
                   <label>Fecha / hora</label>
@@ -1968,13 +1962,11 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
               <div className="sv-grid2" style={{ marginTop:14 }}>
                 <div className="sv-field" style={{ marginBottom:0 }}>
                   <label>Iglesia / parroquia de las exequias</label>
-                  <input value={form.iglesia} placeholder="Ej: Iglesia Santa Bárbara"
-                    onChange={e => setForm(p => ({...p, iglesia:e.target.value}))}/>
+                  <ListaInteligente tipo="IGLESIA" titulo="iglesias" value={form.iglesia} onChange={v => setForm(p => ({...p, iglesia:v}))} placeholder="Buscar iglesia o parroquia…"/>
                 </div>
                 <div className="sv-field" style={{ marginBottom:0 }}>
                   <label>Coro <span style={{ color:'#9CA3AF', fontWeight:400 }}>(si aplica)</span></label>
-                  <input value={form.coro} placeholder="Ej: Yesid Ascanio Páez"
-                    onChange={e => setForm(p => ({...p, coro:e.target.value}))}/>
+                  <ListaInteligente tipo="CORO" titulo="coros" value={form.coro} onChange={v => setForm(p => ({...p, coro:v}))} placeholder="Buscar coro…" cap="persona"/>
                 </div>
               </div>
 
@@ -2242,6 +2234,17 @@ function FField({ label, campo, type, opts, form, onChange }) {
   )
 }
 
+// Campo con lista inteligente (hospitales, médicos, EPS…): busca, elige o agrega
+function FFieldInteligente({ label, campo, tipo, titulo, form, onChange, onElegir, placeholder, cap }) {
+  return (
+    <div className="sv-field" style={{ marginBottom:10 }}>
+      <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>{label}</label>
+      <ListaInteligente tipo={tipo} titulo={titulo} value={form[campo] || ''} onChange={v => onChange(campo, v)}
+        onElegir={onElegir} placeholder={placeholder || 'Buscar o escribir…'} cap={cap}/>
+    </div>
+  )
+}
+
 // ── Listas de valores paramétricas (Sexo, Estado civil, Ocupación, Parentesco) ──
 // Se administran en Configuración → Listas de valores. Cualquier usuario puede
 // crear un valor nuevo al vuelo desde el mismo campo, igual que al buscar un tercero.
@@ -2444,8 +2447,8 @@ function TabFallecido({ data, servicioId, onSaved }) {
               <FField label="Número de hijos" campo="num_hijos" type="number" form={form} onChange={set} />
               <FField label="Nivel de estudios" campo="nivel_estudios" opts={NIVEL_EST_OPTS} form={form} onChange={set} />
               <FFieldLista label="Ocupación" tipo="OCUPACION" value={form.ocupacion} onChange={v => set('ocupacion', v)} />
-              <FField label="Religión / credo" campo="religion" form={form} onChange={set} />
-              <FField label="Seguridad social (EPS)" campo="seguridad_social" form={form} onChange={set} />
+              <FFieldInteligente label="Religión / credo" campo="religion" tipo="RELIGION" titulo="religiones" form={form} onChange={set} />
+              <FFieldInteligente label="Seguridad social (EPS)" campo="seguridad_social" tipo="EPS" titulo="EPS" form={form} onChange={set} />
             </div>
           </Seccion>
 
@@ -2464,10 +2467,11 @@ function TabFallecido({ data, servicioId, onSaved }) {
               <FField label="Tipo de lugar" campo="tipo_lugar" opts={TIPO_LUGAR_OPTS} form={form} onChange={set} />
               <FField label="Tipo de muerte" campo="tipo_muerte" opts={TIPO_MUERTE_OPTS} form={form} onChange={set} />
               <FField label="Causa" campo="causa_fallecimiento" form={form} onChange={set} />
-              <FField label="Médico que certifica" campo="medico_certifica" form={form} onChange={set} />
+              <FFieldInteligente label="Médico que certifica" campo="medico_certifica" tipo="MEDICO" titulo="médicos" cap="persona" form={form} onChange={set}
+                onElegir={it => { if (it.detalle && !form.registro_medico) set('registro_medico', it.detalle) }} />
             </div>
             {['HOSPITAL','CLINICA'].includes(form.tipo_lugar) && (
-              <FField label="Dirección del hospital o clínica" campo="direccion_fallecimiento" form={form} onChange={set} />
+              <FFieldInteligente label="Hospital o clínica" campo="direccion_fallecimiento" tipo="HOSPITAL" titulo="hospitales y clínicas" form={form} onChange={set} />
             )}
           </Seccion>
 
@@ -2477,7 +2481,7 @@ function TabFallecido({ data, servicioId, onSaved }) {
               <FField label="N.° certificado de defunción" campo="cert_defuncion_num" form={form} onChange={set} />
               <FField label="Licencia de inhumación" campo="licencia_inhumacion" form={form} onChange={set} />
               <FField label="Ciudad de registro" campo="ciudad_registro" form={form} onChange={set} />
-              <FField label="Notaría / registraduría" campo="notaria" form={form} onChange={set} />
+              <FFieldInteligente label="Notaría / registraduría" campo="notaria" tipo="NOTARIA" titulo="notarías" form={form} onChange={set} />
               <FField label="Serial del registro" campo="serial_registro" form={form} onChange={set} />
               <FField label="Fecha de registro" campo="fecha_registro" type="date" form={form} onChange={set} />
               <FField label="Llegada a la funeraria" campo="fecha_llegada" type="datetime-local" form={form} onChange={set} />
@@ -2814,7 +2818,7 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
       <Seccion icon="🚐" titulo="Recogida del cuerpo" ayuda="Dónde está el cuerpo y a qué hora sale el vehículo por él.">
         <div>
           <label style={lbl}>Lugar de recogida</label>
-          <input value={form.lugar_recogida} onChange={e => set('lugar_recogida', e.target.value)} placeholder="Hospital, clínica, domicilio…" style={inp}/>
+          <ListaInteligente tipo="HOSPITAL" titulo="hospitales y clínicas" value={form.lugar_recogida} onChange={v => set('lugar_recogida', v)} placeholder="Hospital, clínica o domicilio…"/>
         </div>
         <div>
           <label style={lbl}>Fecha y hora</label>
@@ -2844,11 +2848,11 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
       <Seccion icon="⛪" titulo="Exequias" ayuda="Opcional: la ceremonia religiosa que pidió la familia.">
         <div>
           <label style={lbl}>Iglesia o parroquia</label>
-          <input value={form.iglesia} onChange={e => set('iglesia', e.target.value)} placeholder="Ej.: Iglesia Santa Bárbara" style={inp}/>
+          <ListaInteligente tipo="IGLESIA" titulo="iglesias" value={form.iglesia} onChange={v => set('iglesia', v)} placeholder="Buscar iglesia o parroquia…"/>
         </div>
         <div>
           <label style={lbl}>Coro</label>
-          <input value={form.coro} onChange={e => set('coro', e.target.value)} placeholder="Ej.: Yesid Ascanio Páez" style={inp}/>
+          <ListaInteligente tipo="CORO" titulo="coros" value={form.coro} onChange={v => set('coro', v)} placeholder="Buscar coro…" cap="persona"/>
         </div>
       </Seccion>
 
@@ -2856,8 +2860,7 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
         ayuda={form.tipo_disposicion === 'CREMACION' ? 'Crematorio y hora de la cremación.' : form.tipo_disposicion === 'OSARIO' ? 'Cementerio u osario y hora del depósito.' : 'Cementerio y hora de la inhumación.'}>
         <div>
           <label style={lbl}>Lugar</label>
-          <input value={form.lugar_disposicion} onChange={e => set('lugar_disposicion', e.target.value)}
-            placeholder={form.tipo_disposicion === 'CREMACION' ? 'Nombre del crematorio…' : 'Nombre del cementerio…'} style={inp}/>
+          <ListaInteligente tipo="CEMENTERIO" titulo="cementerios y crematorios" value={form.lugar_disposicion} onChange={v => set('lugar_disposicion', v)} placeholder="Cementerio, crematorio u osario…"/>
         </div>
         <div>
           <label style={lbl}>Fecha y hora</label>
