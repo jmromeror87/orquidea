@@ -115,6 +115,20 @@ export async function buscar(req, reply) {
 
 // ── Obtener beneficiarios disponibles de una póliza ───────────────────────
 
+// El titular ya está cubierto por la póliza: no puede figurar también como
+// beneficiario de ella (pasaba al ceder la póliza a un beneficiario)
+async function quitarTitularDeBeneficiarios(db, polizaId) {
+  const dup = await db.query(`
+    SELECT pb.id, EXISTS (SELECT 1 FROM pagos_poliza pp WHERE pp.beneficiario_id = pb.id) AS con_pagos
+    FROM poliza_beneficiarios pb JOIN polizas p ON p.id = pb.poliza_id
+    WHERE pb.poliza_id = $1 AND pb.tercero_id = p.titular_id AND NOT pb.ejecutado`, [polizaId])
+  for (const b of dup.rows) {
+    if (b.con_pagos) await db.query(`UPDATE poliza_beneficiarios SET activo = FALSE, es_cambio = TRUE WHERE id = $1`, [b.id])
+    else await db.query(`DELETE FROM poliza_beneficiarios WHERE id = $1`, [b.id])
+  }
+  return dup.rows.length
+}
+
 export async function beneficiarios(req, reply) {
   const { id } = req.params
   const res = await pool.query(`
@@ -149,7 +163,9 @@ export async function beneficiarios(req, reply) {
     FROM poliza_beneficiarios pb
     JOIN terceros t ON t.id = pb.tercero_id
     LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
+    -- El titular ya aparece arriba: no se repite si también figura como beneficiario
     WHERE pb.poliza_id = $1 AND pb.activo
+      AND pb.tercero_id <> (SELECT titular_id FROM polizas WHERE id = $1)
     ORDER BY ejecutado ASC, nombre ASC`, [id]
   )
   return reply.send({ data: res.rows })
@@ -734,6 +750,12 @@ export async function transferirTitular(req, reply) {
       [nuevo_titular_id, id]
     )
 
+    // Si el nuevo titular estaba inscrito como beneficiario de esta misma
+    // póliza, deja de serlo (antes quedaba dos veces: titular y beneficiario).
+    // Sin pagos asociados se borra la inscripción; con pagos se retira sin
+    // gastar cupo (es_cambio compensa el retiro en la regla de cupos).
+    await quitarTitularDeBeneficiarios(db, id)
+
     // Rol TITULAR_POLIZA para el nuevo titular
     await db.query(`
       INSERT INTO tercero_roles (tercero_id, rol) VALUES ($1, 'TITULAR_POLIZA')
@@ -1094,6 +1116,8 @@ export async function agregarBeneficiario(req, reply) {
     [tercero_id]
   )
   if (!terceroRes.rows.length) return reply.code(404).send({ error: 'El tercero no existe' })
+  const esTitular = await pool.query(`SELECT 1 FROM polizas WHERE id = $1 AND titular_id = $2`, [id, tercero_id])
+  if (esTitular.rows.length) return reply.code(400).send({ error: 'Esta persona es el titular de la póliza: ya está cubierta y no se inscribe como beneficiario.' })
   const edad = terceroRes.rows[0].edad
   const esParentescoSinLimite = PARENTESCOS_SIN_LIMITE_EDAD.includes(parentesco.toLowerCase())
 
