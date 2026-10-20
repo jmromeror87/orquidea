@@ -17,6 +17,7 @@ import {
   FilePlus, FileEdit, Trash2, Download,
   AlertTriangle,
 } from 'lucide-react'
+import { MODULOS } from '../../config/modulos.js'
 import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
@@ -32,23 +33,9 @@ const ROLES = [
 ]
 const getRol = v => ROLES.find(r => r.value === v) || ROLES[5]
 
-/* ─── Módulos con íconos y colores ─── */
-const MODULOS = [
-  { key:'dashboard',     label:'Dashboard',       color:'#6366F1', icon:'📊', desc:'Panel principal y resumen' },
-  { key:'clientes',      label:'Clientes',        color:'#10B981', icon:'👥', desc:'Registro de clientes y difuntos' },
-  { key:'contratos',     label:'Contratos',       color:'#F59E0B', icon:'📄', desc:'Contratos y previsión funeraria' },
-  { key:'servicios',     label:'Servicios',       color:'#8B5CF6', icon:'🌸', desc:'Servicios funerarios activos' },
-  { key:'cartera',       label:'Cartera',         color:'#EF4444', icon:'💰', desc:'Pagos, cuotas y recaudo' },
-  { key:'reportes',      label:'Reportes',        color:'#0EA5E9', icon:'📈', desc:'Informes y estadísticas' },
-  { key:'usuarios',      label:'Usuarios',        color:'#64748B', icon:'👤', desc:'Gestión de usuarios del sistema' },
-  { key:'configuracion', label:'Configuración',   color:'#C9A020', icon:'⚙️', desc:'Parámetros del sistema' },
-  { key:'territorio',    label:'Territorio',      color:'#059669', icon:'🗺️', desc:'División geográfica de Colombia' },
-  { key:'recaudo',       label:'Recaudo',         color:'#6366F1', icon:'🛣️', desc:'Rutas, zonas y cobro en campo' },
-  { key:'pos',           label:'Punto de Venta',  color:'#16A34A', icon:'🛒', desc:'Venta de mostrador y caja menor' },
-  { key:'memoriales',    label:'Memoriales',      color:'#4C1D95', icon:'🌸', desc:'Novenarios, aniversarios y misas del sitio web' },
-  { key:'solicitudes',   label:'Solicitudes',     color:'#DB2777', icon:'📥', desc:'Prospectos que llegan desde la página web' },
-]
-
+/* ─── Módulos: el mismo catálogo del menú y de la protección de rutas ─── */
+// (antes había una lista aparte con "Clientes" y sin Pólizas, Convenios,
+// Tesorería…: esos permisos no se podían quitar desde aquí)
 /* ─── Acciones ─── */
 const ACCIONES = [
   { key:'ver',      label:'Ver',      icon:<Eye size={13}/>,      color:'#6366F1' },

@@ -16,8 +16,10 @@
  * ║  comercialización sin autorización escrita del titular.                ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Loader2, ShieldOff } from 'lucide-react'
 import { useAuthStore } from './store/auth.store.js'
+import { usePermisos } from './store/permisos.store.js'
 
 // Layouts
 import MainLayout   from './components/layout/MainLayout.jsx'
@@ -55,6 +57,38 @@ function PrivateRoute({ children }) {
   return token ? children : <Navigate to="/login" replace />
 }
 
+const Cargando = () => (
+  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:60, color:'#6366F1' }}>
+    <Loader2 size={26} style={{ animation:'spin 1s linear infinite' }}/>
+  </div>
+)
+
+const SinModulos = () => (
+  <div style={{ maxWidth:460, margin:'60px auto', textAlign:'center', padding:28, background:'#fff', borderRadius:18, border:'1px solid #E8E9F8' }}>
+    <ShieldOff size={36} color="#94A3B8"/>
+    <h2 style={{ margin:'12px 0 6px', fontSize:18, color:'#0F1035' }}>Sin módulos asignados</h2>
+    <p style={{ margin:0, fontSize:13.5, color:'#64748B', lineHeight:1.5 }}>
+      Su rol todavía no tiene acceso a ningún módulo. Pida al administrador que se los asigne en Usuarios → Roles y Permisos.
+    </p>
+  </div>
+)
+
+// Página de inicio = primer módulo permitido (sin Dashboard → directo a lo suyo)
+function Inicio() {
+  const { listo, inicio } = usePermisos()
+  if (!listo) return <Cargando/>
+  return inicio ? <Navigate to={inicio} replace/> : <SinModulos/>
+}
+
+// Solo deja entrar a los módulos que el rol tiene con "Ver" (aunque escriban la URL)
+function ConPermiso() {
+  const { pathname } = useLocation()
+  const { listo, puede, inicio } = usePermisos()
+  if (!listo) return <Cargando/>
+  if (puede(pathname)) return <Outlet/>
+  return inicio ? <Navigate to={inicio} replace/> : <SinModulos/>
+}
+
 export default function App() {
   return (
     <Routes>
@@ -66,7 +100,8 @@ export default function App() {
 
       {/* Rutas privadas */}
       <Route element={<PrivateRoute><MainLayout /></PrivateRoute>}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<Inicio/>} />
+        <Route element={<ConPermiso/>}>
         <Route path="/dashboard"     element={<DashboardPage />} />
         <Route path="/terceros"      element={<TercerosPage />} />
         <Route path="/servicios"     element={<ServiciosPage />} />
@@ -90,9 +125,11 @@ export default function App() {
         <Route path="/contabilidad" element={<ContabilidadPage />} />
         <Route path="/tesoreria" element={<TesoreriaPage />} />
         <Route path="/auditoria" element={<AuditoriaPage />} />
+        </Route>
+        <Route path="*" element={<Inicio/>} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
 }

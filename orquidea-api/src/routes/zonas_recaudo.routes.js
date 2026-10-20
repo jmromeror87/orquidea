@@ -14,6 +14,7 @@
  * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
+import { requirePermiso } from '../middlewares/permiso.middleware.js'
 import { verifyToken } from '../middlewares/auth.middleware.js'
 import {
   listarZonas, crearZona, actualizarZona, eliminarZona,
@@ -24,19 +25,22 @@ import {
 } from '../controllers/zonas_recaudo.controller.js'
 
 const auth = [verifyToken]
+// Configurar zonas y rutas = módulo Territorio de la matriz de Roles y Permisos
+// (antes cualquier usuario con sesión podía crear, cambiar o borrar)
+const puede = accion => [verifyToken, requirePermiso('territorio', accion)]
 
 export default async function zonasRecaudoRoutes(fastify) {
   fastify.get('/recaudadores',                    { preHandler: auth }, listarRecaudadores)
   fastify.get('/',                                { preHandler: auth }, listarZonas)
-  fastify.post('/',                               { preHandler: auth }, crearZona)
-  fastify.put('/:id',                             { preHandler: auth }, actualizarZona)
-  fastify.delete('/:id',                          { preHandler: auth }, eliminarZona)
+  fastify.post('/',                               { preHandler: puede('crear') }, crearZona)
+  fastify.put('/:id',                             { preHandler: puede('editar') }, actualizarZona)
+  fastify.delete('/:id',                          { preHandler: puede('eliminar') }, eliminarZona)
   fastify.get('/:zona_id/rutas',                  { preHandler: auth }, listarRutas)
-  fastify.post('/:zona_id/rutas',                 { preHandler: auth }, crearRuta)
-  fastify.put('/rutas/:id',                       { preHandler: auth }, actualizarRuta)
+  fastify.post('/:zona_id/rutas',                 { preHandler: puede('crear') }, crearRuta)
+  fastify.put('/rutas/:id',                       { preHandler: puede('editar') }, actualizarRuta)
   fastify.get('/rutas/:id/polizas',                      { preHandler: auth }, polizasDeRuta)
-  fastify.post('/rutas/:id/polizas',                     { preHandler: auth }, asignarPoliza)
-  fastify.delete('/rutas/:id/polizas/:poliza_id',        { preHandler: auth }, quitarPoliza)
+  fastify.post('/rutas/:id/polizas',                     { preHandler: puede('editar') }, asignarPoliza)
+  fastify.delete('/rutas/:id/polizas/:poliza_id',        { preHandler: puede('editar') }, quitarPoliza)
   fastify.get('/rutas/:id/sugeridas',                    { preHandler: auth }, polizasSugeridas)
-  fastify.post('/rutas/:id/sugeridas/asignar-todas',     { preHandler: auth }, asignarTodasSugeridas)
+  fastify.post('/rutas/:id/sugeridas/asignar-todas',     { preHandler: puede('editar') }, asignarTodasSugeridas)
 }

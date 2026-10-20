@@ -385,7 +385,7 @@ export default function LoginPage() {
       const res = await authService.login(form.email, form.password)
       const { token, usuario } = res.data.data
       setAuth(token, usuario)
-      navigate('/dashboard', { replace: true })
+      navigate('/', { replace: true })   // la página de inicio depende de los permisos del rol
     } catch (err) {
       setError(err.response?.data?.error || 'Correo o contraseña incorrectos.')
     } finally { setBusy(false) }

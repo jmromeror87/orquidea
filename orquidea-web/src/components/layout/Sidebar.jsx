@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../../store/auth.store.js'
 import api from '../../services/api.js'
+import { usePermisos } from '../../store/permisos.store.js'
 
 const ADMIN  = ['superadmin','administrador']
 const OPS    = ['superadmin','administrador','operador']
@@ -164,68 +165,19 @@ const CSS = `
   .sb.closed .sb-toggle { margin:0 auto; }
 `
 
-// Mapa ruta → clave de módulo en permisos_roles
-const RUTA_MODULO = {
-  '/dashboard':    'dashboard',
-  '/terceros':     'terceros',
-  '/contratos':    'contratos',
-  '/servicios':    'servicios',
-  '/polizas':      'polizas',
-  '/pagos':        'cartera',
-  '/inventario':   'inventario',
-  '/compras':      'compras',
-  '/convenios':    'convenios',
-  '/cartera-convenios': 'convenios',
-  '/pos':          'pos',
-  '/memoriales':   'memoriales',
-  '/solicitudes':  'solicitudes',
-  '/recaudo':      'recaudo',
-  '/asesores':     'asesores',
-  '/reportes':     'reportes',
-  '/usuarios':     'usuarios',
-  '/territorio':   'territorio',
-  '/configuracion':'configuracion',
-  '/contabilidad': 'contabilidad',
-  '/tesoreria':    'tesoreria',
-  '/auditoria':    'auditoria',
-}
-
 export default function Sidebar() {
   const [open, setOpen] = useState(true)
   const [nombreComercial, setNombreComercial] = useState('')
-  // 'loading' | 'all' (admin) | objeto mapa de permisos
-  const [permisos, setPermisos] = useState('loading')
   const { usuario } = useAuthStore()
+  // Menú = permisos del rol (Usuarios → Roles y Permisos), con el mismo
+  // catálogo de módulos que la matriz y la protección de rutas
+  const { puede: puedeModulo, listo } = usePermisos()
 
   useEffect(() => {
     api.get('/empresa').then(r => setNombreComercial(r.data.data?.nombre_comercial || '')).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (!usuario?.rol) { setPermisos('loading'); return }
-    if (['superadmin','administrador'].includes(usuario.rol)) {
-      setPermisos('all')
-      return
-    }
-    api.get('/permisos/mis-permisos')
-      .then(r => {
-        const map = {}
-        ;(r.data.data || []).forEach(p => {
-          if (p.accion === 'ver') map[p.modulo] = p.permitido
-        })
-        setPermisos(map)
-      })
-      .catch(() => setPermisos({}))
-  }, [usuario?.rol])
-
-  const puede = (to) => {
-    if (!usuario?.rol) return false
-    if (permisos === 'loading') return false
-    if (permisos === 'all') return true
-    const modulo = RUTA_MODULO[to]
-    if (!modulo) return false
-    return permisos[modulo] === true
-  }
+  const puede = (to) => listo && puedeModulo(to)
 
   return (
     <>

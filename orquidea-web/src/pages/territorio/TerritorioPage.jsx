@@ -14,6 +14,7 @@ import {
   Search, X, Loader2, CheckCircle2, XCircle, ChevronRight,
   Globe2, Map, Route, ArrowLeft, Users,
 } from 'lucide-react'
+import { usePermisos } from '../../store/permisos.store.js'
 import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
@@ -554,7 +555,10 @@ function ModalEliminar({ texto, onClose, onConfirm, guardando }) {
 ═══════════════════════════════════════════ */
 function PanelDepartamentos({ selId, onSel }) {
   const { usuario } = useAuthStore()
-  const esAdmin = ['superadmin','administrador'].includes(usuario?.rol)
+  // Botones según la matriz de Roles y Permisos (módulo Territorio)
+  const { puede } = usePermisos()
+  const esAdmin = puede('territorio', 'editar')
+  const puedeCrear = puede('territorio', 'crear')
   const [items,   setItems]   = useState([])
   const [loading, setLoading] = useState(true)
   const [q,       setQ]       = useState('')
@@ -655,7 +659,10 @@ function PanelDepartamentos({ selId, onSel }) {
 ═══════════════════════════════════════════ */
 function PanelMunicipios({ departamento, selId, onSel }) {
   const { usuario } = useAuthStore()
-  const esAdmin = ['superadmin','administrador'].includes(usuario?.rol)
+  // Botones según la matriz de Roles y Permisos (módulo Territorio)
+  const { puede } = usePermisos()
+  const esAdmin = puede('territorio', 'editar')
+  const puedeCrear = puede('territorio', 'crear')
   const [items,   setItems]   = useState([])
   const [loading, setLoading] = useState(false)
   const [q,       setQ]       = useState('')
@@ -774,7 +781,7 @@ function PanelMunicipios({ departamento, selId, onSel }) {
         ))}
       </div>
 
-      {esAdmin && (
+      {puedeCrear && (
         <div className="panel-add">
           <button className="panel-add-btn"
             onClick={()=>{setForm({id:'',nombre:''});setErr('');setModal({tipo:'create'})}}
@@ -831,7 +838,10 @@ function PanelMunicipios({ departamento, selId, onSel }) {
 ═══════════════════════════════════════════ */
 function PanelZonas({ municipio }) {
   const { usuario } = useAuthStore()
-  const esAdmin = ['superadmin','administrador'].includes(usuario?.rol)
+  // Botones según la matriz de Roles y Permisos (módulo Territorio)
+  const { puede } = usePermisos()
+  const esAdmin = puede('territorio', 'editar')
+  const puedeCrear = puede('territorio', 'crear')
   const [items,    setItems]    = useState([])
   const [loading,  setLoading]  = useState(false)
   const [q,        setQ]        = useState('')
@@ -991,7 +1001,7 @@ function PanelZonas({ municipio }) {
         ))}
       </div>
 
-      {esAdmin && (
+      {puedeCrear && (
         <div className="panel-add">
           <button className="panel-add-btn"
             onClick={()=>{setForm({nombre:'',tipo:'BARRIO'});setErr('');setModal({tipo:'create'})}}
