@@ -21,6 +21,7 @@
  * los resultados nuevos (parecía "bloqueado"), no avisaba si no había
  * resultados o si fallaba, y un solo clic agregaba sin confirmar.
  */
+import AvisoOtrasPolizas from './AvisoOtrasPolizas.jsx'
 import { useState, useEffect, useRef } from 'react'
 import { Search, X, Loader2, UserPlus, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import api from '../../services/api.js'
@@ -30,7 +31,7 @@ const SIN_LIMITE_EDAD = ['padre', 'madre', 'suegro', 'suegra']
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1)
 const nombreDe = t => (t.razon_social || `${t.nombres || ''} ${t.apellidos || ''}`).trim()
 
-export default function BuscadorBeneficiario({ parentescos, excluidos = new Map(), onAgregar, disabled = false, disabledMsg }) {
+export default function BuscadorBeneficiario({ parentescos, excluidos = new Map(), onAgregar, disabled = false, disabledMsg, polizaId }) {
   const [parentesco, setParentesco] = useState(parentescos.find(p => p === 'hijo') || parentescos[0])
   const [q, setQ] = useState('')
   const [estado, setEstado] = useState('idle')         // idle | cargando | ok | error
@@ -174,6 +175,8 @@ export default function BuscadorBeneficiario({ parentescos, excluidos = new Map(
               {agregando ? <Loader2 size={13} style={{ animation:'spin 1s linear infinite' }}/> : <UserPlus size={13}/>} Agregar beneficiario
             </button>
           </div>
+          {/* Ya está en otra póliza (permitido, pero se avisa) */}
+          <AvisoOtrasPolizas terceroId={elegido.id} excluirPolizaId={polizaId} contexto="beneficiario" style={{ marginTop:10 }}/>
           {rechazoEdad && (
             <div style={{ marginTop:8, fontSize:12, color:'#B91C1C', display:'flex', gap:6, alignItems:'center' }}>
               <AlertTriangle size={13}/> Tiene {edad} años: con parentesco "{parentesco}" la edad máxima es {EDAD_LIMITE}. Solo padres o suegros pueden entrar sin límite de edad.

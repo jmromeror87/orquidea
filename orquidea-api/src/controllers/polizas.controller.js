@@ -115,6 +115,31 @@ export async function buscar(req, reply) {
 
 // ── Obtener beneficiarios disponibles de una póliza ───────────────────────
 
+// GET /polizas/coberturas/:terceroId?excluir=polizaId — pólizas en las que
+// ya está una persona (como titular o beneficiario activo). Es permitido estar
+// en varias (p. ej. el papá y la mamá tienen cada uno póliza con el mismo
+// hijo), pero se avisa al inscribirla para que la funeraria lo sepa.
+export async function coberturasTercero(req, reply) {
+  const { terceroId } = req.params
+  const excluir = /^[0-9a-f-]{36}$/i.test(req.query.excluir || '') ? req.query.excluir : null
+  const r = await pool.query(`
+    SELECT p.id AS poliza_id, p.numero, p.numero_legado, p.estado, pl.nombre AS plan_nombre,
+      'TITULAR' AS rol, NULL::text AS parentesco, NULL::text AS titular_nombre
+    FROM polizas p JOIN planes_poliza pl ON pl.id = p.plan_id
+    WHERE p.titular_id = $1 AND p.estado NOT IN ('CANCELADA','EJECUTADA') AND ($2::uuid IS NULL OR p.id <> $2)
+    UNION ALL
+    SELECT p.id, p.numero, p.numero_legado, p.estado, pl.nombre,
+      'BENEFICIARIO', pb.parentesco, COALESCE(t.nombres||' '||t.apellidos, t.razon_social)
+    FROM poliza_beneficiarios pb
+    JOIN polizas p ON p.id = pb.poliza_id
+    JOIN planes_poliza pl ON pl.id = p.plan_id
+    JOIN terceros t ON t.id = p.titular_id
+    WHERE pb.tercero_id = $1 AND pb.activo AND NOT pb.ejecutado AND p.titular_id <> $1
+      AND p.estado NOT IN ('CANCELADA','EJECUTADA') AND ($2::uuid IS NULL OR p.id <> $2)
+    ORDER BY rol DESC, numero`, [terceroId, excluir])
+  return reply.send({ data: r.rows })
+}
+
 // El titular ya está cubierto por la póliza: no puede figurar también como
 // beneficiario de ella (pasaba al ceder la póliza a un beneficiario)
 async function quitarTitularDeBeneficiarios(db, polizaId) {

@@ -11,7 +11,7 @@
 import { verifyToken } from '../middlewares/auth.middleware.js'
 import { requireRole } from '../middlewares/role.middleware.js'
 import {
-  stats, listar, obtener, crear, actualizar, cancelar, reactivar, historialCancelaciones,
+  stats, listar, obtener, coberturasTercero, crear, actualizar, cancelar, reactivar, historialCancelaciones,
   registrarPago, importarPagos, agregarBeneficiario, quitarBeneficiario, cobrarAfiliacion, cobrarAfiliacionBeneficiario, firmarConsentimientoBeneficiario,
   verificarElegibilidad, ejecutar, planes, crearPlan, actualizarPlan, desactivarPlan,
   buscar, beneficiarios, transferirTitular, historialTransferencias, contratoImpresion,
@@ -40,6 +40,7 @@ export default async function polizasRoutes(fastify) {
   fastify.get('/responsables',                 { preHandler: auth },     responsablesDisponibles)
   fastify.get('/buscar',                       { preHandler: auth },     buscar)
   fastify.get('/',                             { preHandler: auth },     listar)
+  fastify.get('/coberturas/:terceroId',         { preHandler: auth },     coberturasTercero)
   fastify.get('/:id',                          { preHandler: auth },     obtener)
   fastify.get('/:id/elegibilidad',             { preHandler: auth },     verificarElegibilidad)
   fastify.get('/:id/contrato-impresion',       { preHandler: auth },     contratoImpresion)

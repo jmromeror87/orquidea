@@ -35,6 +35,7 @@ import {
 import { CSS_FICHA, Seccion, Dato, Progreso, Ayuda, ListaFaltantes, iniciales } from './fichaUI.jsx'
 import ListaInteligente from '../../components/ui/ListaInteligente.jsx'
 import MenuFicha from '../../components/ui/MenuFicha.jsx'
+import AvisoOtrasPolizas from '../../components/polizas/AvisoOtrasPolizas.jsx'
 import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
@@ -1531,6 +1532,11 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                             </div>
                       }
                     </div>
+                  )}
+
+                  {/* El fallecido también está en otra póliza: confirmar por cuál se presta */}
+                  {beneficiarioId && polizaSel && (
+                    <AvisoOtrasPolizas terceroId={beneficiarioId} excluirPolizaId={polizaSel.id} contexto="fallecido" style={{ marginBottom:14 }}/>
                   )}
 
                   {/* Panel de elegibilidad */}

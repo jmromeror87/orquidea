@@ -27,6 +27,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import MenuFicha from '../../components/ui/MenuFicha.jsx'
 import { contratoPolizaHTML } from '../../utils/contratoDocumento.js'
+import AvisoOtrasPolizas from '../../components/polizas/AvisoOtrasPolizas.jsx'
 import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
@@ -451,6 +452,7 @@ function ModalForm({ poliza, planes, onClose, onSaved, esAdmin = false }) {
                         placeholder="Buscar por nombre o documento…" style={{ paddingLeft:30, width:'100%', boxSizing:'border-box' }}/>
                     </div>
                     {titularId && <span style={{ fontSize:11, color:'#059669', fontWeight:700 }}>✓ Titular seleccionado</span>}
+                    {titularId && <AvisoOtrasPolizas terceroId={titularId} contexto="titular" style={{ marginTop:8 }}/>}
                     {candTit.length > 0 && !titularId && (
                       <div style={{ border:'1.5px solid #ECEDF8', borderRadius:10, overflow:'hidden', maxHeight:180, overflowY:'auto', background:'#fff', marginTop:4 }}>
                         {candTit.map((c,i) => (
@@ -1851,7 +1853,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                         [data.titular_id, 'Titular'],
                         ...(data.beneficiarios || []).filter(b => b.activo && !b.ejecutado && b.tercero_id).map(b => [b.tercero_id, 'Ya es beneficiario']),
                       ])}
-                      onAgregar={agregarBen}
+                      onAgregar={agregarBen} polizaId={data.id}
                     />
                   </div>
                 )}
