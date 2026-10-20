@@ -40,7 +40,9 @@ export async function misPermisos(req, reply) {
     `SELECT modulo, accion, permitido FROM permisos_roles WHERE rol=$1 ORDER BY modulo, accion`,
     [rol]
   )
-  return reply.send({ data: rows, error: null })
+  // Ventana de inicio del usuario (se lee en cada carga: un cambio aplica sin cerrar sesión)
+  const u = await pool.query('SELECT pagina_inicio FROM usuarios WHERE id = $1', [req.user.id])
+  return reply.send({ data: rows, meta: { pagina_inicio: u.rows[0]?.pagina_inicio || null }, error: null })
 }
 
 export async function resetearRol(req, reply) {

@@ -136,6 +136,7 @@ export async function login(request, reply) {
         sede_nombre:  usuario.sede_nombre,
         sedes:        sedesRes.rows,
         debe_cambiar_pwd: usuario.debe_cambiar_pwd,
+        pagina_inicio: usuario.pagina_inicio || null,
       },
     },
   })
@@ -156,7 +157,7 @@ export async function logout(request, reply) {
 export async function me(request, reply) {
   const { rows } = await query(
     `SELECT u.id, u.nombre, u.email, u.rol, u.activo, u.foto_url,
-            u.sede_id, u.ultimo_acceso, u.debe_cambiar_pwd,
+            u.sede_id, u.ultimo_acceso, u.debe_cambiar_pwd, u.pagina_inicio,
             s.nombre AS sede_nombre
      FROM usuarios u
      LEFT JOIN sedes s ON s.id = u.sede_id

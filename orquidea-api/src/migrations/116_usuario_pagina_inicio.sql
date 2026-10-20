@@ -1,0 +1,15 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Migración       : 116 — Ventana de inicio de cada usuario              ║
+-- ║  Fecha           : 2026-10-20                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+-- Módulo que se abre al entrar al sistema (gerente → Dashboard, recaudador →
+-- Recaudo, contador → Contabilidad…). NULL = el primer módulo que su rol tenga.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pagina_inicio VARCHAR(50);

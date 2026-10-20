@@ -36,10 +36,14 @@ const SALT_ROUNDS = 12
 
 const CAMPOS_USUARIO = `
   u.id, u.nombre, u.email, u.rol, u.activo, u.foto_url,
-  u.sede_id, u.ultimo_acceso, u.debe_cambiar_pwd, u.creado_en,
+  u.sede_id, u.ultimo_acceso, u.debe_cambiar_pwd, u.creado_en, u.pagina_inicio,
   s.nombre AS sede_nombre,
   c.nombre AS creado_por_nombre
 `
+
+// Ventana de inicio: clave de módulo (la misma de permisos_roles) o vacío = automática
+const PAGINA_VALIDA = /^[a-z_]{2,50}$/
+const paginaInicio = v => (v && PAGINA_VALIDA.test(v) ? v : null)
 
 export async function listar(request, reply) {
   const { buscar, rol, activo, sede_id } = request.query
@@ -125,7 +129,7 @@ export async function obtener(request, reply) {
 }
 
 export async function crear(request, reply) {
-  const { nombre, email, rol, sede_id, sedes } = request.body
+  const { nombre, email, rol, sede_id, sedes, pagina_inicio } = request.body
 
   if (!nombre || !email || !rol) {
     return reply.status(400).send({ error: 'Nombre, email y rol son requeridos' })
@@ -149,10 +153,10 @@ export async function crear(request, reply) {
   const emailNormalizado = email.toLowerCase().trim()
 
   const { rows } = await query(
-    `INSERT INTO usuarios (nombre, email, password, rol, sede_id, creado_por, debe_cambiar_pwd, activacion_token, activacion_expira)
-     VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)
-     RETURNING id, nombre, email, rol, sede_id, activo, creado_en`,
-    [nombre.trim(), emailNormalizado, hash, rol, sedePrincipal, request.user.id, token, expira]
+    `INSERT INTO usuarios (nombre, email, password, rol, sede_id, creado_por, debe_cambiar_pwd, activacion_token, activacion_expira, pagina_inicio)
+     VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9)
+     RETURNING id, nombre, email, rol, sede_id, activo, creado_en, pagina_inicio`,
+    [nombre.trim(), emailNormalizado, hash, rol, sedePrincipal, request.user.id, token, expira, paginaInicio(pagina_inicio)]
   )
 
   for (const sid of sedesFinal) {
@@ -179,7 +183,7 @@ export async function crear(request, reply) {
 
 export async function actualizar(request, reply) {
   const { id } = request.params
-  const { nombre, email, rol, sede_id, sedes, activo } = request.body
+  const { nombre, email, rol, sede_id, sedes, activo, pagina_inicio } = request.body
 
   // No puede editarse a sí mismo para cambiar rol o estado
   if (id === request.user.id && (rol !== undefined || activo !== undefined)) {
@@ -236,9 +240,11 @@ export async function actualizar(request, reply) {
          rol         = COALESCE($3, rol),
          sede_id     = COALESCE($4, sede_id),
          activo      = COALESCE($5, activo),
+         -- '' = volver a automática; sin el campo = no se toca
+         pagina_inicio = CASE WHEN $7 THEN $8 ELSE pagina_inicio END,
          actualizado = NOW()
      WHERE id = $6
-     RETURNING id, nombre, email, rol, sede_id, activo`,
+     RETURNING id, nombre, email, rol, sede_id, activo, pagina_inicio`,
     [
       nombre?.trim() || null,
       emailNuevo,
@@ -246,6 +252,8 @@ export async function actualizar(request, reply) {
       sedePrincipal,
       activo ?? null,
       id,
+      pagina_inicio !== undefined,
+      paginaInicio(pagina_inicio),
     ]
   )
 

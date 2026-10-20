@@ -47,6 +47,15 @@ const ACCIONES = [
 
 /* ─── CSS ─── */
 const CSS = `
+.inicio-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; padding:4px 0; }
+.inicio-opt { display:flex; align-items:center; gap:9px; padding:9px 11px; border:1.5px solid #E2E5F0; border-radius:12px; background:#FAFBFF; cursor:pointer; text-align:left; font-family:inherit; }
+.inicio-opt:hover { border-color:#C7D2FE; }
+.inicio-opt.sel { border-color:#4338CA; background:#EEF2FF; box-shadow:0 0 0 3px rgba(67,56,202,.10); }
+.inicio-opt b { display:block; font-size:12.5px; color:#1F2937; }
+.inicio-opt.sel b { color:#4338CA; }
+.inicio-opt small { display:block; font-size:10.5px; color:#6B7280; margin-top:1px; }
+.inicio-ic { width:30px; height:30px; border-radius:9px; background:#fff; border:1px solid #EEF0F7; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+
   @keyframes spin    { to{transform:rotate(360deg)} }
   @keyframes fadeIn  { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   @keyframes modalIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
@@ -221,13 +230,14 @@ const CSS = `
 
   /* Modal */
   .modal-overlay { position:fixed; inset:0; background:rgba(15,16,53,.55); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px; backdrop-filter:blur(3px); }
-  .modal-box { background:#fff; border-radius:20px; width:100%; max-width:480px; box-shadow:0 24px 64px rgba(0,0,0,.22); animation:modalIn .2s ease; overflow:hidden; }
+  .modal-box { background:#fff; border-radius:20px; width:100%; max-width:480px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(0,0,0,.22); animation:modalIn .2s ease; overflow:hidden; }
+  .modal-box > form { display:flex; flex-direction:column; min-height:0; flex:1; }
   .modal-header { padding:22px 24px 18px; border-bottom:1px solid #F0F1FA; display:flex; align-items:center; gap:12px; }
   .modal-header-icon { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .modal-title { font-size:16px; font-weight:800; color:#0F1035; flex:1; }
   .modal-close { width:32px; height:32px; border-radius:8px; border:none; background:#F4F5FA; color:#6B7280; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; }
   .modal-close:hover { background:#FEE2E2; color:#EF4444; }
-  .modal-body { padding:22px 24px; display:flex; flex-direction:column; gap:16px; }
+  .modal-body { padding:22px 24px; display:flex; flex-direction:column; gap:16px; overflow-y:auto; min-height:0; }
   .modal-footer { padding:16px 24px; border-top:1px solid #F0F1FA; display:flex; justify-content:flex-end; gap:10px; }
   .mfield label { display:block; font-size:10.5px; font-weight:800; color:#6B7280; text-transform:uppercase; letter-spacing:.9px; margin-bottom:6px; }
   .mfield input, .mfield select { width:100%; padding:10px 14px; border:1.5px solid #E8E9F8; border-radius:10px; font-size:13.5px; color:#0F1035; background:#FAFBFF; outline:none; transition:border-color .15s; font-family:inherit; box-sizing:border-box; }
@@ -266,7 +276,8 @@ const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001').rep
 
 function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }) {
   const esEdit = !!usuario
-  const [f, setF] = useState({ nombre:usuario?.nombre||'', email:usuario?.email||'', rol:usuario?.rol||'operador' })
+  const [f, setF] = useState({ nombre:usuario?.nombre||'', email:usuario?.email||'', rol:usuario?.rol||'operador', pagina_inicio:usuario?.pagina_inicio||'' })
+  const [matriz, setMatriz] = useState(null)   // permisos de cada rol → módulos que puede ver
   const [sedesSel, setSedesSel] = useState(usuario?.sede_id ? [usuario.sede_id] : [])
   const [cargandoSedes, setCargandoSedes] = useState(esEdit)
   const [foto, setFoto] = useState(null)
@@ -289,6 +300,19 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
       .finally(() => setCargandoSedes(false))
   }, [esEdit, usuario?.id])
 
+  useEffect(() => {
+    api.get('/permisos').then(r => {
+      const m = {}
+      for (const p of r.data.data || []) if (p.accion === 'ver' && p.permitido) (m[p.rol] ||= new Set()).add(p.modulo)
+      setMatriz(m)
+    }).catch(() => setMatriz({}))
+  }, [])
+  // Ventana de inicio: solo entre los módulos que el rol elegido puede ver
+  const modulosRol = !matriz ? [] : ['superadmin','administrador'].includes(f.rol)
+    ? MODULOS : MODULOS.filter(m => matriz[f.rol]?.has(m.key))
+  const inicioNoPermitido = !!f.pagina_inicio && !!matriz && !modulosRol.some(m => m.key === f.pagina_inicio)
+  const inicioAuto = modulosRol[0]
+
   const toggleSede = (id) => {
     setSedesSel(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id])
     setError('')
@@ -297,7 +321,8 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
   const guardar = async () => {
     setSaving(true)
     try {
-      const body = { nombre:f.nombre, email:f.email, rol:f.rol, sedes: sedesSel, sede_id: sedesSel[0] }
+      const body = { nombre:f.nombre, email:f.email, rol:f.rol, sedes: sedesSel, sede_id: sedesSel[0],
+        pagina_inicio: inicioNoPermitido ? '' : f.pagina_inicio }
       let id = usuario?.id
       let correoEnviado = true
       let resEdit = null
@@ -350,7 +375,7 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
 
   return (
     <div className="modal-overlay">
-      <div className="modal-box">
+      <div className="modal-box" style={{ maxWidth:600 }}>
         <div className="modal-header">
           <div className="modal-header-icon" style={{ background:'#EEF2FF' }}><UserCog size={20} color="#4338CA"/></div>
           <div className="modal-title">{esEdit?'Editar usuario':'Nuevo usuario'}</div>
@@ -396,6 +421,34 @@ function ModalUsuario({ usuario, sedes, onClose, onGuardado, pedirConfirmacion }
                 <select value={f.rol} onChange={ch('rol')}>
                   {ROLES.map(r=><option key={r.value} value={r.value}>{r.icon} {r.label}</option>)}
                 </select>
+              </div>
+              <div className="mfield" style={{ gridColumn:'span 2' }}>
+                <label>Ventana al ingresar</label>
+                {!matriz ? (
+                  <div style={{ fontSize:12.5, color:'#9CA3AF', padding:'6px 0' }}>Cargando…</div>
+                ) : !modulosRol.length ? (
+                  <div style={{ fontSize:12.5, color:'#B45309', padding:'6px 0' }}>Este rol no tiene módulos asignados. Asígnelos en la pestaña Roles y Permisos.</div>
+                ) : (
+                  <div className="inicio-grid">
+                    <button type="button" className={`inicio-opt${!f.pagina_inicio || inicioNoPermitido ? ' sel' : ''}`}
+                      onClick={() => setF(x => ({ ...x, pagina_inicio:'' }))}>
+                      <span className="inicio-ic">✨</span>
+                      <span><b>Automática</b><small>{inicioAuto ? inicioAuto.label : '—'}</small></span>
+                    </button>
+                    {modulosRol.map(m => (
+                      <button type="button" key={m.key} className={`inicio-opt${f.pagina_inicio === m.key ? ' sel' : ''}`}
+                        onClick={() => setF(x => ({ ...x, pagina_inicio:m.key }))} title={m.desc}>
+                        <span className="inicio-ic">{m.icon}</span>
+                        <span><b>{m.label}</b></span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize:11, color: inicioNoPermitido ? '#B45309' : '#9CA3AF', marginTop:4 }}>
+                  {inicioNoPermitido
+                    ? 'La ventana elegida no está permitida para este rol: quedará en Automática.'
+                    : 'Lo primero que verá al entrar al sistema. Solo aparecen los módulos que su rol puede ver.'}
+                </div>
               </div>
               <div className="mfield" style={{ gridColumn:'span 2' }}>
                 <label>Sedes en las que puede trabajar *</label>
