@@ -35,6 +35,7 @@ import {
 import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
+import Bitacora from '../../components/bitacora/Bitacora.jsx'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { getLogoDataUrl, dibujarLogoPDF } from '../../utils/logo.js'
@@ -4729,6 +4730,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
     { key:'traslados',    icon:'🚐', label:`Traslados (${data?.traslados?.length||0})` },
     { key:'tanatopraxia', icon:'🩺', label:'Tanatopraxia' },
     { key:'historial',    icon:'🕒', label:'Historial' },
+    { key:'bitacora',     icon:'📓', label:'Bitácora' },
     { key:'tramites',     icon: checklist.length > 0 && checklist.every(i=>i.done) ? '✅' : '📝',
       label: checklist.length > 0 ? `Trámites (${checklist.filter(i=>i.done).length}/${checklist.length})` : 'Trámites' },
     { key:'documentos',   icon:'🗂️', label:`Documentos (${documentos.length})` },
@@ -4869,6 +4871,10 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
             <TabPersonal servicioId={id} esEditor={esEditor} onItemAgregado={cargar}/>
           ) : tab === 'historial' ? (
             <TabHistorial servicioId={id}/>
+          ) : tab === 'bitacora' ? (
+            // Igual que en pólizas: notas con formato + lo que el sistema registró del servicio
+            <Bitacora tipo="servicio" entidadId={id} usuario={usuario} puedeEscribir={esEditor}
+              titulo={`Servicio ${data.codigo || '#' + data.numero} — ${data.difunto_nombre || ''}`}/>
           ) : tab === 'traslados' ? (
             <>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>

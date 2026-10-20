@@ -40,7 +40,7 @@ const MAX_IMG = 8 * 1024 * 1024
 
 const TIPOS = new Set(['POLIZA', 'SERVICIO'])
 const ADMINS = new Set(['superadmin', 'administrador'])
-export const CATEGORIAS = ['NOTA', 'SEGUIMIENTO', 'LLAMADA', 'VISITA', 'RECOGIDA', 'NOVEDAD', 'BENEFICIARIOS', 'PAGOS', 'DOCUMENTOS', 'RECLAMO']
+export const CATEGORIAS = ['NOTA', 'SEGUIMIENTO', 'LLAMADA', 'VISITA', 'RECOGIDA', 'NOVEDAD', 'BENEFICIARIOS', 'PAGOS', 'DOCUMENTOS', 'RECLAMO', 'FAMILIA', 'TRAMITES', 'CEREMONIA']
 
 const COLOR = [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d\s.,%]+\)$/i, /^var\(--[\w-]+\)$/]
 const SANEO = {
@@ -106,7 +106,7 @@ export async function listar(req, reply) {
     WHERE b.entidad_tipo = $1 AND b.entidad_id = $2
     ORDER BY b.creado_en DESC`, [tipo, id])
 
-  const eventos = tipo === 'POLIZA' ? await eventosPoliza(id) : []
+  const eventos = tipo === 'POLIZA' ? await eventosPoliza(id) : await eventosServicio(id)
   return reply.send({ data: { notas: notas.rows, eventos, categorias: CATEGORIAS } })
 }
 
@@ -175,6 +175,63 @@ async function eventosPoliza(polizaId) {
   for (const r of renov) add(`ren-${r.id}`, r.fecha, 'RENOVACION', 'renovacion', 'Renovación anual de la póliza',
     `Cuota ${pesos(r.cuota_anterior)} → ${pesos(r.cuota_nueva)} (+${String(+r.porcentaje).replace('.', ',')} % salario mínimo ${r.anio_smmlv}${r.proyectado ? ', proyectado' : ''})`,
     r.usuario || 'Automática')
+  return ev
+}
+
+// Lo que el sistema ya registró sobre el servicio funerario (su historial de
+// cambios, traslados, tanatopraxia y las fechas clave) como eventos de bitácora
+const MODULO_SRV = {
+  items: ['SERVICIO_ITEM', 'Servicios del paquete'], personal: ['PERSONAL', 'Personal'], traslados: ['TRASLADO', 'Traslados'],
+  tramites: ['TRAMITE', 'Trámites'], documentos: ['DOCUMENTO', 'Documentos'], info: ['SERVICIO', 'Información del servicio'],
+  fallecido: ['SERVICIO', 'Datos del fallecido'], contratante: ['SERVICIO', 'Contratante'], tanatopraxia: ['TANATOPRAXIA', 'Tanatopraxia'],
+}
+const DISPOSICION = { INHUMACION: 'Inhumación', CREMACION: 'Cremación', TRASLADO: 'Traslado' }
+const fHora = d => d ? new Date(d).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''
+
+async function eventosServicio(servicioId) {
+  const q = (sql) => pool.query(sql, [servicioId]).then(r => r.rows)
+  const [srv, audit, tras, tana] = await Promise.all([
+    q(`SELECT sf.*, u.nombre AS usuario, sa.nombre AS sala,
+              COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS difunto
+         FROM servicios_funerarios sf LEFT JOIN usuarios u ON u.id = sf.usuario_id
+         LEFT JOIN terceros t ON t.id = sf.difunto_id LEFT JOIN salas_velacion sa ON sa.id = sf.sala_id
+        WHERE sf.id = $1`),
+    q(`SELECT a.id, a.modulo, a.accion, a.metadatos, a.creado_en, u.nombre AS usuario
+         FROM servicio_auditoria a LEFT JOIN usuarios u ON u.id = a.usuario_id WHERE a.servicio_id = $1`),
+    q(`SELECT id, tipo, origen, destino, fecha_hora, vehiculo, conductor, completado, creado_en FROM traslados WHERE servicio_id = $1`),
+    q(`SELECT o.id, o.tipo_servicio, o.estado, o.responsable, o.hora_inicio, o.hora_fin, o.creado_en, u.nombre AS usuario
+         FROM ordenes_tanatopraxia o LEFT JOIN usuarios u ON u.id = o.usuario_id WHERE o.servicio_id = $1`),
+  ])
+
+  const ev = []
+  const add = (id, fecha, tipo, icono, titulo, detalle, usuario) => fecha && ev.push({ id, fecha, tipo, icono, titulo, detalle, usuario })
+
+  for (const s of srv) {
+    const disp = DISPOSICION[s.tipo_disposicion] || s.tipo_disposicion || ''
+    add('srv', s.creado_en, 'SERVICIO', 'servicio', `Servicio ${s.codigo || 'N° ' + (s.numero ?? '')} abierto`,
+      `Difunto: ${s.difunto || '—'}${disp ? ` · ${disp}` : ''}`, s.usuario)
+    if (s.observaciones?.trim()) add('srv-obs', s.creado_en, 'OBSERVACION', 'nota', 'Observaciones del servicio', s.observaciones.trim(), s.usuario)
+    if (s.fecha_recogida) add('srv-rec', s.fecha_recogida, 'RECOGIDA', 'traslado', 'Recogida del cuerpo', s.lugar_recogida || '', null)
+    if (s.fecha_velacion_ini) add('srv-vel', s.fecha_velacion_ini, 'VELACION', 'velacion', 'Inicio de la velación',
+      `${s.sala || 'Sala'}${s.fecha_velacion_fin ? ` · hasta ${fHora(s.fecha_velacion_fin)}` : ''}`, null)
+    if (s.fecha_disposicion) add('srv-disp', s.fecha_disposicion, 'DISPOSICION', 'disposicion', `${disp || 'Disposición final'}`,
+      [s.lugar_disposicion, s.iglesia && `Iglesia: ${s.iglesia}`, s.coro && `Coro: ${s.coro}`].filter(Boolean).join(' · '), null)
+  }
+  for (const a of audit) {
+    const [tipo, area] = MODULO_SRV[a.modulo] || ['SERVICIO', a.modulo || 'Servicio']
+    const m = a.metadatos && typeof a.metadatos === 'object' ? a.metadatos : null
+    const detalle = m?.origen || m?.destino ? `${m.origen || '—'} → ${m.destino || '—'}` : area
+    // "NaN% completado": el porcentaje de trámites se calculaba mal en registros viejos
+    add(`aud-${a.id}`, a.creado_en, tipo, tipo.toLowerCase(), String(a.accion || '').replace(/\s*\(NaN% completado\)/, ''), detalle, a.usuario)
+  }
+  for (const t of tras) {
+    if (t.completado && t.fecha_hora) add(`tr-${t.id}`, t.fecha_hora, 'TRASLADO', 'traslado', `Traslado realizado (${String(t.tipo || '').replace(/_/g, ' ').toLowerCase()})`,
+      [`${t.origen || '—'} → ${t.destino || '—'}`, t.vehiculo, t.conductor].filter(Boolean).join(' · '), null)
+  }
+  for (const o of tana) {
+    add(`tan-${o.id}`, o.creado_en, 'TANATOPRAXIA', 'tanatopraxia', `Orden de tanatopraxia${o.tipo_servicio ? ` · ${o.tipo_servicio}` : ''}`,
+      `Estado: ${o.estado}${o.responsable ? ` · responsable ${o.responsable}` : ''}`, o.usuario)
+  }
   return ev
 }
 

@@ -1439,8 +1439,12 @@ export async function actualizarChecklist(req, reply) {
   ])
 
   if (!res.rows.length) return reply.code(404).send({ error: 'Servicio no encontrado' })
-  const pct = checklist ? Math.round(checklist.filter(i=>i.done).length / checklist.length * 100) : 0
-  await audit(id, req.user?.id, 'tramites', `Actualizó trámites legales (${pct}% completado)`)
+  // Lista vacía daba 0/0 = "NaN% completado"
+  const lista = Array.isArray(checklist) ? checklist : []
+  const hechos = lista.filter(i => i.done).length
+  await audit(id, req.user?.id, 'tramites', lista.length
+    ? `Actualizó trámites legales (${hechos} de ${lista.length} · ${Math.round(hechos / lista.length * 100)}% completado)`
+    : 'Actualizó trámites legales')
   return reply.send({ data: res.rows[0] })
 }
 

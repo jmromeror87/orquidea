@@ -47,10 +47,16 @@ export const CATEGORIAS = {
   PAGOS:         { label:'Pagos',               icon:'💳', color:'#15803d', bg:'#dcfce7' },
   DOCUMENTOS:    { label:'Documentos',          icon:'📄', color:'#334155', bg:'#e2e8f0' },
   RECLAMO:       { label:'Reclamo / queja',     icon:'❗', color:'#b91c1c', bg:'#fee2e2' },
+  FAMILIA:       { label:'Familia / dolientes', icon:'👪', color:'#9d174d', bg:'#fce7f3' },
+  TRAMITES:      { label:'Trámites',            icon:'📋', color:'#0f766e', bg:'#ccfbf1' },
+  CEREMONIA:     { label:'Ceremonia / exequias', icon:'🕯️', color:'#7c2d12', bg:'#ffedd5' },
 }
 const EVENTOS = {
   POLIZA:'🛡️', PAGO:'💳', ANULACION:'⛔', BENEFICIARIO:'👤', EJECUCION:'🕊️', TRANSFERENCIA:'🔄',
   CANCELACION:'⛔', REACTIVACION:'✅', SERVICIO:'⚱️', OBSERVACION:'📝', RENOVACION:'📈',
+  // Servicio funerario
+  SERVICIO_ITEM:'📦', PERSONAL:'👥', TRASLADO:'🚐', TRAMITE:'📝', DOCUMENTO:'🗂️', TANATOPRAXIA:'🩺',
+  RECOGIDA:'🚐', VELACION:'🕯️', DISPOSICION:'⚱️',
 }
 const ADMINS = ['superadmin', 'administrador']
 
@@ -412,7 +418,7 @@ export default function Bitacora({ tipo = 'poliza', entidadId, titulo = '', pued
         <div className="bt-vacio">
           <NotebookPen size={34}/>
           <b>{q || categoria || filtro !== 'TODO' ? 'Nada coincide con el filtro' : 'La bitácora está vacía'}</b>
-          {puedeEscribir && !q && !categoria && 'Use "Nueva nota" para registrar lo que suceda con esta póliza.'}
+          {puedeEscribir && !q && !categoria && `Use "Nueva nota" para registrar lo que suceda con ${tipo === 'servicio' ? 'este servicio' : 'esta póliza'}.`}
         </div>
       ) : (
         <>
