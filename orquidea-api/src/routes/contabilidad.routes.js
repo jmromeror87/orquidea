@@ -9,7 +9,7 @@ import { requireRole } from '../middlewares/role.middleware.js'
 import {
   arbol, select, obtener, crear, actualizar, toggleActiva, verificarOrigen, resumen,
   libroDiario, libroDiarioResumen, libroAuxiliar,
-  balanceComprobacion, estadoResultados, estadoSituacion, flujoCaja,
+  balanceComprobacion, estadoResultados, estadoSituacion, flujoCaja, resumenFinanciero,
 } from '../controllers/contabilidad.controller.js'
 
 const contadores = [verifyToken, requireRole('superadmin', 'administrador', 'contador')]
@@ -31,5 +31,6 @@ export default async function contabilidadRoutes(fastify) {
   fastify.get('/reportes/balance-comprobacion', { preHandler: contadores }, balanceComprobacion)
   fastify.get('/reportes/estado-resultados',    { preHandler: contadores }, estadoResultados)
   fastify.get('/reportes/estado-situacion',     { preHandler: contadores }, estadoSituacion)
+  fastify.get('/reportes/resumen-financiero', { preHandler: contadores }, resumenFinanciero)
   fastify.get('/reportes/flujo-caja',           { preHandler: contadores }, flujoCaja)
 }

@@ -20,6 +20,7 @@ import { useState, useEffect, useMemo, Fragment } from 'react'
 import {
   BookOpen, Search, Check, Pencil, Power, RefreshCw, Plus, ChevronLeft, ChevronRight,
 } from 'lucide-react'
+import EstadosFinancierosTab from './EstadosFinancierosTab.jsx'
 import api from '../../services/api.js'
 import { toast } from '../../store/toast.store.js'
 import ReportesFinancierosTab from './ReportesFinancierosTab.jsx'
@@ -927,6 +928,7 @@ function TabLibroAuxiliar() {
 // SHELL: pestañas del módulo de Contabilidad
 // ═══════════════════════════════════════════════════════════════════════
 const SUBTABS = [
+  { key: 'resumen',  label: 'Estados Financieros' },
   { key: 'puc',      label: 'Plan de Cuentas' },
   { key: 'diario',   label: 'Libro Diario' },
   { key: 'auxiliar', label: 'Libro Auxiliar' },
@@ -935,7 +937,7 @@ const SUBTABS = [
 ]
 
 export default function ContabilidadPage() {
-  const [tab, setTab] = useState('puc')
+  const [tab, setTab] = useState('resumen')
 
   return (
     <div className="ctb-page">
@@ -957,6 +959,7 @@ export default function ContabilidadPage() {
         ))}
       </div>
 
+      {tab === 'resumen'  && <EstadosFinancierosTab />}
       {tab === 'puc'      && <TabPlanCuentas />}
       {tab === 'diario'   && <TabLibroDiario />}
       {tab === 'auxiliar' && <TabLibroAuxiliar />}

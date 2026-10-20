@@ -663,6 +663,77 @@ export async function flujoCaja(req, reply) {
   })
 }
 
+// ── Resumen financiero (P&G del período + Balance a la fecha) ─────────────
+// Vista gerencial de una sola pantalla, como en YaROM POS: estado de
+// resultados del rango y balance general al "hasta", con las cuentas
+// auxiliares que tienen saldo (cada caja, banco, ingreso y gasto por nombre).
+// Lee el libro diario real (partida doble), no estimaciones.
+export async function resumenFinanciero(req, reply) {
+  const { desde, hasta } = req.query
+  if (!desde || !hasta) return reply.code(400).send({ data: null, error: 'desde y hasta son requeridos' })
+  const { porCodigo } = await cargarPucIndexado()
+  const anioInicio = `${String(hasta).slice(0, 4)}-01-01`
+
+  const movs = (sql, params) => pool.query(sql, params).then(r => new Map(r.rows.map(m => [m.cuenta_codigo, { debe: +m.debe, haber: +m.haber }])))
+  const SUMA = `SELECT a.cuenta_codigo, COALESCE(SUM(a.debe),0) AS debe, COALESCE(SUM(a.haber),0) AS haber
+    FROM asientos_contables a JOIN comprobantes_contables c ON c.id = a.comprobante_id
+    JOIN contabilidad_puc p ON p.codigo = a.cuenta_codigo WHERE c.estado IN ${ESTADOS_EN_LIBROS}`
+  const [pyg, bal, historico, nComp] = await Promise.all([
+    movs(`${SUMA} AND c.fecha_contable BETWEEN $1 AND $2 AND p.clase_codigo IN ('4','5','6','7') GROUP BY a.cuenta_codigo`, [desde, hasta]),
+    movs(`${SUMA} AND c.fecha_contable <= $1 AND p.clase_codigo IN ('1','2','3') GROUP BY a.cuenta_codigo`, [hasta]),
+    movs(`${SUMA} AND c.fecha_contable <= $1 AND p.clase_codigo IN ('4','5','6','7') GROUP BY a.cuenta_codigo`, [hasta]),
+    pool.query(`SELECT COUNT(DISTINCT c.id)::int AS n FROM comprobantes_contables c JOIN asientos_contables a ON a.comprobante_id = c.id
+      WHERE c.estado = 'CONTABILIZADO' AND c.fecha_contable BETWEEN $1 AND $2 AND a.cuenta_codigo LIKE '4%' AND a.haber > 0`, [desde, hasta]),
+  ])
+
+  // Cuentas hoja con saldo, por clase
+  const hojas = (mapa, prefijos) => [...mapa].filter(([c]) => prefijos.some(p => c.startsWith(p)))
+    .map(([codigo, m]) => { const cta = porCodigo.get(codigo); return { codigo, nombre: cta?.nombre || codigo, saldo: cta ? saldoNeto(cta, m.debe, m.haber) : 0 } })
+    .filter(x => Math.abs(x.saldo) >= 0.5).sort((a, b) => a.codigo.localeCompare(b.codigo))
+  const total = (mapa, clase) => { const m = acumularJerarquia(porCodigo, mapa).get(clase); const cta = porCodigo.get(clase); return m && cta ? saldoNeto(cta, m.debe, m.haber) : 0 }
+
+  // Estado de resultados del período
+  const ingresos = hojas(pyg, ['4'])
+  const costos   = hojas(pyg, ['6', '7'])
+  const gastos   = hojas(pyg, ['5']).sort((a, b) => b.saldo - a.saldo)
+  const ingresosNetos = total(pyg, '4')
+  const ingresosOp    = total(pyg, '41')
+  const costoVentas   = total(pyg, '6') + total(pyg, '7')
+  const totalGastos   = total(pyg, '5')
+  const utilidadBruta = ingresosNetos - costoVentas
+  const utilidadNeta  = utilidadBruta - totalGastos
+  const pct = v => ingresosNetos > 0 ? Math.round(v / ingresosNetos * 1000) / 10 : 0
+
+  // Balance general a la fecha: íconos de las cuentas de Tesorería (formas de pago)
+  const iconos = new Map((await pool.query(`
+    SELECT tc.cuenta_contable_codigo AS codigo, MAX(fp.icono_url) AS icono_url
+    FROM tesoreria_cuentas tc LEFT JOIN formas_pago fp ON fp.cuenta_contable_codigo = tc.cuenta_contable_codigo AND fp.icono_url IS NOT NULL
+    GROUP BY 1`)).rows.map(r => [r.codigo, r.icono_url]))
+  const conIcono = l => l.map(x => ({ ...x, icono_url: iconos.get(x.codigo) || null, grupo: x.codigo.slice(0, 2) }))
+  const activos    = conIcono(hojas(bal, ['1']))
+  const pasivos    = conIcono(hojas(bal, ['2']))
+  const patrimonio = conIcono(hojas(bal, ['3']))
+  const totalActivos = total(bal, '1'), totalPasivos = total(bal, '2'), patrimonioContable = total(bal, '3')
+  // Utilidad del año corrido: sin cierre contable aún, se suma al patrimonio
+  const ejercicio = await estadoResultadosInterno(anioInicio, hasta)
+
+  return reply.send({ data: {
+    desde, hasta,
+    resultados: {
+      ingresos, costos, gastos, num_comprobantes: nComp.rows[0].n,
+      ingresos_netos: ingresosNetos, ingresos_operacionales: ingresosOp, costo_ventas: costoVentas, utilidad_bruta: utilidadBruta,
+      total_gastos: totalGastos, utilidad_neta: utilidadNeta, margen_bruto: pct(utilidadBruta), margen_neto: pct(utilidadNeta),
+    },
+    balance: {
+      activos, pasivos, patrimonio,
+      total_activos: totalActivos, total_pasivos: totalPasivos, patrimonio_contable: patrimonioContable,
+      utilidad_ejercicio: ejercicio.utilidad_neta,
+      patrimonio_neto: totalActivos - totalPasivos,
+    },
+    historico: { ingresos: total(historico, '4'), gastos: total(historico, '5') + total(historico, '6') + total(historico, '7') },
+  } })
+}
+
 // Versión interna (sin req/reply) reutilizada por estadoSituacion para
 // calcular la utilidad del ejercicio corrido sin duplicar la consulta SQL.
 async function estadoResultadosInterno(desde, hasta) {
