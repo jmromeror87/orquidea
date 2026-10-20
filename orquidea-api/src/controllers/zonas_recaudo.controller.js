@@ -23,12 +23,14 @@ export async function listarZonas(req, reply) {
   const r = await pool.query(`
     SELECT z.*, s.nombre AS sede_nombre,
       COUNT(DISTINCT rr.id) AS total_rutas,
-      COUNT(DISTINCT pr.poliza_id) AS total_polizas
+      COUNT(DISTINCT pr.poliza_id) AS total_polizas,
+      (SELECT COUNT(*) FROM terceros t WHERE t.zona_recaudo_id = z.id)::int AS total_titulares
     FROM zonas_recaudo z
     LEFT JOIN sedes s ON s.id = z.sede_id
     LEFT JOIN rutas_recaudo rr ON rr.zona_id = z.id AND rr.activa
     LEFT JOIN poliza_ruta pr ON pr.ruta_id = rr.id AND pr.activa
-    WHERE ($1::uuid[] IS NULL OR z.sede_id = ANY($1::uuid[]))
+    -- Las eliminadas que tenían historial quedan archivadas (activa = FALSE)
+    WHERE z.activa AND ($1::uuid[] IS NULL OR z.sede_id = ANY($1::uuid[]))
     GROUP BY z.id, s.nombre ORDER BY z.nombre
   `, [sedeIds])
   return reply.send({ data: r.rows })
@@ -70,8 +72,58 @@ export async function eliminarZona(req, reply) {
   if (!(await zonaPermitida(pool, req.params.id, sedeIds))) {
     return reply.code(403).send({ error: 'No tiene acceso a esta zona' })
   }
-  await pool.query(`UPDATE zonas_recaudo SET activa=FALSE WHERE id=$1`, [req.params.id])
-  return reply.send({ ok: true })
+  const id = req.params.id
+  // No se elimina si hay cobro en marcha: pólizas asignadas o citas pendientes
+  const uso = (await pool.query(`
+    SELECT
+      (SELECT COUNT(DISTINCT pr.poliza_id) FROM poliza_ruta pr JOIN rutas_recaudo rr ON rr.id = pr.ruta_id
+        WHERE rr.zona_id = $1 AND rr.activa AND pr.activa)::int AS polizas,
+      (SELECT COUNT(*) FROM recaudo_agenda a JOIN rutas_recaudo rr ON rr.id = a.ruta_id
+        WHERE rr.zona_id = $1 AND a.estado = 'PENDIENTE')::int AS citas`, [id])).rows[0]
+  if (uso.polizas) return reply.code(409).send({ error: `La zona tiene ${uso.polizas} póliza${uso.polizas > 1 ? 's' : ''} asignada${uso.polizas > 1 ? 's' : ''} en sus rutas. Retírelas o páselas a otra ruta antes de eliminarla.` })
+  if (uso.citas) return reply.code(409).send({ error: `La zona tiene ${uso.citas} cita${uso.citas > 1 ? 's' : ''} de cobro pendiente${uso.citas > 1 ? 's' : ''}. Atiéndalas o cancélelas en Recaudo → Calendario.` })
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    // Rutas: las que nunca se usaron se borran; las que tienen órdenes de cobro
+    // (historial de visitas y recibos) se archivan para no perderlo
+    const rutas = (await client.query(`
+      SELECT rr.id, EXISTS (SELECT 1 FROM ordenes_recaudo o WHERE o.ruta_id = rr.id)
+                 OR EXISTS (SELECT 1 FROM recaudo_agenda a WHERE a.ruta_id = rr.id) AS con_historial
+      FROM rutas_recaudo rr WHERE rr.zona_id = $1`, [id])).rows
+    for (const r of rutas) {
+      if (r.con_historial) await client.query(`UPDATE rutas_recaudo SET activa = FALSE WHERE id = $1`, [r.id])
+      else await client.query(`DELETE FROM rutas_recaudo WHERE id = $1`, [r.id])
+    }
+    const archivar = rutas.some(r => r.con_historial)
+      || (await client.query(`SELECT 1 FROM terceros WHERE zona_recaudo_id = $1 LIMIT 1`, [id])).rows.length > 0
+    if (archivar) await client.query(`UPDATE zonas_recaudo SET activa = FALSE WHERE id = $1`, [id])
+    else await client.query(`DELETE FROM zonas_recaudo WHERE id = $1`, [id])
+    await client.query('COMMIT')
+    return reply.send({ ok: true, archivada: archivar })
+  } catch (e) { await client.query('ROLLBACK'); throw e } finally { client.release() }
+}
+
+// DELETE /api/zonas-recaudo/rutas/:id
+export async function eliminarRuta(req, reply) {
+  const { sedeIds } = resolverSede(req)
+  if (!(await rutaPermitida(pool, req.params.id, sedeIds))) {
+    return reply.code(403).send({ error: 'No tiene acceso a esta ruta' })
+  }
+  const id = req.params.id
+  const uso = (await pool.query(`
+    SELECT
+      (SELECT COUNT(*) FROM poliza_ruta WHERE ruta_id = $1 AND activa)::int AS polizas,
+      (SELECT COUNT(*) FROM recaudo_agenda WHERE ruta_id = $1 AND estado = 'PENDIENTE')::int AS citas,
+      EXISTS (SELECT 1 FROM ordenes_recaudo WHERE ruta_id = $1) OR EXISTS (SELECT 1 FROM recaudo_agenda WHERE ruta_id = $1) AS con_historial`, [id])).rows[0]
+  if (uso.polizas) return reply.code(409).send({ error: `La ruta tiene ${uso.polizas} póliza${uso.polizas > 1 ? 's' : ''} asignada${uso.polizas > 1 ? 's' : ''}. Retírelas o páselas a otra ruta antes de eliminarla.` })
+  if (uso.citas) return reply.code(409).send({ error: `La ruta tiene ${uso.citas} cita${uso.citas > 1 ? 's' : ''} de cobro pendiente${uso.citas > 1 ? 's' : ''}. Atiéndalas o cancélelas en Recaudo → Calendario.` })
+  // Con historial de cobros se archiva (borrarla eliminaría en cascada órdenes,
+  // visitas y recibos); sin historial se borra del todo
+  if (uso.con_historial) await pool.query(`UPDATE rutas_recaudo SET activa = FALSE WHERE id = $1`, [id])
+  else await pool.query(`DELETE FROM rutas_recaudo WHERE id = $1`, [id])
+  return reply.send({ ok: true, archivada: uso.con_historial })
 }
 
 // GET /api/zonas-recaudo/:zona_id/rutas
@@ -87,7 +139,7 @@ export async function listarRutas(req, reply) {
     FROM rutas_recaudo rr
     LEFT JOIN usuarios u ON u.id = rr.recaudador_id
     LEFT JOIN poliza_ruta pr ON pr.ruta_id = rr.id AND pr.activa
-    WHERE rr.zona_id = $1
+    WHERE rr.zona_id = $1 AND rr.activa
     GROUP BY rr.id, u.nombre ORDER BY rr.nombre
   `, [req.params.zona_id])
   return reply.send({ data: r.rows })

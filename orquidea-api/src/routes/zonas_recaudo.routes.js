@@ -18,7 +18,7 @@ import { requirePermiso } from '../middlewares/permiso.middleware.js'
 import { verifyToken } from '../middlewares/auth.middleware.js'
 import {
   listarZonas, crearZona, actualizarZona, eliminarZona,
-  listarRutas, crearRuta, actualizarRuta,
+  listarRutas, crearRuta, actualizarRuta, eliminarRuta,
   polizasDeRuta, asignarPoliza, quitarPoliza,
   listarRecaudadores,
   polizasSugeridas, asignarTodasSugeridas,
@@ -38,6 +38,7 @@ export default async function zonasRecaudoRoutes(fastify) {
   fastify.get('/:zona_id/rutas',                  { preHandler: auth }, listarRutas)
   fastify.post('/:zona_id/rutas',                 { preHandler: puede('crear') }, crearRuta)
   fastify.put('/rutas/:id',                       { preHandler: puede('editar') }, actualizarRuta)
+  fastify.delete('/rutas/:id',                    { preHandler: puede('eliminar') }, eliminarRuta)
   fastify.get('/rutas/:id/polizas',                      { preHandler: auth }, polizasDeRuta)
   fastify.post('/rutas/:id/polizas',                     { preHandler: puede('editar') }, asignarPoliza)
   fastify.delete('/rutas/:id/polizas/:poliza_id',        { preHandler: puede('editar') }, quitarPoliza)

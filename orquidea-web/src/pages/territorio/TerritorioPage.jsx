@@ -12,7 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   MapPin, Building2, Layers, Plus, Pencil, Trash2,
   Search, X, Loader2, CheckCircle2, XCircle, ChevronRight,
-  Globe2, Map, Route, ArrowLeft, Users,
+  Globe2, Map, Route, ArrowLeft, Users, HelpCircle, ChevronDown, CalendarDays, AlertTriangle,
 } from 'lucide-react'
 import { usePermisos } from '../../store/permisos.store.js'
 import api from '../../services/api.js'
@@ -306,6 +306,32 @@ const CSS = `
   }
 
   /* Zona cards */
+  .zr-ayuda { margin:14px 24px 0; border:1.5px solid #E0E7FF; background:#F8FAFF; border-radius:14px; overflow:hidden; }
+  .zr-ayuda-tog { width:100%; display:flex; align-items:center; gap:8px; padding:11px 14px; border:none; background:none; cursor:pointer;
+    font-size:13px; font-weight:800; color:#3730A3; font-family:inherit; }
+  .zr-ayuda-pasos { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; padding:0 14px 14px; }
+  .zr-paso { display:flex; gap:10px; background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:10px 12px; }
+  .zr-paso b { font-size:13px; color:#0F1035; }
+  .zr-paso p { margin:2px 0 0; font-size:12px; color:#6B7280; line-height:1.45; }
+  .zr-paso-n { width:24px; height:24px; border-radius:8px; background:#4338CA; color:#fff; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .zr-ayuda-nota { grid-column:1/-1; font-size:11.5px; color:#6B7280; }
+  .zr-hint { display:block; font-size:11px; color:#9CA3AF; margin-top:4px; line-height:1.4; }
+  .zr-preset { padding:5px 10px; border-radius:8px; border:1.5px solid #E0E7FF; background:#fff; color:#4338CA; font-size:11.5px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .zr-preset:hover { background:#EEF2FF; }
+  .zr-card2 { background:#fff; border:1.5px solid #E8E9F8; border-radius:16px; cursor:pointer; overflow:hidden; display:flex; flex-direction:column;
+    transition:box-shadow .15s, border-color .15s; }
+  .zr-card2:hover { border-color:#C7D2FE; box-shadow:0 6px 18px rgba(67,56,202,.10); }
+  .zr-card2-bar { height:5px; }
+  .zr-card2-body { padding:14px 16px 10px; display:flex; flex-direction:column; gap:8px; flex:1; }
+  .zr-card2-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:4px; }
+  .zr-card2-stats > div { background:#F8F9FF; border-radius:10px; padding:7px 8px; text-align:center; }
+  .zr-card2-stats b { display:block; font-size:17px; font-weight:900; color:#0F1035; line-height:1.1; }
+  .zr-card2-stats span { font-size:10px; font-weight:700; color:#9CA3AF; text-transform:uppercase; letter-spacing:.04em; }
+  .zr-card2-foot { display:flex; align-items:center; gap:6px; padding:10px 16px; border-top:1px solid #F1F2F8; background:#FCFCFF; }
+  .zr-card2-ver { margin-right:auto; display:flex; align-items:center; gap:4px; border:none; background:none; color:#4338CA; font-weight:800; font-size:12.5px; cursor:pointer; padding:0; font-family:inherit; }
+  .zr-del { color:#DC2626 !important; }
+  .zr-del:disabled { opacity:.35; cursor:not-allowed; }
+  @media (max-width:900px) { .zr-ayuda-pasos { grid-template-columns:1fr; } }
   .zr-grid {
     display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; margin-bottom:16px;
   }
@@ -1048,6 +1074,37 @@ const ZR_TIPO_STYLE = {
   MIXTA:  { bg:'#FEF3C7', color:'#92400E' },
 }
 const zrTc = t => ZR_TIPO_STYLE[t] || { bg:'#F3F4F6', color:'#374151' }
+const ZR_TIPO_AYUDA = {
+  URBANA: 'Barrios del casco urbano: recorridos cortos, varias visitas por día.',
+  RURAL:  'Veredas y corregimientos: recorridos largos, menos visitas por día.',
+  MIXTA:  'Combina barrios y veredas cercanas.',
+}
+// Atajos de días de cobro más usados
+const ZR_PRESETS_DIAS = [
+  { label:'Quincenal (1 y 15)',  dias:[1, 15] },
+  { label:'Quincenal (15 y 30)', dias:[15, 30] },
+  { label:'Cada 10 días',        dias:[10, 20, 30] },
+  { label:'Mensual (día 5)',     dias:[5] },
+]
+// Próxima fecha en que la ruta sale a cobrar (los días 29-31 caen al último día de meses cortos)
+function proximoCobro(dias) {
+  if (!dias?.length) return null
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+  for (let m = 0; m < 2; m++) {
+    const y = hoy.getFullYear(), mes = hoy.getMonth() + m
+    const ult = new Date(y, mes + 1, 0).getDate()
+    const fechas = [...new Set(dias.map(d => Math.min(d, ult)))].sort((a, b) => a - b).map(d => new Date(y, mes, d))
+    const f = fechas.find(x => x >= hoy)
+    if (f) return f
+  }
+  return null
+}
+const fCobro = f => {
+  if (!f) return null
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+  const dif = Math.round((f - hoy) / 86400000)
+  return dif === 0 ? 'Hoy' : dif === 1 ? 'Mañana' : f.toLocaleDateString('es-CO', { weekday:'short', day:'numeric', month:'short' })
+}
 
 /* ════════════════════════════════════════
    PÁGINA PRINCIPAL
@@ -1094,6 +1151,13 @@ export default function TerritorioPage() {
   const [loadingSug,    setLoadingSug]    = useState(false)
   const [asignandoTodas,setAsignandoTodas] = useState(false)
   const [selSugeridas,  setSelSugeridas]  = useState(new Set())
+  // Eliminar zona/ruta (con confirmación) y ayuda plegable
+  const [confirmDel,    setConfirmDel]    = useState(null)  // { tipo:'zona'|'ruta', item }
+  const [eliminando,    setEliminando]    = useState(false)
+  const [ayudaZr,       setAyudaZr]       = useState(() => { try { return localStorage.getItem('zr-ayuda') !== '0' } catch { return true } })
+  const { puede: puedePerm } = usePermisos()
+  const zrCrear = puedePerm('territorio', 'crear'), zrEditar = puedePerm('territorio', 'editar'), zrEliminar = puedePerm('territorio', 'eliminar')
+  const toggleAyudaZr = () => setAyudaZr(v => { try { localStorage.setItem('zr-ayuda', v ? '0' : '1') } catch {} ; return !v })
 
   useEffect(() => {
     Promise.all([
@@ -1186,6 +1250,21 @@ export default function TerritorioPage() {
       await cargarRutas(zonaSel.id)
     } catch(e) { setErrRuta(e.response?.data?.error || 'Error al guardar'); toast.error(e.response?.data?.error || 'Error al guardar') }
     finally { setSavingRuta(false) }
+  }
+
+  const confirmarEliminar = async () => {
+    const { tipo, item } = confirmDel
+    setEliminando(true)
+    try {
+      const r = tipo === 'zona'
+        ? await api.delete(`/zonas-recaudo/${item.id}`)
+        : await api.delete(`/zonas-recaudo/rutas/${item.id}`)
+      toast.success(`${tipo === 'zona' ? 'Zona' : 'Ruta'} "${item.nombre}" eliminada${r.data.archivada ? ' (su historial de cobros se conserva)' : ''}`)
+      setConfirmDel(null)
+      if (tipo === 'zona') { if (zonaSel?.id === item.id) { setZonaSel(null); setSeccionTab('zonas') } await cargarZonas() }
+      else { if (rutaPolizas?.id === item.id) setRutaPolizas(null); await cargarRutas(zonaSel.id); cargarZonas() }
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo eliminar', 7000) }
+    finally { setEliminando(false) }
   }
 
   const toggleDia = (dia) => {
@@ -1304,6 +1383,30 @@ export default function TerritorioPage() {
   return (
     <>
       <style>{CSS}</style>
+      {confirmDel && (
+        <div style={{position:'fixed',inset:0,background:'rgba(15,16,53,.45)',backdropFilter:'blur(3px)',zIndex:1200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:18,width:'100%',maxWidth:440,boxShadow:'0 24px 70px rgba(0,0,0,.28)',overflow:'hidden'}}>
+            <div style={{display:'flex',gap:12,alignItems:'flex-start',padding:'18px 20px'}}>
+              <div style={{width:40,height:40,borderRadius:12,background:'#FEE2E2',color:'#DC2626',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><AlertTriangle size={20}/></div>
+              <div>
+                <div style={{fontSize:15.5,fontWeight:900,color:'#0F1035'}}>Eliminar {confirmDel.tipo} "{confirmDel.item.nombre}"</div>
+                <p style={{margin:'6px 0 0',fontSize:12.5,color:'#4B5563',lineHeight:1.55}}>
+                  {confirmDel.tipo === 'zona'
+                    ? 'Se eliminan la zona y sus rutas. Si alguna ruta ya tuvo cobros, su historial (visitas y recibos) se conserva archivado.'
+                    : 'Se elimina la ruta. Si ya tuvo cobros, su historial (visitas y recibos) se conserva archivado.'}
+                  {' '}Las pólizas no se modifican.
+                </p>
+              </div>
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',gap:8,padding:'12px 20px',borderTop:'1px solid #F1F2F8',background:'#FAFBFF'}}>
+              <button className="zr-add-btn-sec" onClick={()=>setConfirmDel(null)} disabled={eliminando}>Cancelar</button>
+              <button className="zr-add-btn" style={{background:'#DC2626'}} onClick={confirmarEliminar} disabled={eliminando}>
+                {eliminando ? <Loader2 size={13} style={{animation:'spin 1s linear infinite'}}/> : <Trash2 size={13}/>} Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="terr">
 
         {/* Header */}
@@ -1407,6 +1510,22 @@ export default function TerritorioPage() {
             </div>
           </div>
 
+          {/* Ayuda: cómo se organiza el cobro */}
+          <div className="zr-ayuda">
+            <button className="zr-ayuda-tog" onClick={toggleAyudaZr}>
+              <HelpCircle size={15}/> ¿Cómo se organiza el cobro en campo?
+              <ChevronDown size={15} style={{ marginLeft:'auto', transform: ayudaZr ? 'rotate(180deg)' : 'none', transition:'transform .2s' }}/>
+            </button>
+            {ayudaZr && (
+              <div className="zr-ayuda-pasos">
+                <div className="zr-paso"><span className="zr-paso-n">1</span><div><b>Zona</b><p>Un sector del municipio (casco urbano, veredas del norte…). Agrupa rutas y se marca con un color.</p></div></div>
+                <div className="zr-paso"><span className="zr-paso-n">2</span><div><b>Ruta</b><p>El recorrido de un recaudador dentro de la zona, con los <b>días del mes</b> en que sale a cobrar.</p></div></div>
+                <div className="zr-paso"><span className="zr-paso-n">3</span><div><b>Pólizas</b><p>Se asignan a la ruta (el sistema sugiere las de la zona). Esos días aparecen en <b>Recaudo → Calendario</b> para cobrarlas.</p></div></div>
+                <div className="zr-ayuda-nota">Cree solo las zonas y rutas que use. Se pueden eliminar cuando no tengan pólizas asignadas; si ya tuvieron cobros, su historial se conserva.</div>
+              </div>
+            )}
+          </div>
+
           {/* ── TAB ZONAS ── */}
           {seccionTab === 'zonas' && (
             <div className="zr-body">
@@ -1437,10 +1556,11 @@ export default function TerritorioPage() {
                     <div className="zr-field">
                       <label>Tipo</label>
                       <select value={fZona.tipo} onChange={e=>setFZona(f=>({...f,tipo:e.target.value}))}>
-                        <option value="URBANA">URBANA</option>
-                        <option value="RURAL">RURAL</option>
-                        <option value="MIXTA">MIXTA</option>
+                        <option value="URBANA">Urbana</option>
+                        <option value="RURAL">Rural</option>
+                        <option value="MIXTA">Mixta</option>
                       </select>
+                      <span className="zr-hint">{ZR_TIPO_AYUDA[fZona.tipo]}</span>
                     </div>
                     {esAdminSede && (
                       <div className="zr-field">
@@ -1465,6 +1585,7 @@ export default function TerritorioPage() {
                         <div className="zr-color-preview" style={{background:fZona.color}}/>
                         <span style={{fontSize:12,color:'#6B7280',fontWeight:600}}>{fZona.color}</span>
                       </div>
+                      <span className="zr-hint">Identifica la zona en el calendario de Recaudo.</span>
                     </div>
                   </div>
                   {errZona && (
@@ -1491,47 +1612,49 @@ export default function TerritorioPage() {
               ) : zonas.length === 0 ? (
                 <div className="zr-empty">
                   <Route size={36}/>
-                  <p>No hay zonas de recaudo registradas.<br/>Crea la primera zona.</p>
+                  <p>No hay zonas de recaudo.<br/>Empiece creando una zona (por ejemplo "Casco urbano") y luego sus rutas.</p>
                 </div>
               ) : (
                 <div className="zr-grid">
-                  {zonas.map(z => (
-                    <div key={z.id} className="zr-card" onClick={()=>selZona(z)} style={!z.activa?{opacity:.55}:{}}>
-                      <div className="zr-card-head">
-                        <div className="zr-color-dot" style={{background:z.color || '#6366F1'}}/>
-                        <div className="zr-card-name">{z.nombre}</div>
-                      </div>
-                      {z.descripcion && <p className="zr-card-desc">{z.descripcion}</p>}
-                      <div className="zr-card-meta">
-                        <span className="zr-tipo-badge" style={{background:zrTc(z.tipo).bg,color:zrTc(z.tipo).color}}>
-                          {z.tipo}
-                        </span>
-                        {z.sede_nombre && (
-                          <span className="zr-tipo-badge" style={{background:'#EEF2FF',color:'#4338CA'}}>
-                            {z.sede_nombre}
-                          </span>
-                        )}
-                        <div className="zr-card-stats">
-                          <span className="zr-stat"><Route size={11}/>{z.total_rutas} rutas</span>
-                          <span className="zr-stat" style={{color:'#6366F1'}}>{z.total_polizas} pólizas</span>
+                  {zonas.map(z => {
+                    const bloqueada = +z.total_polizas > 0
+                    return (
+                    <div key={z.id} className="zr-card2" onClick={()=>selZona(z)}>
+                      <div className="zr-card2-bar" style={{background:z.color || '#6366F1'}}/>
+                      <div className="zr-card2-body">
+                        <div className="zr-card-head">
+                          <div className="zr-color-dot" style={{background:z.color || '#6366F1'}}/>
+                          <div className="zr-card-name">{z.nombre}</div>
+                        </div>
+                        <p className="zr-card-desc" style={{minHeight:16}}>{z.descripcion || 'Sin descripción'}</p>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                          <span className="zr-tipo-badge" style={{background:zrTc(z.tipo).bg,color:zrTc(z.tipo).color}}>{z.tipo}</span>
+                          {z.sede_nombre && <span className="zr-tipo-badge" style={{background:'#EEF2FF',color:'#4338CA'}}>{z.sede_nombre}</span>}
+                        </div>
+                        <div className="zr-card2-stats">
+                          <div><b>{z.total_rutas}</b><span>Ruta{+z.total_rutas === 1 ? '' : 's'}</span></div>
+                          <div><b style={{color:'#4338CA'}}>{z.total_polizas}</b><span>Póliza{+z.total_polizas === 1 ? '' : 's'}</span></div>
+                          <div><b style={{color:'#0F766E'}}>{z.total_titulares || 0}</b><span>Titulares</span></div>
                         </div>
                       </div>
-                      <div style={{display:'flex',justifyContent:'flex-end',gap:6}} onClick={e=>e.stopPropagation()}>
-                        <button className="zr-act-btn" title="Editar zona" onClick={()=>abrirFormZona(z)}>
-                          <Pencil size={12}/>
-                        </button>
-                        <button className="zr-act-btn" title="Ver rutas" onClick={()=>selZona(z)}
-                          style={{background:'#EEF2FF',borderColor:'#C7D2FE',color:'#4338CA'}}
-                        >
-                          <ChevronRight size={12}/>
-                        </button>
+                      <div className="zr-card2-foot" onClick={e=>e.stopPropagation()}>
+                        <button className="zr-card2-ver" onClick={()=>selZona(z)}>Ver rutas <ChevronRight size={13}/></button>
+                        {zrEditar && (
+                          <button className="zr-act-btn" title="Editar zona" onClick={()=>abrirFormZona(z)}><Pencil size={12}/></button>
+                        )}
+                        {zrEliminar && (
+                          <button className="zr-act-btn zr-del" disabled={bloqueada}
+                            title={bloqueada ? `No se puede eliminar: tiene ${z.total_polizas} póliza(s) en sus rutas` : 'Eliminar zona'}
+                            onClick={()=>setConfirmDel({ tipo:'zona', item:z })}><Trash2 size={12}/></button>
+                        )}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
-              {!showFormZona && (
+              {!showFormZona && zrCrear && (
                 <button className="zr-add-btn" onClick={()=>abrirFormZona()}>
                   <Plus size={14}/> Nueva zona
                 </button>
@@ -1585,6 +1708,7 @@ export default function TerritorioPage() {
                               <option key={u.id} value={u.id}>{u.nombre}</option>
                             ))}
                           </select>
+                          <span className="zr-hint">Quien hace el recorrido; ve la ruta en su panel de Recaudo.</span>
                         </div>
                         <div className="zr-field span2">
                           <label>Descripción</label>
@@ -1596,6 +1720,16 @@ export default function TerritorioPage() {
                         </div>
                         <div className="zr-field span2">
                           <label>Días del mes para cobro</label>
+                          <span className="zr-hint" style={{marginTop:-2,marginBottom:6}}>Los días en que el recaudador sale a cobrar esta ruta. En meses cortos, el 29, 30 y 31 pasan al último día del mes.</span>
+                          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
+                            {ZR_PRESETS_DIAS.map(pr => (
+                              <button key={pr.label} type="button" className="zr-preset"
+                                onClick={()=>setFRuta(f=>({...f, dias_mes: pr.dias}))}>{pr.label}</button>
+                            ))}
+                            {fRuta.dias_mes.length > 0 && (
+                              <button type="button" className="zr-preset" style={{color:'#B91C1C'}} onClick={()=>setFRuta(f=>({...f, dias_mes: []}))}>Limpiar</button>
+                            )}
+                          </div>
                           <div className="zr-dias-grid">
                             {Array.from({length:31},(_,i)=>i+1).map(dia=>(
                               <label key={dia} className="zr-dia-chk">
@@ -1639,7 +1773,7 @@ export default function TerritorioPage() {
                   ) : rutas.length === 0 ? (
                     <div className="zr-empty">
                       <Route size={32}/>
-                      <p>No hay rutas en esta zona.<br/>Crea la primera ruta.</p>
+                      <p>Esta zona aún no tiene rutas.<br/>Cree una ruta con sus días de cobro y su recaudador, y luego asígnele las pólizas.</p>
                     </div>
                   ) : (
                     <div className="zr-ruta-list">
@@ -1666,9 +1800,12 @@ export default function TerritorioPage() {
                                 </span>
                               )}
                               <span style={{color:'#6366F1',fontWeight:700}}>{r.total_polizas} pólizas</span>
-                              <span style={{color:r.activa?'#10B981':'#DC2626',fontWeight:700}}>
-                                {r.activa?'Activa':'Inactiva'}
-                              </span>
+                              {proximoCobro(r.dias_mes) && (
+                                <span style={{display:'flex',alignItems:'center',gap:4,color:'#047857',fontWeight:700}}>
+                                  <CalendarDays size={11}/> Próximo cobro: {fCobro(proximoCobro(r.dias_mes))}
+                                </span>
+                              )}
+                              {!r.recaudador_nombre && <span style={{color:'#B45309',fontWeight:700}}>Sin recaudador</span>}
                             </div>
                           </div>
                           <div className="zr-ruta-actions">
@@ -1676,9 +1813,16 @@ export default function TerritorioPage() {
                               style={{background:'#EEF2FF',border:'1px solid #C7D2FE',color:'#4338CA'}}>
                               <Users size={12}/>
                             </button>
-                            <button className="zr-act-btn" title="Editar ruta" onClick={()=>abrirFormRuta(r)}>
-                              <Pencil size={12}/>
-                            </button>
+                            {zrEditar && (
+                              <button className="zr-act-btn" title="Editar ruta" onClick={()=>abrirFormRuta(r)}>
+                                <Pencil size={12}/>
+                              </button>
+                            )}
+                            {zrEliminar && (
+                              <button className="zr-act-btn zr-del" disabled={+r.total_polizas > 0}
+                                title={+r.total_polizas > 0 ? `No se puede eliminar: tiene ${r.total_polizas} póliza(s) asignadas` : 'Eliminar ruta'}
+                                onClick={()=>setConfirmDel({ tipo:'ruta', item:r })}><Trash2 size={12}/></button>
+                            )}
                           </div>
                         </div>
                       ))}
