@@ -185,7 +185,7 @@ const MODULO_SRV = {
   tramites: ['TRAMITE', 'Trámites'], documentos: ['DOCUMENTO', 'Documentos'], info: ['SERVICIO', 'Información del servicio'],
   fallecido: ['SERVICIO', 'Datos del fallecido'], contratante: ['SERVICIO', 'Contratante'], tanatopraxia: ['TANATOPRAXIA', 'Tanatopraxia'],
 }
-const DISPOSICION = { INHUMACION: 'Inhumación', CREMACION: 'Cremación', TRASLADO: 'Traslado' }
+const DISPOSICION = { INHUMACION: 'Inhumación', CREMACION: 'Cremación', OSARIO: 'Osario', TRASLADO: 'Traslado' }
 const fHora = d => d ? new Date(d).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''
 
 async function eventosServicio(servicioId) {

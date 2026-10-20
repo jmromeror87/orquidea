@@ -32,6 +32,7 @@ import {
   UserSquare2, Stethoscope, Handshake, Briefcase, Landmark,
   Wrench, PackageSearch, ClipboardList, Users, UserPlus, UserMinus,
 } from 'lucide-react'
+import { CSS_FICHA, Seccion, Dato, Progreso, Ayuda, ListaFaltantes, iniciales } from './fichaUI.jsx'
 import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
@@ -2376,181 +2377,165 @@ function TabFallecido({ data, servicioId, onSaved }) {
 
   if (!form) return null
 
+  const fDia = v => v ? new Date(v).toLocaleDateString('es-CO', { timeZone:'UTC', day:'numeric', month:'long', year:'numeric' }) : null
+  const op = (lista, v) => lista.find(o => o.v === v)?.l || v || null
+  const campos = camposFallecido(data)
+  const hechos = campos.filter(c => c.ok).length
+  const faltan = campos.filter(c => !c.ok).map(c => c.label)
+  const g2 = { display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:'0 16px' }
+  const g3 = { display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:'0 16px' }
+
   return (
     <div>
-      {/* Cabecera identificación */}
-      <div className="sv-ficha-block" style={{ marginBottom:14 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-          <div className="sv-ficha-tit">👤 Identificación</div>
-          {!editMode && (
-            <button onClick={() => setEditMode(true)}
-              style={{ fontSize:11, fontWeight:700, color:'#7C3AED', background:'#EDE9FE',
-                border:'none', borderRadius:8, padding:'4px 12px', cursor:'pointer' }}>
-              ✏️ Editar
-            </button>
-          )}
-        </div>
-        {editMode ? (
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-            <div className="sv-field" style={{ marginBottom:10 }}>
-              <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Tipo de documento</label>
-              <select value={form.tipo_documento_id} onChange={e => set('tipo_documento_id', e.target.value)}>
-                <option value="">— Seleccionar —</option>
-                {tiposDocs.map(t => <option key={t.id} value={t.id}>{t.sigla} — {t.nombre}</option>)}
-              </select>
-            </div>
-            <FField label="Número de documento" campo="numero_documento" form={form} onChange={set} />
-            <FField label="Fecha de nacimiento" campo="fecha_nacimiento" type="date" form={form} onChange={set} />
-            <FFieldLista label="Sexo" tipo="SEXO" value={form.sexo} onChange={v => set('sexo', v)} />
+      <style>{CSS_FICHA}</style>
+      {/* Encabezado: quién es, avance y acción */}
+      <div className="fx-hero">
+        <div className="fx-hero-av">{iniciales(data?.difunto_nombre)}</div>
+        <div className="fx-hero-txt">
+          <div className="fx-hero-kicker">🕊️ Fallecido</div>
+          <div className="fx-hero-nom">{data?.difunto_nombre || 'Sin nombre'}</div>
+          <div className="fx-hero-chips">
+            <span className="fx-chip">🪪 {data?.difunto_documento ? `${data?.difunto_tipo_doc || ''} ${data.difunto_documento}` : 'Sin documento'}</span>
+            {edad !== null && <span className="fx-chip">🎂 {edad} años</span>}
+            {data?.difunto_sexo && <span className="fx-chip">{data.difunto_sexo === 'M' ? '♂ Masculino' : data.difunto_sexo === 'F' ? '♀ Femenino' : data.difunto_sexo}</span>}
+            {def.fecha_fallecimiento && <span className="fx-chip">✝ {fDia(def.fecha_fallecimiento)}{def.hora_fallecimiento ? ` · ${String(def.hora_fallecimiento).slice(0,5)}` : ''}</span>}
           </div>
-        ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
-          <FRow label="Documento">{data?.difunto_tipo_doc} {data?.difunto_documento}</FRow>
-          <FRow label="Fecha nacimiento">{data?.difunto_nacimiento ? new Date(data.difunto_nacimiento).toLocaleDateString('es-CO',{timeZone:'UTC'}) : '—'}</FRow>
-          <FRow label="Sexo">{data?.difunto_sexo === 'M' ? 'Masculino' : data?.difunto_sexo === 'F' ? 'Femenino' : '—'}</FRow>
-          {edad !== null && <FRow label="Edad (calculada)">
-            <span style={{ fontWeight:900, color:'#7C3AED' }}>{edad} años</span>
-          </FRow>}
         </div>
-        )}
+        <div className="fx-hero-side">
+          <Progreso hechos={hechos} total={campos.length} titulo="Datos para el registro civil"/>
+          {!editMode && <button className="fx-btn pri" onClick={() => setEditMode(true)}><Edit2 size={13}/> Editar datos</button>}
+        </div>
       </div>
 
       {ok && <div className="sv-alert ok" style={{ marginBottom:12 }}><CheckCircle2 size={13}/> Datos guardados correctamente</div>}
       {err && <div className="sv-alert err" style={{ marginBottom:12 }}><AlertTriangle size={13}/> {err}</div>}
 
+      {!editMode && faltan.length > 0 && (
+        <Ayuda tipo="aviso">
+          <b>{faltan.length > 1 ? `Faltan ${faltan.length} datos` : 'Falta 1 dato'} para el certificado y el registro civil de defunción:</b> {faltan.join(', ')}.
+          {' '}Presione <b>Editar datos</b> para completarlos.
+        </Ayuda>
+      )}
+
       {editMode ? (
         <>
-          <FSec title="Datos personales" />
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-            <FField label="Lugar expedición documento" campo="lugar_exp_documento" form={form} onChange={set} />
-            <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={form.estado_civil} onChange={v => set('estado_civil', v)} />
-            <FField label="Tipo de matrimonio" campo="tipo_matrimonio" opts={MATRIMONIO_OPTS} form={form} onChange={set} />
-            <FField label="Número de hijos" campo="num_hijos" type="number" form={form} onChange={set} />
-            <FField label="Nacionalidad" campo="nacionalidad" form={form} onChange={set} />
-            <FField label="Religión / Credo" campo="religion" form={form} onChange={set} />
-            <FField label="Nivel de estudios" campo="nivel_estudios" opts={NIVEL_EST_OPTS} form={form} onChange={set} />
-            <FFieldLista label="Ocupación" tipo="OCUPACION" value={form.ocupacion} onChange={v => set('ocupacion', v)} />
-            <FField label="Seguridad social (EPS)" campo="seguridad_social" form={form} onChange={set} />
-          </div>
+          <Ayuda>Estos datos se imprimen en el <b>certificado de defunción</b> y se usan para el <b>registro civil</b>. Escríbalos tal como aparecen en el documento de identidad.</Ayuda>
+          <Seccion icon="🪪" titulo="Identificación" ayuda="Tal como aparece en la cédula o registro civil." cols={0}>
+            <div style={g2}>
+              <div className="sv-field" style={{ marginBottom:10 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Tipo de documento</label>
+                <select value={form.tipo_documento_id} onChange={e => set('tipo_documento_id', e.target.value)}>
+                  <option value="">— Seleccionar —</option>
+                  {tiposDocs.map(t => <option key={t.id} value={t.id}>{t.sigla} — {t.nombre}</option>)}
+                </select>
+              </div>
+              <FField label="Número de documento" campo="numero_documento" form={form} onChange={set} />
+              <FField label="Lugar de expedición" campo="lugar_exp_documento" form={form} onChange={set} />
+              <FField label="Fecha de nacimiento" campo="fecha_nacimiento" type="date" form={form} onChange={set} />
+              <FFieldLista label="Sexo" tipo="SEXO" value={form.sexo} onChange={v => set('sexo', v)} />
+              <FField label="Nacionalidad" campo="nacionalidad" form={form} onChange={set} />
+            </div>
+          </Seccion>
 
-          <FSec title="Familia" />
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-            <FField label="Nombre del cónyuge" campo="nombre_conyuge" form={form} onChange={set} />
-            <div/>
-            <FField label="Nombre del padre" campo="nombre_padre" form={form} onChange={set} />
-            <FField label="Nombre de la madre" campo="nombre_madre" form={form} onChange={set} />
-          </div>
+          <Seccion icon="👤" titulo="Datos personales" ayuda="Información sociodemográfica que pide el certificado." cols={0}>
+            <div style={g3}>
+              <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={form.estado_civil} onChange={v => set('estado_civil', v)} />
+              <FField label="Tipo de matrimonio" campo="tipo_matrimonio" opts={MATRIMONIO_OPTS} form={form} onChange={set} />
+              <FField label="Número de hijos" campo="num_hijos" type="number" form={form} onChange={set} />
+              <FField label="Nivel de estudios" campo="nivel_estudios" opts={NIVEL_EST_OPTS} form={form} onChange={set} />
+              <FFieldLista label="Ocupación" tipo="OCUPACION" value={form.ocupacion} onChange={v => set('ocupacion', v)} />
+              <FField label="Religión / credo" campo="religion" form={form} onChange={set} />
+              <FField label="Seguridad social (EPS)" campo="seguridad_social" form={form} onChange={set} />
+            </div>
+          </Seccion>
 
-          <FSec title="Evento de fallecimiento" />
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-            <FField label="Fecha de fallecimiento" campo="fecha_fallecimiento" type="date" form={form} onChange={set} />
-            <FField label="Hora de fallecimiento" campo="hora_fallecimiento" type="time" form={form} onChange={set} />
-            <FField label="Tipo de lugar" campo="tipo_lugar" opts={TIPO_LUGAR_OPTS} form={form} onChange={set} />
-            <FField label="Tipo de muerte" campo="tipo_muerte" opts={TIPO_MUERTE_OPTS} form={form} onChange={set} />
-            <FField label="Causa de muerte" campo="causa_fallecimiento" form={form} onChange={set} />
-            <FField label="Médico que certifica" campo="medico_certifica" form={form} onChange={set} />
-          </div>
-          {['HOSPITAL','CLINICA'].includes(form.tipo_lugar) && (
-            <FField label="Dirección del lugar de fallecimiento" campo="direccion_fallecimiento" form={form} onChange={set} />
-          )}
+          <Seccion icon="👨‍👩‍👧" titulo="Familia" ayuda="Nombres completos, como figuran en el registro civil." cols={0}>
+            <div style={g3}>
+              <FField label="Cónyuge" campo="nombre_conyuge" form={form} onChange={set} />
+              <FField label="Padre" campo="nombre_padre" form={form} onChange={set} />
+              <FField label="Madre" campo="nombre_madre" form={form} onChange={set} />
+            </div>
+          </Seccion>
 
-          <FSec title="Documentos y registro legal" />
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-            <FField label="Registro médico" campo="registro_medico" form={form} onChange={set} />
-            <FField label="N° certificado de defunción" campo="cert_defuncion_num" form={form} onChange={set} />
-            <FField label="Licencia de inhumación" campo="licencia_inhumacion" form={form} onChange={set} />
-            <FField label="Ciudad de registro" campo="ciudad_registro" form={form} onChange={set} />
-            <FField label="Notaría" campo="notaria" form={form} onChange={set} />
-            <FField label="Serial de registro" campo="serial_registro" form={form} onChange={set} />
-            <FField label="Fecha de registro" campo="fecha_registro" type="date" form={form} onChange={set} />
-            <FField label="Fecha llegada a la funeraria" campo="fecha_llegada" type="datetime-local" form={form} onChange={set} />
-          </div>
+          <Seccion icon="✝️" titulo="Fallecimiento" ayuda="Datos del certificado médico de defunción." cols={0}>
+            <div style={g3}>
+              <FField label="Fecha" campo="fecha_fallecimiento" type="date" form={form} onChange={set} />
+              <FField label="Hora" campo="hora_fallecimiento" type="time" form={form} onChange={set} />
+              <FField label="Tipo de lugar" campo="tipo_lugar" opts={TIPO_LUGAR_OPTS} form={form} onChange={set} />
+              <FField label="Tipo de muerte" campo="tipo_muerte" opts={TIPO_MUERTE_OPTS} form={form} onChange={set} />
+              <FField label="Causa" campo="causa_fallecimiento" form={form} onChange={set} />
+              <FField label="Médico que certifica" campo="medico_certifica" form={form} onChange={set} />
+            </div>
+            {['HOSPITAL','CLINICA'].includes(form.tipo_lugar) && (
+              <FField label="Dirección del hospital o clínica" campo="direccion_fallecimiento" form={form} onChange={set} />
+            )}
+          </Seccion>
 
-          <div style={{ display:'flex', gap:10, marginTop:16 }}>
-            <button onClick={guardar} disabled={saving}
-              className="sv-btn sv-btn-primary" style={{ flex:1 }}>
+          <Seccion icon="📋" titulo="Registro legal" ayuda="Números del certificado, la licencia y el registro en notaría o registraduría." cols={0}>
+            <div style={g3}>
+              <FField label="Registro médico" campo="registro_medico" form={form} onChange={set} />
+              <FField label="N.° certificado de defunción" campo="cert_defuncion_num" form={form} onChange={set} />
+              <FField label="Licencia de inhumación" campo="licencia_inhumacion" form={form} onChange={set} />
+              <FField label="Ciudad de registro" campo="ciudad_registro" form={form} onChange={set} />
+              <FField label="Notaría / registraduría" campo="notaria" form={form} onChange={set} />
+              <FField label="Serial del registro" campo="serial_registro" form={form} onChange={set} />
+              <FField label="Fecha de registro" campo="fecha_registro" type="date" form={form} onChange={set} />
+              <FField label="Llegada a la funeraria" campo="fecha_llegada" type="datetime-local" form={form} onChange={set} />
+            </div>
+          </Seccion>
+
+          <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+            <button onClick={() => setEditMode(false)} className="fx-btn" disabled={saving}>Cancelar</button>
+            <button onClick={guardar} disabled={saving} className="fx-btn pri">
               {saving ? <Loader2 size={14} className="sv-spin"/> : <CheckCircle2 size={14}/>}
               {saving ? 'Guardando…' : 'Guardar datos del fallecido'}
-            </button>
-            <button onClick={() => setEditMode(false)} className="sv-btn sv-btn-ghost">
-              Cancelar
             </button>
           </div>
         </>
       ) : (
         <>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            {/* Datos personales */}
-            <div className="tab-card" style={{ marginBottom:0 }}>
-              <div className="tab-card-head"><span className="tab-card-icon">👥</span><span className="tab-card-title">Datos personales</span></div>
-              <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {[
-                  ['Lugar exp. doc.', data?.difunto_lugar_exp_doc],
-                  ['Estado civil', ESTADO_CIVIL_OPTS.find(o=>o.v===data?.difunto_estado_civil)?.l],
-                  ['Matrimonio', MATRIMONIO_OPTS.find(o=>o.v===data?.difunto_tipo_matrimonio)?.l],
-                  ['N° hijos', data?.difunto_num_hijos],
-                  ['Nacionalidad', data?.difunto_nacionalidad],
-                  ['Religión', data?.difunto_religion],
-                  ['Nivel estudios', NIVEL_EST_OPTS.find(o=>o.v===data?.difunto_nivel_estudios)?.l],
-                  ['Ocupación', data?.difunto_ocupacion],
-                  ['EPS', data?.difunto_seguridad_social],
-                ].map(([l,v]) => (
-                  <div key={l} className="tab-field">
-                    <span className="tab-field-label">{l}</span>
-                    <span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-              {/* Familia */}
-              <div className="tab-card" style={{ marginBottom:0 }}>
-                <div className="tab-card-head"><span className="tab-card-icon">👨‍👩‍👦</span><span className="tab-card-title">Familia</span></div>
-                <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {[['Cónyuge',data?.difunto_nombre_conyuge],['Padre',data?.difunto_nombre_padre],['Madre',data?.difunto_nombre_madre]].map(([l,v])=>(
-                    <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
-                  ))}
-                </div>
-              </div>
-              {/* Fallecimiento */}
-              <div className="tab-card" style={{ marginBottom:0 }}>
-                <div className="tab-card-head"><span className="tab-card-icon">⚰️</span><span className="tab-card-title">Fallecimiento</span></div>
-                <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  {[
-                    ['Fecha', def.fecha_fallecimiento ? new Date(def.fecha_fallecimiento).toLocaleDateString('es-CO',{timeZone:'UTC'}) : '—'],
-                    ['Hora', def.hora_fallecimiento||'—'],
-                    ['Tipo lugar', TIPO_LUGAR_OPTS.find(o=>o.v===def.tipo_lugar)?.l],
-                    ['Tipo muerte', TIPO_MUERTE_OPTS.find(o=>o.v===def.tipo_muerte)?.l],
-                    ['Causa', def.causa_fallecimiento],
-                    ['Médico', def.medico_certifica],
-                    ...(def.direccion_fallecimiento?[['Dirección',def.direccion_fallecimiento]]:[]),
-                  ].map(([l,v])=>(
-                    <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:14, alignItems:'start' }}>
+            <Seccion icon="🪪" titulo="Identificación" ayuda="Tal como aparece en el documento.">
+              <Dato label="Documento" valor={data?.difunto_documento ? `${data?.difunto_tipo_doc || ''} ${data.difunto_documento}` : null}/>
+              <Dato label="Expedido en" valor={data?.difunto_lugar_exp_doc}/>
+              <Dato label="Nacimiento" valor={fDia(data?.difunto_nacimiento)} nota={edad !== null ? `${edad} años al fallecer` : null}/>
+              <Dato label="Nacionalidad" valor={data?.difunto_nacionalidad}/>
+            </Seccion>
+            <Seccion icon="✝️" titulo="Fallecimiento" ayuda="Según el certificado médico.">
+              <Dato label="Fecha y hora" valor={def.fecha_fallecimiento ? `${fDia(def.fecha_fallecimiento)}${def.hora_fallecimiento ? ` · ${String(def.hora_fallecimiento).slice(0,5)}` : ''}` : null}/>
+              <Dato label="Lugar" valor={op(TIPO_LUGAR_OPTS, def.tipo_lugar)} nota={def.direccion_fallecimiento || null}/>
+              <Dato label="Tipo de muerte" valor={op(TIPO_MUERTE_OPTS, def.tipo_muerte)}/>
+              <Dato label="Causa" valor={def.causa_fallecimiento}/>
+              <Dato label="Médico que certifica" valor={def.medico_certifica} ancho/>
+            </Seccion>
           </div>
 
-          {/* Documentos legales */}
-          <div className="tab-card" style={{ marginTop:14 }}>
-            <div className="tab-card-head"><span className="tab-card-icon">📋</span><span className="tab-card-title">Documentos legales</span></div>
-            <div className="tab-card-body tab-grid tab-grid-3">
-              {[
-                ['Registro médico', def.registro_medico],
-                ['Cert. defunción', def.cert_defuncion_num],
-                ['Lic. inhumación', def.licencia_inhumacion],
-                ['Ciudad registro', def.ciudad_registro],
-                ['Notaría', def.notaria],
-                ['Serial', def.serial_registro],
-                ['Fecha registro', def.fecha_registro ? new Date(def.fecha_registro).toLocaleDateString('es-CO',{timeZone:'UTC'}) : '—'],
-                ['Llegada funeraria', def.fecha_llegada ? new Date(def.fecha_llegada).toLocaleString('es-CO',{timeZone:'UTC'}) : '—'],
-              ].map(([l,v])=>(
-                <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
-              ))}
-            </div>
-          </div>
+          <Seccion icon="👤" titulo="Datos personales" ayuda="Información sociodemográfica del certificado." cols={3}>
+            <Dato label="Estado civil" valor={op(ESTADO_CIVIL_OPTS, data?.difunto_estado_civil)}/>
+            <Dato label="Matrimonio" valor={op(MATRIMONIO_OPTS, data?.difunto_tipo_matrimonio)}/>
+            <Dato label="Hijos" valor={data?.difunto_num_hijos}/>
+            <Dato label="Nivel de estudios" valor={op(NIVEL_EST_OPTS, data?.difunto_nivel_estudios)}/>
+            <Dato label="Ocupación" valor={data?.difunto_ocupacion}/>
+            <Dato label="Religión" valor={data?.difunto_religion}/>
+            <Dato label="EPS" valor={data?.difunto_seguridad_social}/>
+          </Seccion>
+
+          <Seccion icon="👨‍👩‍👧" titulo="Familia" ayuda="Para el registro civil de defunción." cols={3}>
+            <Dato label="Cónyuge" valor={data?.difunto_nombre_conyuge}/>
+            <Dato label="Padre" valor={data?.difunto_nombre_padre}/>
+            <Dato label="Madre" valor={data?.difunto_nombre_madre}/>
+          </Seccion>
+
+          <Seccion icon="📋" titulo="Registro legal" ayuda="Certificado, licencia y registro en notaría o registraduría." cols={4}>
+            <Dato label="Registro médico" valor={def.registro_medico}/>
+            <Dato label="Cert. de defunción" valor={def.cert_defuncion_num}/>
+            <Dato label="Licencia de inhumación" valor={def.licencia_inhumacion}/>
+            <Dato label="Serial del registro" valor={def.serial_registro}/>
+            <Dato label="Ciudad de registro" valor={def.ciudad_registro}/>
+            <Dato label="Notaría" valor={def.notaria}/>
+            <Dato label="Fecha de registro" valor={fDia(def.fecha_registro)}/>
+            <Dato label="Llegada a la funeraria" valor={def.fecha_llegada ? new Date(def.fecha_llegada).toLocaleString('es-CO',{ timeZone:'UTC', day:'numeric', month:'short', year:'numeric', hour:'numeric', minute:'2-digit' }) : null}/>
+          </Seccion>
         </>
       )}
     </div>
@@ -2559,7 +2544,28 @@ function TabFallecido({ data, servicioId, onSaved }) {
 
 // ── TabInfoGeneral ────────────────────────────────────────────────────────────
 
-function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin }) {
+// Datos del fallecido que pide el registro civil / certificado de defunción:
+// se usan para el avance en Fallecido, el menú y "lo que falta" en Información
+function camposFallecido(data) {
+  const d = data?.defuncion || {}
+  return [
+    ['Documento de identidad', data?.difunto_documento], ['Fecha de nacimiento', data?.difunto_nacimiento],
+    ['Sexo', data?.difunto_sexo], ['Estado civil', data?.difunto_estado_civil], ['Nacionalidad', data?.difunto_nacionalidad],
+    ['Ocupación', data?.difunto_ocupacion], ['Nombre del padre', data?.difunto_nombre_padre], ['Nombre de la madre', data?.difunto_nombre_madre],
+    ['Fecha de fallecimiento', d.fecha_fallecimiento], ['Hora de fallecimiento', d.hora_fallecimiento],
+    ['Tipo de lugar', d.tipo_lugar], ['Causa de la muerte', d.causa_fallecimiento], ['Tipo de muerte', d.tipo_muerte],
+    ['Médico que certifica', d.medico_certifica], ['N.° certificado de defunción', d.cert_defuncion_num],
+    ['Licencia de inhumación', d.licencia_inhumacion],
+  ].map(([label, v]) => ({ label, ok: v !== null && v !== undefined && String(v).trim() !== '' }))
+}
+
+const PASOS_ESTADO = [
+  { k:'RECIBIDO',   label:'Recibido',   ayuda:'Se registró el servicio. Complete los datos y presione "Iniciar servicio" cuando arranque la atención.' },
+  { k:'EN_CURSO',   label:'En curso',   ayuda:'El servicio se está prestando. Al terminar la disposición final, presione "Completar servicio".' },
+  { k:'COMPLETADO', label:'Completado', ayuda:'Servicio terminado. La información queda como consulta.' },
+]
+
+function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin, documentos = 0, onIr = () => {} }) {
   const [editMode, setEditMode] = useState(false)
   const [saving,   setSaving]   = useState(false)
   const [msg,      setMsg]      = useState('')
@@ -2567,7 +2573,7 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
   const [form,     setForm]     = useState({})
 
   const fmtDT = v => v ? new Date(v).toLocaleString('es-CO', {
-    day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
+    day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : null
 
   const iniciarEdicion = async () => {
     if (!salas.length) {
@@ -2621,262 +2627,250 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
   const dispForm = DISPOSICION_META[form.tipo_disposicion] || DISPOSICION_META.INHUMACION
   const bloqueado = ['COMPLETADO','CANCELADO'].includes(data?.estado)
 
-  // ── helpers de lectura ──────────────────────────────────────────────────
-  const DField = ({ label, value, wide, accent }) => (
-    <div style={{ display:'flex', flexDirection:'column', gap:4,
-      gridColumn: wide ? '1/-1' : undefined }}>
-      <span style={{ fontSize:10.5, fontWeight:600, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:.5 }}>
-        {label}
-      </span>
-      <span style={{ fontSize:13.5, fontWeight:700, color: accent || '#111827', lineHeight:1.3 }}>
-        {value || '—'}
-      </span>
-    </div>
-  )
-
-  const Card = ({ icon, title, children, cols=2, accent }) => (
-    <div style={{ background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:14,
-      overflow:'hidden', marginBottom:14 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 16px',
-        borderBottom:'1px solid #F0F0F5',
-        background: accent ? `linear-gradient(135deg,${accent}18,${accent}08)` : '#FAFBFF' }}>
-        <span style={{ fontSize:17 }}>{icon}</span>
-        <span style={{ fontSize:11, fontWeight:800, color: accent || '#374151',
-          textTransform:'uppercase', letterSpacing:.7 }}>{title}</span>
-      </div>
-      <div style={{ padding:'14px 16px',
-        display:'grid', gridTemplateColumns:`repeat(${cols},1fr)`, gap:'12px 20px' }}>
-        {children}
-      </div>
-    </div>
-  )
-
   // ── Modo lectura ────────────────────────────────────────────────────────
-  if (!editMode) return (
-    <div>
-      {/* Barra de estado + acciones */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          {(() => { const m = ESTADO_META[data?.estado]; return m ? (
-            <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, fontWeight:700,
-              background: m.bg, color: m.color, border:`1.5px solid ${m.color}30`,
-              padding:'4px 12px', borderRadius:20 }}>
-              <m.Icon size={12}/> {m.label}
-            </span>
-          ) : null })()}
-          <span style={{ fontSize:12, color:'#9CA3AF' }}>
-            Creado {fmtDT(data?.creado_en)}
-          </span>
+  if (!editMode) {
+    const ahora = Date.now()
+    const def = data?.defuncion || {}
+    const edad = calcEdad(data?.difunto_nacimiento, def.fecha_fallecimiento)
+    // Cada etapa: realizada (fecha pasada), programada (fecha futura) o por definir
+    const etapa = (fecha, completo) => !completo ? ['Por definir', '#B45309', '#FEF3C7', '#FDE68A']
+      : fecha && new Date(fecha).getTime() <= ahora ? ['Realizado', '#047857', '#D1FAE5', '#A7F3D0']
+      : ['Programado', '#4338CA', '#E0E7FF', '#C7D2FE']
+    const pasos = [
+      { icon:'🚐', titulo:'Recogida del cuerpo', fecha:data.fecha_recogida, ok:!!(data.lugar_recogida && data.fecha_recogida),
+        det:[data.lugar_recogida, fmtDT(data.fecha_recogida)].filter(Boolean).join(' · ') || 'Indique dónde y cuándo se recoge el cuerpo.' },
+      { icon:'🕯️', titulo:'Velación', fecha:data.fecha_velacion_ini, ok:!!(data.sala_id && data.fecha_velacion_ini),
+        det:[data.sala_nombre, data.fecha_velacion_ini && `${fmtDT(data.fecha_velacion_ini)}${data.fecha_velacion_fin ? ` → ${fmtDT(data.fecha_velacion_fin)}` : ''}`].filter(Boolean).join(' · ') || 'Asigne la sala y el horario de la velación.' },
+      { icon:'⛪', titulo:'Exequias', fecha:data.fecha_disposicion, ok:!!data.iglesia, opcional:true,
+        det:[data.iglesia && `Iglesia: ${data.iglesia}`, data.coro && `Coro: ${data.coro}`].filter(Boolean).join(' · ') || 'Iglesia y coro, si la familia los pidió.' },
+      { icon:disp.icon, titulo:`Destino final — ${disp.label}`, fecha:data.fecha_disposicion, ok:!!(data.lugar_disposicion && data.fecha_disposicion),
+        det:[data.lugar_disposicion, fmtDT(data.fecha_disposicion)].filter(Boolean).join(' · ') || (data.tipo_disposicion === 'CREMACION' ? 'Crematorio, fecha y hora.' : 'Cementerio, fecha y hora.') },
+    ]
+    const fall = camposFallecido(data)
+    const fallOk = fall.filter(c => c.ok).length
+    const checklist = Array.isArray(data?.checklist) ? data.checklist : []
+    const tramOk = checklist.filter(i => i.done).length
+    const faltan = [
+      { label:`Datos del fallecido (${fallOk} de ${fall.length})`, ok: fallOk === fall.length, ir:() => onIr('fallecido') },
+      { label:'Contratante o responsable', ok: !!(data?.contratante_id || data?.convenio_id), ir:() => onIr('contratante'), accion:'Asignar' },
+      { label:'Recogida, velación y destino final con fecha', ok: pasos.filter(p => !p.opcional).every(p => p.ok), ir: esEditor && !bloqueado ? iniciarEdicion : null, accion:'Editar' },
+      { label: checklist.length ? `Trámites legales (${tramOk} de ${checklist.length})` : 'Trámites legales', ok: checklist.length > 0 && tramOk === checklist.length, ir:() => onIr('tramites') },
+      { label: documentos ? `Documentos soporte (${documentos})` : 'Documentos soporte (certificado, licencia…)', ok: documentos > 0, ir:() => onIr('documentos'), accion:'Subir' },
+    ]
+    const nFaltan = faltan.filter(f => !f.ok).length
+    const iEstado = PASOS_ESTADO.findIndex(p => p.k === data?.estado)
+    const em = ESTADO_META[data?.estado]
+
+    return (
+      <div>
+        <style>{CSS_FICHA}</style>
+        {/* Estado del servicio + acciones */}
+        <div className="fx-sec" style={{ padding:'14px 16px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+            {data?.estado === 'CANCELADO' ? (
+              <span style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:800, color:'#DC2626' }}><Ban size={15}/> Servicio cancelado</span>
+            ) : (
+              <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                {PASOS_ESTADO.map((p, i) => (
+                  <div key={p.k} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:20, fontSize:12, fontWeight:800,
+                      background: i < iEstado ? '#ECFDF5' : i === iEstado ? (em?.bg || '#EDE9FE') : '#F3F4F6',
+                      color: i < iEstado ? '#047857' : i === iEstado ? (em?.color || '#6D28D9') : '#9CA3AF',
+                      border:`1.5px solid ${i === iEstado ? (em?.color || '#6D28D9') + '55' : 'transparent'}` }}>
+                      {i < iEstado ? <CheckCircle2 size={13}/> : <span style={{ fontSize:11 }}>{i + 1}</span>} {p.label}
+                    </span>
+                    {i < PASOS_ESTADO.length - 1 && <span style={{ width:18, height:2, background: i < iEstado ? '#A7F3D0' : '#E5E7EB' }}/>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginLeft:'auto', display:'flex', gap:8, flexWrap:'wrap' }}>
+              {esEditor && !bloqueado && data?.estado === 'RECIBIDO' && (
+                <button className="fx-btn" style={{ background:'#FFFBEB', borderColor:'#FDE68A', color:'#B45309' }} onClick={() => onEstado(data.id,'EN_CURSO')}>
+                  <Clock size={13}/> Iniciar servicio
+                </button>
+              )}
+              {esEditor && !bloqueado && data?.estado === 'EN_CURSO' && (
+                <button className="fx-btn" style={{ background:'#F0FDF4', borderColor:'#A7F3D0', color:'#047857' }} onClick={() => onEstado(data.id,'COMPLETADO')}>
+                  <CheckCircle2 size={13}/> Completar servicio
+                </button>
+              )}
+              {esAdmin && !bloqueado && (
+                <button className="fx-btn" style={{ background:'#FEF2F2', borderColor:'#FECACA', color:'#DC2626' }} onClick={() => onEstado(data.id,'CANCELADO')}>
+                  <Ban size={13}/> Cancelar
+                </button>
+              )}
+              {esEditor && !bloqueado && (
+                <button className="fx-btn pri" onClick={iniciarEdicion}><Edit2 size={13}/> Editar información</button>
+              )}
+            </div>
+          </div>
+          {iEstado >= 0 && (
+            <div style={{ fontSize:12, color:'#6B7280', marginTop:10 }}>
+              {PASOS_ESTADO[iEstado].ayuda} <span style={{ color:'#9CA3AF' }}>· Creado {fmtDT(data?.creado_en)}</span>
+            </div>
+          )}
         </div>
-        <div style={{ display:'flex', gap:8 }}>
-          {esEditor && !bloqueado && data?.estado === 'RECIBIDO' && (
-            <button onClick={() => onEstado(data.id,'EN_CURSO')}
-              style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px',
-                background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:9,
-                color:'#D97706', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-              <Clock size={13}/> Iniciar servicio
-            </button>
-          )}
-          {esEditor && !bloqueado && data?.estado === 'EN_CURSO' && (
-            <button onClick={() => onEstado(data.id,'COMPLETADO')}
-              style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px',
-                background:'#F0FDF4', border:'1.5px solid #A7F3D0', borderRadius:9,
-                color:'#059669', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-              <CheckCircle2 size={13}/> Completar servicio
-            </button>
-          )}
-          {esAdmin && !bloqueado && (
-            <button onClick={() => onEstado(data.id,'CANCELADO')}
-              style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px',
-                background:'#FEF2F2', border:'1.5px solid #FECACA', borderRadius:9,
-                color:'#DC2626', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-              <Ban size={13}/> Cancelar
-            </button>
-          )}
-          {esEditor && !bloqueado && (
-            <button onClick={iniciarEdicion}
-              style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px',
-                background:'linear-gradient(135deg,#7C3AED,#6D28D9)', border:'none', borderRadius:9,
-                color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-              <Edit2 size={13}/> Editar
-            </button>
-          )}
+
+        {/* Difunto */}
+        <div className="fx-hero">
+          <div className="fx-hero-av">{iniciales(data.difunto_nombre)}</div>
+          <div className="fx-hero-txt">
+            <div className="fx-hero-kicker">🕊️ En memoria de</div>
+            <div className="fx-hero-nom">{data.difunto_nombre || 'Sin nombre'}</div>
+            <div className="fx-hero-chips">
+              {data.difunto_documento && <span className="fx-chip">🪪 {data.difunto_tipo_doc} {data.difunto_documento}</span>}
+              {edad !== null && <span className="fx-chip">🎂 {edad} años</span>}
+              {def.fecha_fallecimiento && <span className="fx-chip">✝ {new Date(def.fecha_fallecimiento).toLocaleDateString('es-CO', { timeZone:'UTC', day:'numeric', month:'long', year:'numeric' })}</span>}
+              {data.difunto_rh && <span className="fx-chip" style={{ color:'#DC2626' }}>🩸 RH {data.difunto_rh}</span>}
+              <span className="fx-chip" style={{ color:disp.color }}>{disp.icon} {disp.label}</span>
+            </div>
+          </div>
+          <div className="fx-hero-side">
+            <button className="fx-btn" onClick={() => onIr('fallecido')}>Ver datos del fallecido →</button>
+          </div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.35fr) minmax(0,1fr)', gap:14, alignItems:'start' }}>
+          {/* Desarrollo del servicio */}
+          <Seccion icon="🗓️" titulo="Desarrollo del servicio" ayuda="Las etapas en orden. Se marcan como realizadas cuando pasa su fecha." cols={0}>
+            <div className="fx-pasos">
+              {pasos.map(p => {
+                const [est, c, bg, bd] = p.opcional && !p.ok ? ['Opcional', '#6B7280', '#F3F4F6', '#E5E7EB'] : etapa(p.fecha, p.ok)
+                return (
+                  <div key={p.titulo} className="fx-paso">
+                    <div className="fx-paso-ic" style={{ background:bg, borderColor:bd }}>{p.icon}</div>
+                    <div style={{ minWidth:0 }}>
+                      <div className="fx-paso-tit">{p.titulo}<span className="fx-paso-est" style={{ background:bg, color:c }}>{est}</span></div>
+                      <div className="fx-paso-det" style={!p.ok ? { color:'#9CA3AF', fontStyle:'italic' } : undefined}>{p.det}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </Seccion>
+
+          <div>
+            {/* Lo que falta */}
+            <Seccion icon={nFaltan ? '📌' : '✅'} titulo={nFaltan ? `Falta${nFaltan > 1 ? 'n' : ''} ${nFaltan} paso${nFaltan > 1 ? 's' : ''}` : 'Todo al día'}
+              ayuda={nFaltan ? 'Lo que necesita el servicio para quedar completo.' : 'El servicio tiene todos sus datos.'} cols={0}
+              color={nFaltan ? '#B45309' : '#047857'}>
+              <ListaFaltantes items={faltan}/>
+            </Seccion>
+            {/* Observaciones */}
+            <Seccion icon="📝" titulo="Observaciones" ayuda="Notas generales del servicio. Para el día a día use la Bitácora." cols={0}>
+              {data.observaciones
+                ? <div style={{ fontSize:13, color:'#374151', lineHeight:1.65, whiteSpace:'pre-wrap' }}>{data.observaciones}</div>
+                : <div style={{ fontSize:12.5, color:'#9CA3AF', fontStyle:'italic' }}>Sin observaciones.</div>}
+            </Seccion>
+          </div>
         </div>
       </div>
-
-      {/* Tarjeta Difunto */}
-      <Card icon="🕊️" title="Difunto" cols={3} accent="#6D28D9">
-        <DField label="Nombre completo" value={data.difunto_nombre} wide/>
-        <DField label="Grupo RH" value={data.difunto_rh} accent="#DC2626"/>
-        <DField label="Disposición final" value={`${disp.icon} ${disp.label}`}/>
-      </Card>
-
-      {/* Velación y Recogida */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
-        <div style={{ background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:14, overflow:'hidden' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 16px',
-            borderBottom:'1px solid #F0F0F5', background:'#FAFBFF' }}>
-            <span style={{ fontSize:17 }}>🕯️</span>
-            <span style={{ fontSize:11, fontWeight:800, color:'#374151', textTransform:'uppercase', letterSpacing:.7 }}>
-              Velación
-            </span>
-          </div>
-          <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
-            <DField label="Sala" value={data.sala_nombre}/>
-            <DField label="Inicio" value={fmtDT(data.fecha_velacion_ini)}/>
-            <DField label="Fin" value={fmtDT(data.fecha_velacion_fin)}/>
-          </div>
-        </div>
-        <div style={{ background:'#fff', border:'1.5px solid #E5E7EB', borderRadius:14, overflow:'hidden' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 16px',
-            borderBottom:'1px solid #F0F0F5', background:'#FAFBFF' }}>
-            <span style={{ fontSize:17 }}>🚐</span>
-            <span style={{ fontSize:11, fontWeight:800, color:'#374151', textTransform:'uppercase', letterSpacing:.7 }}>
-              Recogida
-            </span>
-          </div>
-          <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
-            <DField label="Lugar" value={data.lugar_recogida}/>
-            <DField label="Fecha y hora" value={fmtDT(data.fecha_recogida)}/>
-          </div>
-        </div>
-      </div>
-
-      {/* Disposición final */}
-      <Card icon={disp.icon} title={`Disposición final — ${disp.label}`} cols={2} accent={disp.color}>
-        <DField label="Lugar" value={data.lugar_disposicion}/>
-        <DField label="Fecha y hora" value={fmtDT(data.fecha_disposicion)}/>
-        <DField label="Iglesia" value={data.iglesia}/>
-        <DField label="Coro" value={data.coro}/>
-      </Card>
-
-      {/* Observaciones */}
-      {data.observaciones && (
-        <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:14,
-          padding:'14px 16px' }}>
-          <div style={{ fontSize:11, fontWeight:800, color:'#92400E', textTransform:'uppercase',
-            letterSpacing:.7, marginBottom:8 }}>📝 Observaciones</div>
-          <div style={{ fontSize:13, color:'#374151', lineHeight:1.7 }}>{data.observaciones}</div>
-        </div>
-      )}
-    </div>
-  )
+    )
+  }
 
   // ── Modo edición ────────────────────────────────────────────────────────
   const inp = { width:'100%', padding:'9px 12px', border:'1.5px solid #E2E5F0',
-    borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box', fontFamily:'inherit' }
+    borderRadius:10, fontSize:13, outline:'none', boxSizing:'border-box', fontFamily:'inherit', background:'#fff' }
   const lbl = { fontSize:11, fontWeight:700, color:'#374151', display:'block', marginBottom:5 }
+  const nota = t => <span style={{ display:'block', fontSize:11, color:'#9CA3AF', marginTop:4 }}>{t}</span>
+  const botones = (
+    <>
+      <button className="fx-btn" onClick={() => setEditMode(false)} disabled={saving}>Cancelar</button>
+      <button className="fx-btn pri" onClick={guardar} disabled={saving}>
+        {saving ? <Loader2 size={13} style={{ animation:'spin .7s linear infinite' }}/> : <CheckCircle2 size={13}/>}
+        {saving ? 'Guardando…' : 'Guardar cambios'}
+      </button>
+    </>
+  )
 
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
-        <div style={{ fontSize:13, fontWeight:700, color:'#6D28D9' }}>Editar información general</div>
-        <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => setEditMode(false)}
-            style={{ padding:'7px 14px', border:'1.5px solid #E4E6F0', borderRadius:9,
-              background:'#F8F9FF', color:'#6B7280', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-            Cancelar
-          </button>
-          <button onClick={guardar} disabled={saving}
-            style={{ padding:'7px 18px', background:'linear-gradient(135deg,#7C3AED,#6D28D9)',
-              border:'none', borderRadius:9, color:'#fff', fontSize:12, fontWeight:700,
-              cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
-            {saving ? <Loader2 size={13} style={{ animation:'spin .7s linear infinite' }}/> : '💾'}
-            {saving ? 'Guardando…' : 'Guardar cambios'}
-          </button>
+      <style>{CSS_FICHA}</style>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, gap:10, flexWrap:'wrap' }}>
+        <div>
+          <div style={{ fontSize:15, fontWeight:900, color:'#0F1035' }}>Editar información del servicio</div>
+          <div style={{ fontSize:12, color:'#6B7280' }}>Complete cada etapa; lo que deje vacío aparecerá como "Por definir".</div>
         </div>
+        <div style={{ display:'flex', gap:8 }}>{botones}</div>
       </div>
 
-      {msg && <div style={{ background:'#FEE2E2', color:'#DC2626', padding:'8px 12px',
-        borderRadius:8, fontSize:12, fontWeight:600, marginBottom:14 }}>{msg}</div>}
+      {msg && <div style={{ background:'#FEE2E2', color:'#DC2626', padding:'8px 12px', borderRadius:8, fontSize:12, fontWeight:600, marginBottom:14 }}>{msg}</div>}
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-
-        {/* Tipo disposición */}
-        <div style={{ gridColumn:'1/-1' }}>
-          <label style={lbl}>Tipo de disposición final</label>
-          <div style={{ display:'flex', gap:10 }}>
-            {Object.entries(DISPOSICION_META).map(([k,v]) => (
-              <button key={k} onClick={() => set('tipo_disposicion', k)}
-                style={{ flex:1, padding:'10px 0', border:`2px solid ${form.tipo_disposicion===k ? v.color : '#E2E5F0'}`,
-                  borderRadius:11, background: form.tipo_disposicion===k ? v.color+'15' : '#F8F9FF',
-                  color: form.tipo_disposicion===k ? v.color : '#6B7280',
-                  fontSize:13, fontWeight:800, cursor:'pointer', transition:'all .15s' }}>
-                {v.icon} {v.label}
-              </button>
-            ))}
-          </div>
+      <Seccion icon="⚱️" titulo="Tipo de disposición final" ayuda="Define si el cuerpo se inhuma, se crema o va a un osario." cols={0}>
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          {Object.entries(DISPOSICION_META).map(([k,v]) => (
+            <button key={k} onClick={() => set('tipo_disposicion', k)}
+              style={{ flex:1, minWidth:130, padding:'11px 0', border:`2px solid ${form.tipo_disposicion===k ? v.color : '#E2E5F0'}`,
+                borderRadius:11, background: form.tipo_disposicion===k ? v.color+'15' : '#F8F9FF',
+                color: form.tipo_disposicion===k ? v.color : '#6B7280',
+                fontSize:13, fontWeight:800, cursor:'pointer', transition:'all .15s', fontFamily:'inherit' }}>
+              {v.icon} {v.label}
+            </button>
+          ))}
         </div>
+      </Seccion>
 
-        {/* Sala */}
+      <Seccion icon="🚐" titulo="Recogida del cuerpo" ayuda="Dónde está el cuerpo y a qué hora sale el vehículo por él.">
         <div>
-          <label style={lbl}>Sala de velación</label>
+          <label style={lbl}>Lugar de recogida</label>
+          <input value={form.lugar_recogida} onChange={e => set('lugar_recogida', e.target.value)} placeholder="Hospital, clínica, domicilio…" style={inp}/>
+        </div>
+        <div>
+          <label style={lbl}>Fecha y hora</label>
+          <input type="datetime-local" value={form.fecha_recogida} onChange={e => set('fecha_recogida', e.target.value)} style={inp}/>
+        </div>
+      </Seccion>
+
+      <Seccion icon="🕯️" titulo="Velación" ayuda="Escriba primero el horario: así solo aparecen las salas libres en ese tiempo." cols={3}>
+        <div>
+          <label style={lbl}>Inicio</label>
+          <input type="datetime-local" value={form.fecha_velacion_ini} onChange={e => set('fecha_velacion_ini', e.target.value)} style={inp}/>
+        </div>
+        <div>
+          <label style={lbl}>Fin</label>
+          <input type="datetime-local" value={form.fecha_velacion_fin} onChange={e => set('fecha_velacion_fin', e.target.value)} style={inp}/>
+        </div>
+        <div>
+          <label style={lbl}>Sala</label>
           <select value={form.sala_id} onChange={e => set('sala_id', e.target.value)} style={inp}>
             <option value=''>— Sin sala asignada —</option>
             {salasDisponibles.map(s => <option key={s.id} value={s.id}>{s.nombre} (cap. {s.capacidad})</option>)}
           </select>
-          {form.fecha_velacion_ini && form.fecha_velacion_fin && salasOcupadas.size > 0 && (
-            <span style={{ fontSize:11, color:'#B45309' }}>Se ocultan las salas ya reservadas en ese horario.</span>
-          )}
+          {form.fecha_velacion_ini && form.fecha_velacion_fin && salasOcupadas.size > 0 && nota('Se ocultan las salas ya reservadas en ese horario.')}
         </div>
+      </Seccion>
 
-        {/* Fechas velación */}
-        <div style={{ display:'contents' }}>
-          <div>
-            <label style={lbl}>Inicio velación</label>
-            <input type="datetime-local" value={form.fecha_velacion_ini}
-              onChange={e => set('fecha_velacion_ini', e.target.value)} style={inp}/>
-          </div>
-          <div>
-            <label style={lbl}>Fin velación</label>
-            <input type="datetime-local" value={form.fecha_velacion_fin}
-              onChange={e => set('fecha_velacion_fin', e.target.value)} style={inp}/>
-          </div>
-        </div>
-
-        {/* Recogida */}
+      <Seccion icon="⛪" titulo="Exequias" ayuda="Opcional: la ceremonia religiosa que pidió la familia.">
         <div>
-          <label style={lbl}>Lugar de recogida</label>
-          <input value={form.lugar_recogida} onChange={e => set('lugar_recogida', e.target.value)}
-            placeholder="Hospital, domicilio, clínica…" style={inp}/>
+          <label style={lbl}>Iglesia o parroquia</label>
+          <input value={form.iglesia} onChange={e => set('iglesia', e.target.value)} placeholder="Ej.: Iglesia Santa Bárbara" style={inp}/>
         </div>
         <div>
-          <label style={lbl}>Fecha y hora de recogida</label>
-          <input type="datetime-local" value={form.fecha_recogida}
-            onChange={e => set('fecha_recogida', e.target.value)} style={inp}/>
+          <label style={lbl}>Coro</label>
+          <input value={form.coro} onChange={e => set('coro', e.target.value)} placeholder="Ej.: Yesid Ascanio Páez" style={inp}/>
         </div>
+      </Seccion>
 
-        {/* Disposición final */}
+      <Seccion icon={dispForm.icon} titulo={`Destino final — ${dispForm.label}`}
+        ayuda={form.tipo_disposicion === 'CREMACION' ? 'Crematorio y hora de la cremación.' : form.tipo_disposicion === 'OSARIO' ? 'Cementerio u osario y hora del depósito.' : 'Cementerio y hora de la inhumación.'}>
         <div>
-          <label style={lbl}>{dispForm.icon} Lugar de {dispForm.label.toLowerCase()}</label>
+          <label style={lbl}>Lugar</label>
           <input value={form.lugar_disposicion} onChange={e => set('lugar_disposicion', e.target.value)}
-            placeholder={form.tipo_disposicion === 'CREMACION' ? 'Nombre del crematorio…' : 'Nombre del cementerio…'}
-            style={inp}/>
+            placeholder={form.tipo_disposicion === 'CREMACION' ? 'Nombre del crematorio…' : 'Nombre del cementerio…'} style={inp}/>
         </div>
         <div>
-          <label style={lbl}>Fecha y hora de {dispForm.label.toLowerCase()}</label>
-          <input type="datetime-local" value={form.fecha_disposicion}
-            onChange={e => set('fecha_disposicion', e.target.value)} style={inp}/>
+          <label style={lbl}>Fecha y hora</label>
+          <input type="datetime-local" value={form.fecha_disposicion} onChange={e => set('fecha_disposicion', e.target.value)} style={inp}/>
         </div>
-        <div>
-          <label style={lbl}>⛪ Iglesia / parroquia de las exequias</label>
-          <input value={form.iglesia} onChange={e => set('iglesia', e.target.value)}
-            placeholder="Ej: Iglesia Santa Bárbara" style={inp}/>
-        </div>
-        <div>
-          <label style={lbl}>🎵 Coro (si aplica)</label>
-          <input value={form.coro} onChange={e => set('coro', e.target.value)}
-            placeholder="Ej: Yesid Ascanio Páez" style={inp}/>
-        </div>
+      </Seccion>
 
-        {/* Observaciones */}
-        <div style={{ gridColumn:'1/-1' }}>
-          <label style={lbl}>Observaciones</label>
-          <textarea value={form.observaciones} onChange={e => set('observaciones', e.target.value)}
-            rows={3} placeholder="Notas adicionales del servicio…"
-            style={{ ...inp, resize:'vertical' }}/>
-        </div>
-      </div>
+      <Seccion icon="📝" titulo="Observaciones" ayuda="Notas generales. Lo que pase día a día, mejor en la Bitácora." cols={0}>
+        <textarea value={form.observaciones} onChange={e => set('observaciones', e.target.value)}
+          rows={3} placeholder="Notas adicionales del servicio…" style={{ ...inp, resize:'vertical' }}/>
+      </Seccion>
+
+      <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>{botones}</div>
     </div>
   )
 }
@@ -4293,195 +4287,151 @@ function TabContratante({ data, servicioId, onSaved }) {
     return e
   }
 
+  const tel = String(data.contratante_tel || '').replace(/\D/g, '')
+  const edadC = calcEdadC(data.contratante_nacimiento)
+  const camposC = [
+    ['Teléfono principal', data.contratante_tel], ['Dirección', data.contratante_direccion],
+    ['Municipio', data.contratante_municipio], ['Parentesco con el fallecido', data.contratante_parentesco],
+    ['Correo electrónico', data.contratante_email], ['Fecha de nacimiento', data.contratante_nacimiento],
+  ].map(([label, v]) => ({ label, ok: !!(v && String(v).trim()) }))
+  const faltanC = camposC.filter(c => !c.ok).map(c => c.label)
+  const g = n => ({ display:'grid', gridTemplateColumns:`repeat(${n}, minmax(0,1fr))`, gap:'0 16px' })
+  const accionesDatos = editDatos ? null : <button className="fx-btn" onClick={() => setEditDatos(true)}><Edit2 size={12}/> Editar</button>
+
   return (
     <div>
-      {msg && <div style={{ background:'#FEE2E2', color:'#DC2626', padding:'8px 12px',
-        borderRadius:8, fontSize:12, marginBottom:12 }}>{msg}</div>}
+      <style>{CSS_FICHA}</style>
+      {msg && <div style={{ background:'#FEE2E2', color:'#DC2626', padding:'8px 12px', borderRadius:8, fontSize:12, marginBottom:12 }}>{msg}</div>}
 
       {data.contratante_es_convenio && (
-        <div style={{ display:'flex', alignItems:'center', gap:8, background:'#ECFEFF',
-          border:'1px solid #A5F3FC', color:'#0E7490', borderRadius:10, padding:'9px 14px',
-          fontSize:12.5, fontWeight:600, marginBottom:14 }}>
-          🤝 Este responsable se registró desde el convenio del servicio (no hay contrato de por medio).
-        </div>
+        <Ayuda>🤝 Este responsable se registró desde el <b>convenio</b> del servicio (no hay contrato de por medio).</Ayuda>
+      )}
+      {esResponsableManual && (
+        <Ayuda tipo="aviso">Responsable <b>temporal</b> asignado a mano: no hay contrato ni póliza a su nombre todavía (útil mientras se formaliza, p. ej. la cesión de una póliza).</Ayuda>
       )}
 
-      {esResponsableManual && (
-        <div style={{ display:'flex', alignItems:'center', gap:8, background:'#FFFBEB',
-          border:'1px solid #FDE68A', color:'#92400E', borderRadius:10, padding:'9px 14px',
-          fontSize:12.5, fontWeight:600, marginBottom:14 }}>
-          ⚠️ Responsable temporal asignado a mano (no hay contrato ni póliza a su nombre todavía) — útil mientras se formaliza el trámite, ej. la cesión de una póliza.
+      {/* Encabezado */}
+      <div className="fx-hero">
+        <div className="fx-hero-av" style={{ background:'linear-gradient(135deg,#0E7490,#155E75)' }}>{iniciales(data.contratante_nombre)}</div>
+        <div className="fx-hero-txt">
+          <div className="fx-hero-kicker" style={{ color:'#0E7490' }}>👤 Contratante · responsable del servicio</div>
+          <div className="fx-hero-nom">{data.contratante_nombre || 'Sin nombre'}</div>
+          <div className="fx-hero-chips">
+            <span className="fx-chip">🪪 {data.contratante_tipo_doc} {data.contratante_documento}</span>
+            <span className="fx-chip" style={{ color: data.contratante_parentesco ? '#6D28D9' : '#B45309' }}>
+              🤝 {data.contratante_parentesco ? `${data.contratante_parentesco} del fallecido` : 'Parentesco sin registrar'}
+            </span>
+            {edadC !== null && <span className="fx-chip">🎂 {edadC} años</span>}
+          </div>
         </div>
+        <div className="fx-hero-side">
+          <Progreso hechos={camposC.filter(c => c.ok).length} total={camposC.length} titulo="Datos de contacto"/>
+          {tel.length >= 7 && (
+            <div style={{ display:'flex', gap:6 }}>
+              <a className="fx-btn" href={`tel:${tel}`} style={{ textDecoration:'none' }}><Phone size={12}/> Llamar</a>
+              {tel.length === 10 && (
+                <a className="fx-btn" href={`https://wa.me/57${tel}`} target="_blank" rel="noreferrer"
+                  style={{ textDecoration:'none', background:'#25D366', borderColor:'#25D366', color:'#fff' }}>WhatsApp</a>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {faltanC.length > 0 && !editDatos && (
+        <Ayuda tipo="aviso">
+          <b>Faltan:</b> {faltanC.join(', ')}. Es la persona a la que se llama y se le envían los avisos y recibos del servicio.
+        </Ayuda>
       )}
 
       <ConvenioCoberturaBox data={data} servicioId={servicioId} onSaved={onSaved}/>
 
-      {/* Identidad */}
-      <div className="tab-card">
-        <div className="tab-card-head tab-card-head-accent">
-          <span className="tab-card-icon">👤</span>
-          <span className="tab-card-title">Identificación</span>
-        </div>
-        <div className="tab-card-body tab-grid tab-grid-3">
-          <div className="tab-field">
-            <span className="tab-field-label">Tipo doc.</span>
-            <span className="tab-field-value">{data.contratante_tipo_doc||'—'}</span>
+      {/* Relación con el fallecido */}
+      <Seccion icon="🤝" titulo="Relación con el fallecido" color="#6D28D9"
+        ayuda="Va en los documentos del servicio (contrato, autorizaciones)."
+        acciones={!editMode && <button className="fx-btn" onClick={() => setEditMode(true)}><Edit2 size={12}/> Cambiar</button>} cols={0}>
+        {!editMode ? (
+          <div style={{ fontSize:18, fontWeight:900, color: data.contratante_parentesco ? '#6D28D9' : '#CBD5E1' }}>
+            {data.contratante_parentesco || 'Sin registrar'}
           </div>
-          <div className="tab-field">
-            <span className="tab-field-label">Número</span>
-            <span className="tab-field-value">{data.contratante_documento||'—'}</span>
-          </div>
-          <div className="tab-field">
-            <span className="tab-field-label">Nombre completo</span>
-            <span className="tab-field-value">{data.contratante_nombre||'—'}</span>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', margin:'2px 2px 10px' }}>
-        <div style={{ fontSize:12.5, fontWeight:800, color:'#6D28D9', textTransform:'uppercase', letterSpacing:'.06em' }}>
-          Datos del contratante
-        </div>
-        {!editDatos && (
-          <button onClick={() => setEditDatos(true)}
-            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 14px',
-              background:'linear-gradient(135deg,#7C3AED,#6D28D9)', border:'none',
-              borderRadius:8, color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer',
-              boxShadow:'0 2px 6px rgba(124,58,237,.25)' }}>
-            <Edit2 size={11}/> Editar datos
-          </button>
-        )}
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
-        {/* Contacto */}
-        <div className="tab-card" style={{ marginBottom:0 }}>
-          <div className="tab-card-head tab-card-head-accent">
-            <span className="tab-card-icon">📱</span><span className="tab-card-title">Contacto</span>
-          </div>
-          <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {editDatos ? (
-              <>
-                <FField label="Tel. principal" campo="telefono" form={formDatos} onChange={setDato} />
-                <FField label="Tel. alterno" campo="telefono_alt" form={formDatos} onChange={setDato} />
-                <FField label="Email" campo="email" form={formDatos} onChange={setDato} />
-              </>
-            ) : [['Tel. principal',data.contratante_tel],['Tel. alterno',data.contratante_tel_alt],['Email',data.contratante_email]].map(([l,v])=>(
-              <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
-            ))}
-          </div>
-        </div>
-        {/* Residencia */}
-        <div className="tab-card" style={{ marginBottom:0 }}>
-          <div className="tab-card-head tab-card-head-accent">
-            <span className="tab-card-icon">🏠</span><span className="tab-card-title">Residencia</span>
-          </div>
-          <div className="tab-card-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {editDatos ? (
-              <>
-                <FField label="Dirección" campo="direccion" form={formDatos} onChange={setDato} />
-                <div className="sv-field" style={{ marginBottom:10 }}>
-                  <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Departamento</label>
-                  <select value={formDatos.departamento_id} onChange={e => setDato('departamento_id', e.target.value)}>
-                    <option value="">— Seleccionar —</option>
-                    {deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
-                  </select>
-                </div>
-                <div className="sv-field" style={{ marginBottom:10 }}>
-                  <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Municipio</label>
-                  <select value={formDatos.municipio_id} onChange={e => setDato('municipio_id', e.target.value)}
-                    disabled={!formDatos.departamento_id}>
-                    <option value="">{formDatos.departamento_id ? '— Seleccionar —' : 'Elige un departamento primero'}</option>
-                    {munis.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                  </select>
-                </div>
-              </>
-            ) : [['Dirección',data.contratante_direccion],['Municipio',data.contratante_municipio],['Departamento',data.contratante_departamento]].map(([l,v])=>(
-              <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
-            ))}
-          </div>
-        </div>
-        {/* Datos personales */}
-        <div className="tab-card" style={{ marginBottom:0, gridColumn:'1/-1' }}>
-          <div className="tab-card-head tab-card-head-accent">
-            <span className="tab-card-icon">🪪</span><span className="tab-card-title">Datos personales</span>
-          </div>
-          <div className="tab-card-body tab-grid tab-grid-4">
-            {editDatos ? (
-              <>
-                <FField label="Fecha de nacimiento" campo="fecha_nacimiento" type="date" form={formDatos} onChange={setDato} />
-                <FFieldLista label="Sexo" tipo="SEXO" value={formDatos.sexo} onChange={v => setDato('sexo', v)} />
-                <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={formDatos.estado_civil} onChange={v => setDato('estado_civil', v)} />
-                <FFieldLista label="Ocupación" tipo="OCUPACION" value={formDatos.ocupacion} onChange={v => setDato('ocupacion', v)} />
-              </>
-            ) : [
-              ['F. nacimiento', data.contratante_nacimiento ? `${fmtFecha(data.contratante_nacimiento)} · ${calcEdadC(data.contratante_nacimiento)} años` : null],
-              ['Sexo', data.contratante_sexo==='M'?'Masculino':data.contratante_sexo==='F'?'Femenino':null],
-              ['Estado civil', data.contratante_estado_civil],
-              ['Ocupación', data.contratante_ocupacion],
-            ].map(([l,v])=>(
-              <div key={l} className="tab-field"><span className="tab-field-label">{l}</span><span className={`tab-field-value${v?'':' muted'}`}>{v||'—'}</span></div>
-            ))}
-          </div>
-        </div>
-        {editDatos && (
-          <div style={{ display:'flex', gap:10, gridColumn:'1/-1' }}>
-            <button onClick={guardarDatos} disabled={savingDatos}
-              className="sv-btn sv-btn-primary" style={{ flex:1 }}>
-              {savingDatos ? 'Guardando…' : '✓ Guardar datos del contratante'}
-            </button>
-            <button onClick={() => setEditDatos(false)} className="sv-btn sv-btn-ghost">
-              Cancelar
-            </button>
+        ) : (
+          <div style={{ display:'flex', gap:10, alignItems:'flex-end', flexWrap:'wrap' }}>
+            <div style={{ flex:1, minWidth:220 }}>
+              <FFieldLista label="Parentesco" tipo="PARENTESCO" value={parentesco} onChange={setParentesco} />
+            </div>
+            <div style={{ display:'flex', gap:8, paddingBottom:10 }}>
+              <button onClick={() => { setEditMode(false); setParentesco(data?.contratante_parentesco || '') }} className="fx-btn">Cancelar</button>
+              <button onClick={guardar} disabled={saving} className="fx-btn pri">{saving ? 'Guardando…' : 'Guardar'}</button>
+            </div>
           </div>
         )}
-        {/* Parentesco */}
-        <div className="tab-card" style={{ marginBottom:0, border:'1.5px solid #DDD6FE', background:'linear-gradient(135deg,#FAFAFF 0%,#F5F3FF 100%)' }}>
-          <div className="tab-card-head" style={{ background:'linear-gradient(90deg,#7C3AED 0%,#6D28D9 100%)' }}>
-            <span className="tab-card-icon" style={{ filter:'brightness(10)' }}>🤝</span>
-            <span className="tab-card-title" style={{ color:'#fff' }}>Relación con el fallecido</span>
-            {!editMode && (
-              <button onClick={() => setEditMode(true)}
-                style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:4,
-                  padding:'4px 12px', background:'rgba(255,255,255,.18)', border:'1px solid rgba(255,255,255,.35)',
-                  borderRadius:7, color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                <Edit2 size={10}/> Editar
-              </button>
-            )}
-          </div>
-          <div className="tab-card-body">
-            {!editMode ? (
-              <div style={{ display:'flex', alignItems:'center', gap:14, padding:'6px 0' }}>
-                <div style={{ width:46, height:46, borderRadius:'50%', background:'#EDE9FE',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>
-                  🤝
-                </div>
-                <div>
-                  <div style={{ fontSize:11, fontWeight:600, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:3 }}>
-                    Parentesco
-                  </div>
-                  <div style={{ fontSize:20, fontWeight:800, color: data.contratante_parentesco ? '#6D28D9' : '#CBD5E1', lineHeight:1.2 }}>
-                    {data.contratante_parentesco || 'No especificado'}
-                  </div>
-                </div>
+      </Seccion>
+
+      {editDatos ? (
+        <>
+          <Seccion icon="📱" titulo="Contacto" ayuda="El teléfono principal recibe las llamadas y los mensajes del servicio." cols={0}>
+            <div style={g(3)}>
+              <FField label="Teléfono principal" campo="telefono" form={formDatos} onChange={setDato} />
+              <FField label="Teléfono alterno" campo="telefono_alt" form={formDatos} onChange={setDato} />
+              <FField label="Correo electrónico" campo="email" form={formDatos} onChange={setDato} />
+            </div>
+          </Seccion>
+          <Seccion icon="🏠" titulo="Residencia" ayuda="Dirección donde se le puede ubicar." cols={0}>
+            <div style={g(3)}>
+              <FField label="Dirección" campo="direccion" form={formDatos} onChange={setDato} />
+              <div className="sv-field" style={{ marginBottom:10 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Departamento</label>
+                <select value={formDatos.departamento_id} onChange={e => setDato('departamento_id', e.target.value)}>
+                  <option value="">— Seleccionar —</option>
+                  {deptos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                </select>
               </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <FFieldLista label="Parentesco" tipo="PARENTESCO" value={parentesco} onChange={setParentesco} />
-                <div style={{ display:'flex', gap:8, paddingTop:2 }}>
-                  <button onClick={guardar} disabled={saving} className="sv-btn sv-btn-primary" style={{ flex:1, justifyContent:'center' }}>
-                    {saving ? 'Guardando…' : '✓  Guardar'}
-                  </button>
-                  <button onClick={() => { setEditMode(false); setParentesco(data?.contratante_parentesco || '') }}
-                    className="sv-btn sv-btn-ghost">
-                    Cancelar
-                  </button>
-                </div>
+              <div className="sv-field" style={{ marginBottom:10 }}>
+                <label style={{ fontSize:11, fontWeight:700, color:'#374151' }}>Municipio</label>
+                <select value={formDatos.municipio_id} onChange={e => setDato('municipio_id', e.target.value)} disabled={!formDatos.departamento_id}>
+                  <option value="">{formDatos.departamento_id ? '— Seleccionar —' : 'Elija un departamento primero'}</option>
+                  {munis.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
               </div>
-            )}
+            </div>
+          </Seccion>
+          <Seccion icon="🪪" titulo="Datos personales" cols={0}>
+            <div style={g(4)}>
+              <FField label="Fecha de nacimiento" campo="fecha_nacimiento" type="date" form={formDatos} onChange={setDato} />
+              <FFieldLista label="Sexo" tipo="SEXO" value={formDatos.sexo} onChange={v => setDato('sexo', v)} />
+              <FFieldLista label="Estado civil" tipo="ESTADO_CIVIL" value={formDatos.estado_civil} onChange={v => setDato('estado_civil', v)} />
+              <FFieldLista label="Ocupación" tipo="OCUPACION" value={formDatos.ocupacion} onChange={v => setDato('ocupacion', v)} />
+            </div>
+          </Seccion>
+          <Ayuda>Estos datos se guardan en la ficha del tercero: también se actualizan en sus pólizas y contratos.</Ayuda>
+          <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+            <button onClick={() => setEditDatos(false)} className="fx-btn" disabled={savingDatos}>Cancelar</button>
+            <button onClick={guardarDatos} disabled={savingDatos} className="fx-btn pri">
+              {savingDatos ? <Loader2 size={13} className="sv-spin"/> : <CheckCircle2 size={13}/>} {savingDatos ? 'Guardando…' : 'Guardar datos del contratante'}
+            </button>
           </div>
-        </div>
-      </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:14, alignItems:'start' }}>
+            <Seccion icon="📱" titulo="Contacto" ayuda="Para llamadas, avisos y recibos." acciones={accionesDatos} cols={1}>
+              <Dato label="Teléfono principal" valor={data.contratante_tel}/>
+              <Dato label="Teléfono alterno" valor={data.contratante_tel_alt}/>
+              <Dato label="Correo electrónico" valor={data.contratante_email}/>
+            </Seccion>
+            <Seccion icon="🏠" titulo="Residencia" ayuda="Dónde se le puede ubicar." acciones={accionesDatos} cols={1}>
+              <Dato label="Dirección" valor={data.contratante_direccion}/>
+              <Dato label="Municipio" valor={[data.contratante_municipio, data.contratante_departamento].filter(Boolean).join(', ')}/>
+            </Seccion>
+          </div>
+          <Seccion icon="🪪" titulo="Datos personales" acciones={accionesDatos} cols={4}>
+            <Dato label="Nacimiento" valor={data.contratante_nacimiento ? fmtFecha(data.contratante_nacimiento) : null} nota={edadC !== null ? `${edadC} años` : null}/>
+            <Dato label="Sexo" valor={data.contratante_sexo === 'M' ? 'Masculino' : data.contratante_sexo === 'F' ? 'Femenino' : data.contratante_sexo}/>
+            <Dato label="Estado civil" valor={data.contratante_estado_civil}/>
+            <Dato label="Ocupación" valor={data.contratante_ocupacion}/>
+          </Seccion>
+        </>
+      )}
     </div>
   )
 }
@@ -4788,20 +4738,36 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
     }
   }
 
-  const TABS = [
-    { key:'info',         icon:'📋', label:'Información' },
-    { key:'fallecido',    icon:'🕊️', label:'Fallecido' },
-    { key:'contratante',  icon:'👤', label:'Contratante' },
-    { key:'poliza',       icon:'🛡️', label: data?.poliza_id ? 'Póliza' : 'Póliza' },
-    { key:'items',        icon:'📦', label:`Servicios (${data?.items?.length||0})` },
-    { key:'personal',     icon:'👥', label:'Personal' },
-    { key:'traslados',    icon:'🚐', label:`Traslados (${data?.traslados?.length||0})` },
-    { key:'tanatopraxia', icon:'🩺', label:'Tanatopraxia' },
-    { key:'historial',    icon:'🕒', label:'Historial' },
-    { key:'bitacora',     icon:'📓', label:'Bitácora' },
-    { key:'tramites',     icon: checklist.length > 0 && checklist.every(i=>i.done) ? '✅' : '📝',
-      label: checklist.length > 0 ? `Trámites (${checklist.filter(i=>i.done).length}/${checklist.length})` : 'Trámites' },
-    { key:'documentos',   icon:'🗂️', label:`Documentos (${documentos.length})` },
+  // Menú agrupado: qué es el servicio, quiénes, cómo se presta, soportes y
+  // seguimiento. `aviso` = falta algo ahí (punto ámbar); `ok` = completo.
+  const fallC = data ? camposFallecido(data) : []
+  const fallOk = fallC.filter(c => c.ok).length
+  const tramOk = checklist.filter(i => i.done).length
+  const GRUPOS_TABS = [
+    { titulo:'Servicio', tabs:[
+      { key:'info',        icon:'📋', label:'Información', sub:'Etapas y estado' },
+      { key:'items',       icon:'📦', label:'Servicios', cuenta:data?.items?.length || 0, sub:'Ítems y valor' },
+    ]},
+    { titulo:'Personas', tabs:[
+      { key:'fallecido',   icon:'🕊️', label:'Fallecido', sub: data ? `${fallOk} de ${fallC.length} datos` : '', aviso: fallOk < fallC.length, ok: fallC.length > 0 && fallOk === fallC.length },
+      { key:'contratante', icon:'👤', label:'Contratante', sub: data?.contratante_parentesco || (data?.contratante_id ? 'Responsable' : data?.convenio_id ? 'Convenio' : 'Sin asignar'),
+        aviso: !data?.contratante_id && !data?.convenio_id },
+      { key:'poliza',      icon:'🛡️', label:'Póliza', sub: data?.poliza_id ? 'Cobertura' : 'No aplica' },
+    ]},
+    { titulo:'Operación', tabs:[
+      { key:'personal',     icon:'👥', label:'Personal', sub:'Equipo asignado' },
+      { key:'traslados',    icon:'🚐', label:'Traslados', cuenta:data?.traslados?.length || 0, sub:'Vehículos y rutas' },
+      { key:'tanatopraxia', icon:'🩺', label:'Tanatopraxia', sub:'Preparación del cuerpo' },
+    ]},
+    { titulo:'Soportes', tabs:[
+      { key:'tramites',   icon:'📝', label:'Trámites', sub: checklist.length ? `${tramOk} de ${checklist.length} listos` : 'Legales',
+        aviso: checklist.length > 0 && tramOk < checklist.length, ok: checklist.length > 0 && tramOk === checklist.length },
+      { key:'documentos', icon:'🗂️', label:'Documentos', cuenta:documentos.length, sub:'Certificados y licencias', aviso: !documentos.length },
+    ]},
+    { titulo:'Seguimiento', tabs:[
+      { key:'bitacora',  icon:'📓', label:'Bitácora', sub:'Notas y eventos' },
+      { key:'historial', icon:'🕒', label:'Historial', sub:'Cambios registrados' },
+    ]},
   ]
 
   const disp = data ? DISPOSICION_META[data.tipo_disposicion] : {}
@@ -4896,21 +4862,34 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
         <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
 
           {/* Sidebar de tabs */}
-          <div style={{ width:190, flexShrink:0, borderRight:'1.5px solid #F0F0F5',
-            background:'#FAFBFF', overflowY:'auto', padding:'12px 8px', display:'flex', flexDirection:'column', gap:2 }}>
-            {TABS.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                style={{ display:'flex', alignItems:'center', gap:8,
-                  padding:'9px 12px', borderRadius:10, border:'none', cursor:'pointer',
-                  textAlign:'left', fontSize:12.5, fontWeight: tab===t.key ? 700 : 500,
-                  background: tab===t.key ? '#EDE9FE' : 'transparent',
-                  color: tab===t.key ? '#6D28D9' : '#374151',
-                  transition:'all .12s' }}
-                onMouseEnter={e => { if(tab!==t.key) e.currentTarget.style.background='#F3F4F6' }}
-                onMouseLeave={e => { if(tab!==t.key) e.currentTarget.style.background='transparent' }}>
-                <span style={{ fontSize:15 }}>{t.icon}</span>
-                <span style={{ lineHeight:1.25 }}>{t.label}</span>
-              </button>
+          <div style={{ width:214, flexShrink:0, borderRight:'1.5px solid #F0F0F5',
+            background:'#FAFBFF', overflowY:'auto', padding:'8px 8px 12px', display:'flex', flexDirection:'column' }}>
+            {GRUPOS_TABS.map(g => (
+              <div key={g.titulo} style={{ marginBottom:6 }}>
+                <div style={{ fontSize:9.5, fontWeight:800, color:'#A5A9C0', letterSpacing:'.1em', textTransform:'uppercase', padding:'8px 12px 4px' }}>{g.titulo}</div>
+                {g.tabs.map(t => {
+                  const act = tab === t.key
+                  return (
+                    <button key={t.key} onClick={() => setTab(t.key)} title={t.sub}
+                      style={{ width:'100%', display:'flex', alignItems:'center', gap:9, padding:'8px 10px', borderRadius:10, border:'none', cursor:'pointer',
+                        textAlign:'left', background: act ? '#EDE9FE' : 'transparent', color: act ? '#6D28D9' : '#374151',
+                        boxShadow: act ? 'inset 3px 0 0 #7C3AED' : 'none', transition:'background .12s', fontFamily:'inherit' }}
+                      onMouseEnter={e => { if (!act) e.currentTarget.style.background='#F3F4F6' }}
+                      onMouseLeave={e => { if (!act) e.currentTarget.style.background='transparent' }}>
+                      <span style={{ fontSize:16, width:22, textAlign:'center', flexShrink:0 }}>{t.icon}</span>
+                      <span style={{ flex:1, minWidth:0 }}>
+                        <span style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5, fontWeight: act ? 800 : 600 }}>
+                          {t.label}
+                          {t.cuenta > 0 && <span style={{ fontSize:10, fontWeight:800, padding:'0 6px', borderRadius:8, background: act ? '#DDD6FE' : '#EEF0F6', color: act ? '#5B21B6' : '#6B7280' }}>{t.cuenta}</span>}
+                        </span>
+                        {t.sub && <span style={{ display:'block', fontSize:10.5, color: t.aviso ? '#B45309' : '#9CA3AF', fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{t.sub}</span>}
+                      </span>
+                      {t.aviso ? <span title="Falta información" style={{ width:8, height:8, borderRadius:'50%', background:'#F59E0B', flexShrink:0 }}/>
+                        : t.ok ? <CheckCircle2 size={13} color="#059669" style={{ flexShrink:0 }}/> : null}
+                    </button>
+                  )
+                })}
+              </div>
             ))}
           </div>
 
@@ -4926,6 +4905,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
             <TabInfoGeneral
               data={data} servicioId={id} onSaved={cargar}
               onEstado={onEstado} esEditor={esEditor} esAdmin={esAdmin}
+              documentos={documentos.length} onIr={setTab}
             />
           ) : tab === 'fallecido' ? (
             <TabFallecido data={data} servicioId={id} onSaved={cargar} />
