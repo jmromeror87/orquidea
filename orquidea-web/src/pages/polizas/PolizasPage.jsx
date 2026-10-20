@@ -25,6 +25,8 @@ import {
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import MenuFicha from '../../components/ui/MenuFicha.jsx'
+import { contratoPolizaHTML } from '../../utils/contratoDocumento.js'
 import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
@@ -101,7 +103,7 @@ const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
   ? (pago.beneficiario_id || pago.beneficiario_nombre ? `Cambio de beneficiario · ${pago.beneficiario_nombre || ''}` : 'Afiliación · titular')
   : normalizarInicio(pago.mes_correspondiente, diaAncla(poliza)).etiqueta
 import { archivoUrl } from '../../utils/archivoUrl.js'
-import { verPDF } from '../../store/visorPdf.store.js'
+import { verPDF, verHTML } from '../../store/visorPdf.store.js'
 import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1530,13 +1532,31 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
     } finally { setSavingTransf(false) }
   }
 
-  const TABS = [
-    { key:'info',      icon:'🛡️',  label:'Información' },
-    { key:'bens',      icon:'👨‍👩‍👧', label:`Beneficiarios (${data?.total_beneficiarios||0})` },
-    { key:'pagos',     icon:'💳',  label:`Pagos (${data?.total_pagos||0})` },
-    { key:'cobertura', icon:'✅',  label:'Cobertura' },
-    { key:'bitacora',  icon:'📓',  label:'Bitácora' },
+  // Menú agrupado, igual al de Servicios y Contratos
+  const fHasta = d => d ? new Date(String(d).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }) : ''
+  const sinCobertura = data && ['VENCIDA', 'SUSPENDIDA'].includes(data.estado)
+  const GRUPOS = [
+    { titulo:'Póliza', tabs:[
+      { key:'info',      icon:'🛡️', label:'Información', sub: data?.plan_nombre || 'Titular y plan' },
+      { key:'cobertura', icon:'✅', label:'Cobertura', sub:'Servicios del plan' },
+      { key:'contrato',  icon:'🖋️', label:'Contrato', sub:'Afiliación para firmar' },
+    ]},
+    { titulo:'Personas', tabs:[
+      { key:'bens', icon:'👨‍👩‍👧', label:'Beneficiarios', cuenta: +(data?.total_beneficiarios || 0),
+        sub: data?.max_beneficiarios ? `${data?.total_beneficiarios || 0} de ${data.max_beneficiarios} cupos` : 'Grupo afiliado' },
+    ]},
+    { titulo:'Dinero', tabs:[
+      { key:'pagos', icon:'💳', label:'Pagos', cuenta: +(data?.total_pagos || 0),
+        sub: !data ? '' : data.pago_hasta ? `Cubierta hasta ${fHasta(data.pago_hasta)}` : 'Sin pagos vigentes',
+        aviso: sinCobertura || (data && !data.pago_hasta), ok: data?.estado === 'VIGENTE' && +(data?.meses_mora || 0) === 0 && !!data?.pago_hasta },
+    ]},
+    { titulo:'Seguimiento', tabs:[
+      { key:'bitacora', icon:'📓', label:'Bitácora', sub:'Notas y eventos' },
+    ]},
   ]
+  const [empresaDoc, setEmpresaDoc] = useState(null)
+  useEffect(() => { api.get('/empresa').then(r => setEmpresaDoc(r.data.data || {})).catch(() => setEmpresaDoc({})) }, [])
+  const verContratoPoliza = () => verHTML(contratoPolizaHTML({ p: data, empresa: empresaDoc }), `Contrato de afiliación — Póliza ${data.numero_legado || data.numero}`)
 
   const PldField = ({ label, value, color }) => (
     <div className="pld-field">
@@ -1640,15 +1660,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
         <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
           {/* Sidebar tabs */}
-          <div className="pl-drawer-sidebar">
-            {TABS.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`pl-drawer-stab${tab === t.key ? ' active' : ''}`}>
-                <span className="stab-icon">{t.icon}</span>
-                <span>{t.label}</span>
-              </button>
-            ))}
-          </div>
+          <MenuFicha grupos={GRUPOS} tab={tab} onTab={setTab} color="#047857" fondo="#D1FAE5" chip="#A7F3D0"/>
 
           {/* Content */}
           <div className="pl-drawer-content">
@@ -1916,6 +1928,47 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                   ))
                 )}
               </PldCard>
+
+            ) : tab === 'contrato' ? (
+              <>
+                <div style={{ display:'flex', gap:16, alignItems:'center', padding:'18px 20px', borderRadius:16, marginBottom:16,
+                  background:'linear-gradient(135deg,#ECFDF5,#FFFFFF 70%)', border:'1.5px solid #A7F3D0' }}>
+                  <div style={{ width:56, height:56, borderRadius:16, background:'linear-gradient(135deg,#10B981,#047857)', color:'#fff',
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0 }}>🖋️</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:10.5, fontWeight:800, color:'#047857', letterSpacing:'.08em', textTransform:'uppercase' }}>Documento para firmar</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:'#0F1035' }}>Contrato de afiliación al plan de previsión exequial</div>
+                    <div style={{ fontSize:12.5, color:'#6B7280', marginTop:2 }}>Con titular, beneficiarios, servicios del plan, cuota y carencia. Imprímalo en dos copias.</div>
+                  </div>
+                  <button onClick={verContratoPoliza} disabled={!empresaDoc}
+                    style={{ display:'flex', alignItems:'center', gap:7, padding:'11px 18px', borderRadius:11, border:'none', flexShrink:0,
+                      background:'linear-gradient(135deg,#059669,#047857)', color:'#fff', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:'inherit',
+                      boxShadow:'0 4px 12px rgba(5,150,105,.3)', opacity: empresaDoc ? 1 : .6 }}>
+                    <FileText size={15}/> Ver / imprimir contrato
+                  </button>
+                </div>
+                <PldCard icon="📋" title="Lo que lleva el contrato">
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {[
+                      ['Titular con documento', !!data.titular_doc],
+                      ['Dirección y teléfono del titular', !!(data.titular_direccion && data.titular_tel)],
+                      ['Fecha de nacimiento del titular', !!data.titular_fecha_nacimiento],
+                      [`Beneficiarios inscritos (${data.total_beneficiarios || 0})`, +(data.total_beneficiarios || 0) > 0],
+                      ['Servicios del plan', (data.servicios_incluidos || []).length > 0],
+                      ['Representante legal de la empresa (Configuración → Empresa)', !!empresaDoc?.representante_legal],
+                    ].map(([l, ok]) => (
+                      <div key={l} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color: ok ? '#374151' : '#B45309' }}>
+                        {ok ? <CheckCircle2 size={15} color="#059669"/> : <span style={{ width:15, height:15, borderRadius:'50%', border:'2px solid #F59E0B', display:'inline-block' }}/>}
+                        {l}{!ok && <span style={{ fontSize:11.5, color:'#9CA3AF' }}> — quedará espacio para llenarlo a mano</span>}
+                      </div>
+                    ))}
+                  </div>
+                </PldCard>
+                <div style={{ display:'flex', gap:10, padding:'12px 14px', borderRadius:12, background:'#FFFBEB', border:'1px dashed #F59E0B', color:'#92400E', fontSize:12.5, lineHeight:1.5 }}>
+                  <span>⚠️</span>
+                  <span><b>Modelo provisional.</b> Formato de ejemplo basado en contratos de previsión exequial del sector (servicio en especie, art. 111 Ley 795 de 2003). Se reemplazará por el contrato oficial cuando lo entreguen.</span>
+                </div>
+              </>
 
             ) : tab === 'bitacora' ? (
               <div className="pld-card" style={{ padding:'18px 20px' }}>

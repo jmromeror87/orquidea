@@ -38,7 +38,7 @@ fs.mkdirSync(IMG_DIR, { recursive: true })
 const EXT_IMG = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif'])
 const MAX_IMG = 8 * 1024 * 1024
 
-const TIPOS = new Set(['POLIZA', 'SERVICIO'])
+const TIPOS = new Set(['POLIZA', 'SERVICIO', 'CONTRATO'])
 const ADMINS = new Set(['superadmin', 'administrador'])
 export const CATEGORIAS = ['NOTA', 'SEGUIMIENTO', 'LLAMADA', 'VISITA', 'RECOGIDA', 'NOVEDAD', 'BENEFICIARIOS', 'PAGOS', 'DOCUMENTOS', 'RECLAMO', 'FAMILIA', 'TRAMITES', 'CEREMONIA']
 
@@ -106,7 +106,7 @@ export async function listar(req, reply) {
     WHERE b.entidad_tipo = $1 AND b.entidad_id = $2
     ORDER BY b.creado_en DESC`, [tipo, id])
 
-  const eventos = tipo === 'POLIZA' ? await eventosPoliza(id) : await eventosServicio(id)
+  const eventos = tipo === 'POLIZA' ? await eventosPoliza(id) : tipo === 'CONTRATO' ? await eventosContrato(id) : await eventosServicio(id)
   return reply.send({ data: { notas: notas.rows, eventos, categorias: CATEGORIAS } })
 }
 
@@ -232,6 +232,33 @@ async function eventosServicio(servicioId) {
     add(`tan-${o.id}`, o.creado_en, 'TANATOPRAXIA', 'tanatopraxia', `Orden de tanatopraxia${o.tipo_servicio ? ` · ${o.tipo_servicio}` : ''}`,
       `Estado: ${o.estado}${o.responsable ? ` · responsable ${o.responsable}` : ''}`, o.usuario)
   }
+  return ev
+}
+
+// Contrato: creación, pagos/anulaciones y el servicio que se prestó con él
+async function eventosContrato(contratoId) {
+  const q = (sql) => pool.query(sql, [contratoId]).then(r => r.rows)
+  const [ct, pagos, servs] = await Promise.all([
+    q(`SELECT c.*, u.nombre AS usuario, pq.nombre AS paquete FROM contratos c
+         LEFT JOIN usuarios u ON u.id = c.usuario_id LEFT JOIN paquetes_servicio pq ON pq.id = c.paquete_id WHERE c.id = $1`),
+    q(`SELECT pc.*, u.nombre AS usuario FROM pagos_contrato pc LEFT JOIN usuarios u ON u.id = pc.usuario_id WHERE pc.contrato_id = $1`),
+    q(`SELECT sf.id, sf.codigo, sf.numero, sf.estado, sf.creado_en, COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS difunto
+         FROM servicios_funerarios sf LEFT JOIN terceros t ON t.id = sf.difunto_id WHERE sf.contrato_id = $1`),
+  ])
+  const ev = []
+  const add = (id, fecha, tipo, icono, titulo, detalle, usuario) => fecha && ev.push({ id, fecha, tipo, icono, titulo, detalle, usuario })
+  for (const c of ct) {
+    add('ct', c.creado_en, 'CONTRATO', 'contrato', `Contrato N° ${c.numero} firmado`,
+      `${c.tipo_contrato === 'PREVISION' ? 'Previsión' : 'Servicio inmediato'} · ${c.paquete || 'personalizado'} · ${pesos(c.valor_total)} · ${c.modalidad === 'CUOTAS' ? `${c.num_cuotas} cuotas de ${pesos(c.valor_cuota)}` : 'de contado'}`, c.usuario)
+    if (c.observaciones?.trim()) add('ct-obs', c.creado_en, 'OBSERVACION', 'nota', 'Observaciones del contrato', c.observaciones.trim(), c.usuario)
+  }
+  for (const p of pagos) {
+    add(`pago-${p.id}`, p.creado_en, 'PAGO', 'pago', `Pago registrado · recibo N° ${String(p.numero_recibo || '').padStart(6, '0')}`, pesos(p.monto), p.usuario)
+    if (p.anulado) add(`anul-${p.id}`, p.fecha_anulacion, 'ANULACION', 'anulado', `Pago anulado · recibo N° ${String(p.numero_recibo || '').padStart(6, '0')}`,
+      `${pesos(p.monto)}${p.motivo_anulacion ? ` — ${p.motivo_anulacion}` : ''}`, null)
+  }
+  for (const s of servs) add(`srv-${s.id}`, s.creado_en, 'SERVICIO', 'servicio', `Servicio funerario ${s.codigo || 'N° ' + (s.numero ?? '')} abierto`,
+    `Difunto: ${s.difunto || '—'} · estado ${s.estado}`, null)
   return ev
 }
 

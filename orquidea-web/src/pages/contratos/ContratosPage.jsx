@@ -24,6 +24,10 @@ import {
   CreditCard, Edit2, Eye,
   ShieldCheck, Zap, DollarSign, Package,
 } from 'lucide-react'
+import MenuFicha from '../../components/ui/MenuFicha.jsx'
+import Bitacora from '../../components/bitacora/Bitacora.jsx'
+import { verHTML } from '../../store/visorPdf.store.js'
+import { contratoServicioHTML } from '../../utils/contratoDocumento.js'
 import api from '../../services/api.js'
 import CurrencyInput from '../../components/ui/CurrencyInput.jsx'
 import PhoneInput from '../../components/ui/PhoneInput.jsx'
@@ -656,10 +660,26 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
 
   const pct = data ? Math.min(100, Math.round((+data.valor_pagado / +data.valor_total) * 100)) : 0
 
-  const TABS = [
-    { key:'info',  icon:'📄', label:'Información' },
-    { key:'pagos', icon:'💳', label:`Pagos (${data?.pagos?.length||0})` },
+  // Menú agrupado, igual al de Servicios y Pólizas
+  const faltaDoc = data && (!data.contratante_doc || !data.contratante_direccion)
+  const saldo = +(data?.saldo_pendiente || 0)
+  const GRUPOS = [
+    { titulo:'Contrato', tabs:[
+      { key:'info',      icon:'📄', label:'Información', sub:'Partes, valor y fechas' },
+      { key:'documento', icon:'🖋️', label:'Documento', sub: faltaDoc ? 'Faltan datos del contratante' : 'Contrato para firmar', aviso: faltaDoc },
+    ]},
+    { titulo:'Dinero', tabs:[
+      { key:'pagos', icon:'💳', label:'Pagos', cuenta: data?.pagos?.length || 0,
+        sub: !data ? '' : saldo > 0 ? `Saldo ${fmt(saldo)}` : 'Pagado completo',
+        aviso: saldo > 0 && data?.estado === 'activo', ok: data && saldo <= 0 },
+    ]},
+    { titulo:'Seguimiento', tabs:[
+      { key:'bitacora', icon:'📓', label:'Bitácora', sub:'Notas y eventos' },
+    ]},
   ]
+  const [empresa, setEmpresa] = useState(null)
+  useEffect(() => { api.get('/empresa').then(r => setEmpresa(r.data.data || {})).catch(() => setEmpresa({})) }, [])
+  const verContrato = () => verHTML(contratoServicioHTML({ c: data, empresa }), `Contrato N.° ${data.numero_legado || data.numero}`)
 
   const CtdField = ({ label, value, color }) => (
     <div className="ctd-field">
@@ -741,15 +761,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
         <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
           {/* Sidebar */}
-          <div className="ct-drawer-sidebar">
-            {TABS.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`ct-drawer-stab${tab === t.key ? ' active' : ''}`}>
-                <span className="stab-icon">{t.icon}</span>
-                <span>{t.label}</span>
-              </button>
-            ))}
-          </div>
+          <MenuFicha grupos={GRUPOS} tab={tab} onTab={setTab} color="#B45309" fondo="#FEF3C7" chip="#FDE68A"/>
 
           {/* Content */}
           <div className="ct-drawer-content">
@@ -861,6 +873,54 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                   </div>
                 )}
               </>
+
+            ) : tab === 'documento' ? (
+              <>
+                <div style={{ display:'flex', gap:16, alignItems:'center', padding:'18px 20px', borderRadius:16, marginBottom:16,
+                  background:'linear-gradient(135deg,#FFFBEB,#FFFFFF 70%)', border:'1.5px solid #FDE68A' }}>
+                  <div style={{ width:56, height:56, borderRadius:16, background:'linear-gradient(135deg,#F59E0B,#B45309)', color:'#fff',
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0 }}>🖋️</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:10.5, fontWeight:800, color:'#B45309', letterSpacing:'.08em', textTransform:'uppercase' }}>Documento para firmar</div>
+                    <div style={{ fontSize:18, fontWeight:900, color:'#0F1035' }}>Contrato de prestación de servicios funerarios</div>
+                    <div style={{ fontSize:12.5, color:'#6B7280', marginTop:2 }}>Se llena solo con los datos del contrato. Imprímalo en dos copias: una para la familia y otra para el archivo.</div>
+                  </div>
+                  <button onClick={verContrato} disabled={!empresa}
+                    style={{ display:'flex', alignItems:'center', gap:7, padding:'11px 18px', borderRadius:11, border:'none', flexShrink:0,
+                      background:'linear-gradient(135deg,#F59E0B,#D97706)', color:'#fff', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:'inherit',
+                      boxShadow:'0 4px 12px rgba(217,119,6,.3)', opacity: empresa ? 1 : .6 }}>
+                    <FileText size={15}/> Ver / imprimir contrato
+                  </button>
+                </div>
+                <CtdCard icon="📋" title="Lo que lleva el contrato">
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {[
+                      ['Contratante y su documento', !!(data.contratante_nombre && data.contratante_doc)],
+                      ['Dirección del contratante', !!data.contratante_direccion],
+                      ['Teléfono del contratante', !!data.contratante_tel],
+                      [data.tipo_contrato === 'PREVISION' ? 'Beneficiario del servicio' : 'Fallecido', !!data.difunto_nombre],
+                      ['Paquete con los servicios incluidos (Anexo 1)', !!data.paquete_id],
+                      ['Valor y forma de pago', +data.valor_total > 0],
+                      ['Representante legal de la empresa (Configuración → Empresa)', !!empresa?.representante_legal],
+                    ].map(([l, ok]) => (
+                      <div key={l} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color: ok ? '#374151' : '#B45309' }}>
+                        {ok ? <CheckCircle2 size={15} color="#059669"/> : <span style={{ width:15, height:15, borderRadius:'50%', border:'2px solid #F59E0B', display:'inline-block' }}/>}
+                        {l}{!ok && <span style={{ fontSize:11.5, color:'#9CA3AF' }}> — quedará una línea para llenarlo a mano</span>}
+                      </div>
+                    ))}
+                  </div>
+                </CtdCard>
+                <div style={{ display:'flex', gap:10, padding:'12px 14px', borderRadius:12, background:'#FFFBEB', border:'1px dashed #F59E0B', color:'#92400E', fontSize:12.5, lineHeight:1.5 }}>
+                  <span>⚠️</span>
+                  <span><b>Modelo provisional.</b> Es un formato de ejemplo basado en contratos del sector (servicio en especie, art. 111 Ley 795 de 2003; Estatuto del Consumidor; datos personales). Se reemplazará por el contrato oficial de la funeraria cuando lo entreguen.</span>
+                </div>
+              </>
+
+            ) : tab === 'bitacora' ? (
+              <div className="ctd-card" style={{ padding:'18px 20px' }}>
+                <Bitacora tipo="contrato" entidadId={data.id} usuario={usuario} puedeEscribir={esCajero}
+                  titulo={`Contrato N.° ${data.numero_legado || data.numero} — ${data.contratante_nombre}`}/>
+              </div>
 
             ) : (
               <>

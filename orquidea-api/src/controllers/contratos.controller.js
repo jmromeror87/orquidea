@@ -122,10 +122,30 @@ export async function obtener(req, reply) {
   ])
 
   if (!cRes.rows.length) return reply.code(404).send({ error: 'Contrato no encontrado' })
+  const c = cRes.rows[0]
+
+  // Para el documento del contrato: identificación y residencia de las partes
+  // y lo que incluye el paquete (anexo de servicios)
+  const [partes, incluye] = await Promise.all([
+    pool.query(`
+      SELECT td.sigla AS contratante_tipo_doc, t.direccion AS contratante_direccion, t.email AS contratante_email,
+        gm.nombre AS contratante_municipio, gd.nombre AS contratante_departamento,
+        (SELECT tdd.sigla || ' ' || d.numero_documento FROM terceros d LEFT JOIN tipos_documento tdd ON tdd.id = d.tipo_documento_id WHERE d.id = $2) AS difunto_documento
+      FROM terceros t
+      LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
+      LEFT JOIN geo_municipios gm ON gm.id = t.municipio_id
+      LEFT JOIN geo_departamentos gd ON gd.id = t.departamento_id
+      WHERE t.id = $1`, [c.contratante_id, c.difunto_id]),
+    c.paquete_id ? pool.query(
+      `SELECT nombre, descripcion, categoria FROM paquete_items WHERE paquete_id = $1 AND incluido IS NOT FALSE ORDER BY orden, nombre`, [c.paquete_id])
+      : Promise.resolve({ rows: [] }),
+  ])
 
   return reply.send({
     data: {
-      ...cRes.rows[0],
+      ...c,
+      ...(partes.rows[0] || {}),
+      paquete_items:        incluye.rows,
       pagos:                pagosRes.rows,
       servicios_adicionales: adicsRes.rows,
     },

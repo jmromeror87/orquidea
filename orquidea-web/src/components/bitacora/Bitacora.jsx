@@ -56,7 +56,7 @@ const EVENTOS = {
   CANCELACION:'⛔', REACTIVACION:'✅', SERVICIO:'⚱️', OBSERVACION:'📝', RENOVACION:'📈',
   // Servicio funerario
   SERVICIO_ITEM:'📦', PERSONAL:'👥', TRASLADO:'🚐', TRAMITE:'📝', DOCUMENTO:'🗂️', TANATOPRAXIA:'🩺',
-  RECOGIDA:'🚐', VELACION:'🕯️', DISPOSICION:'⚱️',
+  RECOGIDA:'🚐', VELACION:'🕯️', DISPOSICION:'⚱️', CONTRATO:'📄',
 }
 const ADMINS = ['superadmin', 'administrador']
 
