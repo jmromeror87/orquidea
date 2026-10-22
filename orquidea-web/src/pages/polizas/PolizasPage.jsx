@@ -999,17 +999,17 @@ function ModalPago({ poliza, onClose, onSaved }) {
               {modo === 'mes' ? (
                 previewMes ? (
                   <>
-                    <div className="pg-linea"><span>{previewMes.it.abonado_antes > 0 ? 'Completa' : previewMes.completa ? 'Cuota' : 'Abono a'} {previewMes.it.periodo.etiqueta}<small className="pg-rango">{rangoPer(previewMes.it.periodo)}</small></span><b>{fmt(previewMes.it.monto)}</b></div>
+                    <div className="pg-linea"><span>{previewMes.it.abonado_antes > 0 ? 'Completa: ' : previewMes.completa ? '' : 'Abono: '}{rangoPer(previewMes.it.periodo)}</span><b>{fmt(previewMes.it.monto)}</b></div>
                     {!previewMes.completa && <div className="pg-nota">Abono = <b>{previewMes.dias} día{previewMes.dias !== 1 ? 's' : ''}</b> de cobertura. Faltarían {fmt(previewMes.falta)} para completar el periodo.</div>}
                   </>
                 ) : <div className="pg-nota">Indique el valor a recibir.</div>
               ) : preview ? (
                 <>
                   {preview.completas.map(it => (
-                    <div className="pg-linea" key={it.periodo.iso}><span>✓ {it.periodo.etiqueta}{it.abonado_antes > 0 ? ' (completa)' : ''}<small className="pg-rango">{rangoPer(it.periodo)}</small></span><b>{fmt(it.monto)}</b></div>
+                    <div className="pg-linea" key={it.periodo.iso}><span>✓ {rangoPer(it.periodo)}{it.abonado_antes > 0 ? ' (completa)' : ''}</span><b>{fmt(it.monto)}</b></div>
                   ))}
                   {preview.abono && !preview.sobranteAlcanzaOtroMes && (
-                    <div className="pg-linea abono"><span>◐ Abono {preview.abono.periodo.etiqueta}<small className="pg-rango">desde {fDia(preview.abono.periodo.iso)} · {preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''} de cobertura</small></span><b>{fmt(preview.abono.monto)}</b></div>
+                    <div className="pg-linea abono"><span>◐ Abono desde {fDia(preview.abono.periodo.iso)} · {preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''}</span><b>{fmt(preview.abono.monto)}</b></div>
                   )}
                   {preview.abono && !preview.sobranteAlcanzaOtroMes && (
                     <div className="pg-nota">El abono da <b>{preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''}</b> de cobertura ({fmt(Math.round(preview.abono.tarifa))}/día). Faltarían {fmt(preview.abono.falta)} para completar ese periodo.</div>
