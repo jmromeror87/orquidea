@@ -832,6 +832,16 @@ function ModalPago({ poliza, onClose, onSaved }) {
     usuarioTocoMeses.current = false
     setMontoTotal(Math.round(suma))
   }
+  // Meses a pagar (lo escribe el usuario): calcula el valor de esos periodos
+  const [mesesPagar, setMesesPagar] = useState('')
+  const cambiarMeses = v => {
+    const n = Math.max(0, Math.min(candidatos.length, parseInt(String(v).replace(/\D/g, ''), 10) || 0))
+    setMesesPagar(v === '' ? '' : String(n))
+    if (n > 0) atajo(n)
+  }
+  // "24 nov 2027 → 23 dic 2027": qué días cubre cada periodo
+  const fDia = iso => new Date(iso + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }).replace('.', '')
+  const rangoPer = per => `${fDia(per.iso)} → ${fDia(per.fin_iso)}`
   const paso = (n, titulo, ayuda) => (
     <div className="pg-paso"><span className="pg-num">{n}</span><div><b>{titulo}</b>{ayuda && <small>{ayuda}</small>}</div></div>
   )
@@ -869,7 +879,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
               </button>
             </div>
 
-            {paso(2, modo === 'mes' ? 'Periodo y valor' : 'Valor recibido y periodos', modo === 'mes' ? 'El valor sugerido es lo que le falta a ese periodo.' : 'Use los atajos o escriba el valor; puede activar o quitar periodos.')}
+            {paso(2, modo === 'mes' ? 'Periodo y valor' : 'Valor recibido y periodos', modo === 'mes' ? 'El valor sugerido es lo que le falta a ese periodo.' : 'Escriba cuántos meses paga o el valor recibido; puede activar o quitar periodos.')}
             {modo === 'mes' ? (
               <div className="pl-grid2">
                 <div className="pl-field">
@@ -890,14 +900,18 @@ function ModalPago({ poliza, onClose, onSaved }) {
               <>
                 <div className="pl-field">
                   <label>Valor recibido <span className="pl-req">*</span></label>
-                  <CurrencyInput value={montoTotal} onChange={v => setMontoTotal(v)} placeholder="0"/>
+                  <CurrencyInput value={montoTotal} onChange={v => { setMontoTotal(v); setMesesPagar('') }} placeholder="0"/>
                 </div>
                 {candidatos.length > 0 && (
-                  <div className="pg-atajos">
-                    <span>Atajos:</span>
-                    {[1, 3, 6, 12].filter(n => n <= candidatos.length).map(n => (
-                      <button type="button" key={n} onClick={() => atajo(n)}>{n} periodo{n > 1 ? 's' : ''}</button>
-                    ))}
+                  <div className="pg-meses">
+                    <span>Meses a pagar:</span>
+                    <button type="button" onClick={() => cambiarMeses(Math.max(1, (+mesesPagar || 1) - 1))} title="Un mes menos">−</button>
+                    <input value={mesesPagar} inputMode="numeric" placeholder="0" data-cap="no"
+                      onChange={e => cambiarMeses(e.target.value)} onFocus={e => e.target.select()}/>
+                    <button type="button" onClick={() => cambiarMeses((+mesesPagar || 0) + 1)} title="Un mes más">+</button>
+                    <small>{+mesesPagar > 0
+                      ? `${mesesPagar} mes${+mesesPagar > 1 ? 'es' : ''} = ${fmt(candidatos.slice(0, +mesesPagar).reduce((a, c) => a + c.falta, 0))}`
+                      : 'Escriba cuántos meses paga y el valor se calcula solo'}</small>
                   </div>
                 )}
                 {candidatos.length > 0 && (
@@ -985,17 +999,17 @@ function ModalPago({ poliza, onClose, onSaved }) {
               {modo === 'mes' ? (
                 previewMes ? (
                   <>
-                    <div className="pg-linea"><span>{previewMes.it.abonado_antes > 0 ? 'Completa' : previewMes.completa ? 'Cuota' : 'Abono a'} {previewMes.it.periodo.etiqueta}</span><b>{fmt(previewMes.it.monto)}</b></div>
+                    <div className="pg-linea"><span>{previewMes.it.abonado_antes > 0 ? 'Completa' : previewMes.completa ? 'Cuota' : 'Abono a'} {previewMes.it.periodo.etiqueta}<small className="pg-rango">{rangoPer(previewMes.it.periodo)}</small></span><b>{fmt(previewMes.it.monto)}</b></div>
                     {!previewMes.completa && <div className="pg-nota">Abono = <b>{previewMes.dias} día{previewMes.dias !== 1 ? 's' : ''}</b> de cobertura. Faltarían {fmt(previewMes.falta)} para completar el periodo.</div>}
                   </>
                 ) : <div className="pg-nota">Indique el valor a recibir.</div>
               ) : preview ? (
                 <>
                   {preview.completas.map(it => (
-                    <div className="pg-linea" key={it.periodo.iso}><span>✓ {it.periodo.etiqueta}{it.abonado_antes > 0 ? ' (completa)' : ''}</span><b>{fmt(it.monto)}</b></div>
+                    <div className="pg-linea" key={it.periodo.iso}><span>✓ {it.periodo.etiqueta}{it.abonado_antes > 0 ? ' (completa)' : ''}<small className="pg-rango">{rangoPer(it.periodo)}</small></span><b>{fmt(it.monto)}</b></div>
                   ))}
                   {preview.abono && !preview.sobranteAlcanzaOtroMes && (
-                    <div className="pg-linea abono"><span>◐ Abono {preview.abono.periodo.etiqueta}</span><b>{fmt(preview.abono.monto)}</b></div>
+                    <div className="pg-linea abono"><span>◐ Abono {preview.abono.periodo.etiqueta}<small className="pg-rango">desde {fDia(preview.abono.periodo.iso)} · {preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''} de cobertura</small></span><b>{fmt(preview.abono.monto)}</b></div>
                   )}
                   {preview.abono && !preview.sobranteAlcanzaOtroMes && (
                     <div className="pg-nota">El abono da <b>{preview.abono.dias} día{preview.abono.dias !== 1 ? 's' : ''}</b> de cobertura ({fmt(Math.round(preview.abono.tarifa))}/día). Faltarían {fmt(preview.abono.falta)} para completar ese periodo.</div>
@@ -1063,6 +1077,12 @@ const CSS_PG = `
 .pg-modos button b { display:block; font-size:13px; color:#0f172a; }
 .pg-modos button span { display:block; font-size:11.5px; color:#64748b; margin-top:2px; line-height:1.35; }
 .pg-modos button.on { border-color:#10b981; background:#ecfdf5; box-shadow:0 0 0 3px rgba(16,185,129,.12); }
+.pg-meses { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:-4px 0 10px; font-size:12px; color:#475569; font-weight:700; }
+.pg-meses button { width:28px; height:28px; border-radius:8px; border:1.5px solid #c7d2fe; background:#eef2ff; color:#4338ca; font-size:15px; font-weight:800; cursor:pointer; font-family:inherit; line-height:1; }
+.pg-meses input { width:56px; text-align:center; padding:5px 6px; border:1.5px solid #c7d2fe; border-radius:8px; font-size:14px; font-weight:800; color:#1e1b4b; outline:none; font-family:inherit; }
+.pg-meses input:focus { border-color:#6366f1; }
+.pg-meses small { font-size:11.5px; color:#64748b; font-weight:600; }
+.pg-rango { display:block; font-size:11px; color:#94a3b8; font-weight:600; margin-top:1px; }
 .pg-atajos { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:-4px 0 10px; font-size:11.5px; color:#64748b; font-weight:700; }
 .pg-atajos button { border:1.5px solid #c7d2fe; background:#eef2ff; color:#4338ca; border-radius:20px; padding:3px 11px; font-size:11.5px; font-weight:700; cursor:pointer; font-family:inherit; }
 .pg-periodos { display:flex; flex-wrap:wrap; gap:6px; max-height:150px; overflow-y:auto; padding:2px; }
