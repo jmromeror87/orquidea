@@ -18,7 +18,7 @@
  *
  * Los periodos de una póliza se cuentan desde el DÍA DE AFILIACIÓN, como un
  * arriendo — no por mes de calendario. Afiliado el 15 de junio:
- *     "Jun–Jul 2026" = 15 jun → 14 jul,   "Jul–Ago 2026" = 15 jul → 14 ago, …
+ *     15/06/2026 → 14/07/2026,   15/07/2026 → 14/08/2026, …
  * Si el día ancla no existe en el mes (31, 30, 29), el periodo arranca el
  * último día de ese mes.
  *
@@ -28,7 +28,6 @@
  *
  * ¡Mantener idéntico a orquidea-web/src/utils/periodosPoliza.js!
  */
-const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 const pad = n => String(n).padStart(2, '0')
 
 // Date (columna DATE de pg, medianoche local) o 'YYYY-MM-DD…' → { y, m (0-11), d }
@@ -57,10 +56,18 @@ export function inicioEnMes(y, m, dia) {
   return { y: yy, m: mm, d: Math.min(dia, diasDelMes(yy, mm)) }
 }
 
+// Un periodo se muestra siempre con sus fechas: "24/11/2027 → 23/12/2027"
+const fechaNum = f => `${pad(f.d)}/${pad(f.m + 1)}/${f.y}`
 export function etiquetaPeriodo(inicio, fin) {
-  return inicio.y === fin.y
-    ? `${MESES[inicio.m]}–${MESES[fin.m]} ${fin.y}`
-    : `${MESES[inicio.m]} ${inicio.y}–${MESES[fin.m]} ${fin.y}`
+  return `${fechaNum(inicio)} → ${fechaNum(fin)}`
+}
+
+// Cuota de contrato: va por mes calendario, n meses desde el mes de v
+// ("01/05/2027 → 31/05/2027")
+export function rangoMes(v, n = 1) {
+  const f = ymd(v)
+  if (!f) return '—'
+  return etiquetaPeriodo({ y: f.y, m: f.m, d: 1 }, addDias(inicioEnMes(f.y, f.m + n, 1), -1))
 }
 
 // Día ancla = día de afiliación (fecha_inicio) de la póliza

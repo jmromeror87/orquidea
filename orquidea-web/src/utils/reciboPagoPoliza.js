@@ -23,6 +23,7 @@ import { verPDF } from '../store/visorPdf.store.js'
 import { numeroALetras } from '../components/ui/CurrencyInput.jsx'
 
 const fmtCOP = v => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(v || 0)
+const fNum = isoStr => String(isoStr).slice(0, 10).split('-').reverse().join('/')
 const fmtFecha = d => d ? new Date(d).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric', timeZone:'UTC' }) : '—'
 const METODOS = { efectivo:'Efectivo', transferencia:'Transferencia', tarjeta:'Tarjeta', pse:'PSE', pse_online:'PSE (en línea)', cheque:'Cheque' }
 
@@ -112,7 +113,7 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa, salida =
     y += 3
     doc.setFillColor(...XLGRAY); doc.rect(PL, y, CW, 7, 'F')
     doc.setFontSize(7.2); doc.setTextColor(...GRAY)
-    doc.text('RECIBO', PL + 3, y + 4.8); doc.text('PERIODO', PL + 25, y + 4.8); doc.text('DESDE – HASTA', PL + 68, y + 4.8)
+    doc.text('RECIBO', PL + 3, y + 4.8); doc.text('PERIODO', PL + 25, y + 4.8)
     doc.text('VALOR', W - PR - 3, y + 4.8, { align:'right' })
     y += 7
     for (const x of grupo) {
@@ -121,8 +122,7 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa, salida =
       doc.text(String(x.numero_recibo).padStart(6,'0'), PL + 3, y + 5)
       // Una fila "parcial" que completó un periodo con abono previo dice "completa"
       const etq = /^Completa el periodo/.test(x.notas || '') ? ' (completa)' : x.parcial ? ' (abono)' : ''
-      doc.setFont('helvetica','bold'); doc.text(per.etiqueta + etq, PL + 25, y + 5)
-      doc.setFont('helvetica','normal'); doc.text(`${fmtFecha(per.iso)} – ${fmtFecha(per.fin_iso)}`, PL + 68, y + 5)
+      doc.setFont('helvetica','bold'); doc.text(`${fNum(per.iso)} – ${fNum(per.fin_iso)}${etq}`, PL + 25, y + 5)
       doc.setFont('helvetica','bold'); doc.text(fmtCOP(x.monto), W - PR - 3, y + 5, { align:'right' })
       doc.setDrawColor(...XLGRAY); doc.setLineWidth(0.2); doc.line(PL, y + 7.5, W - PR, y + 7.5)
       y += 7.5
@@ -133,9 +133,9 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa, salida =
     if (pago.tipo === 'AFILIACION') {
       concepto = esCambio ? `Cambio de beneficiario — ${pago.beneficiario_nombre || ''}` : 'Afiliación del titular (única vez)'
     } else {
-      // Periodo contado desde el día de afiliación: "Jun–Jul 2026 (15 jun 2026 – 14 jul 2026)"
+      // Periodo contado desde el día de afiliación: "15/06/2026 – 14/07/2026"
       const per = normalizarInicio(pago.mes_correspondiente, diaAncla(poliza))
-      concepto = `${pago.parcial ? 'Abono a la cuota del periodo' : 'Cuota del periodo'} ${per.etiqueta}  (${fmtFecha(per.iso)} – ${fmtFecha(per.fin_iso)})`
+      concepto = `${pago.parcial ? 'Abono a la cuota del periodo' : 'Cuota del periodo'} ${fNum(per.iso)} – ${fNum(per.fin_iso)}`
     }
     const n2 = campo(PL, CW, pago.tipo === 'AFILIACION' ? 'Concepto' : 'Periodo cubierto', concepto)
     y += 6 + n2 * 4.6 + 2

@@ -22,6 +22,7 @@ import { useFormasPago } from '../../hooks/useFormasPago.js'
 import { toast } from '../../store/toast.store.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
+import { rangoMes } from '../../utils/periodosPoliza.js'
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
 // Exportado para usar la ventana de pago (ModalPago) desde otras pantallas, p. ej. la ficha del contrato
@@ -244,7 +245,6 @@ export const CSS_PAGOS = `
 const fmt = n => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n || 0)
 const parseDate = d => { if (!d) return null; const s = String(d); return new Date(s.includes('T') ? s : s + 'T12:00:00') }
 const fmtFecha = d => { const dt = parseDate(d); return dt ? dt.toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' }) : '—' }
-const mesLabel = d => { const dt = parseDate(d); return dt ? dt.toLocaleDateString('es-CO', { month:'long', year:'numeric' }) : '—' }
 const METODO_ICON = { efectivo:<Banknote size={14}/>, transferencia:<Building2 size={14}/>, tarjeta:<CreditCard size={14}/>, cheque:<FileText size={14}/>, nequi:<span style={{fontWeight:900,fontSize:12}}>N</span>, daviplata:<span style={{fontWeight:900,fontSize:12}}>D</span> }
 
 function MoraBadge({ meses, valor }) {
@@ -386,7 +386,8 @@ export function ModalPago({ tipo, polizaInicial, onClose, onOk }) {
           </> : <>
             <div className="pg-recibo-row"><span>Período</span><span>{recibo.periodos_pagados?.length
               ? recibo.periodos_pagados.map(p => p.etiqueta).join(', ')
-              : `${mesLabel(recibo.recibo?.mes_correspondiente)} – ${mesLabel(recibo.recibo?.periodo_hasta)}`}</span></div>
+              : recibo.abono_parcial ? `${recibo.abono_parcial.periodo} (abono)`
+              : rangoMes(recibo.recibo?.mes_correspondiente, meses)}</span></div>
             <div className="pg-recibo-row"><span>{tipo === 'POLIZA' ? 'Periodos' : 'Meses'}</span><span>{meses}</span></div>
           </>}
           <div className="pg-recibo-row">
@@ -742,7 +743,7 @@ function TabHistorial() {
                     <div style={{fontSize:11,color:'#6B7280'}}>{r.telefono}</div>
                   </td>
                   <td><span style={{color:'#6366F1',fontWeight:700}}>N°{r.poliza_numero || r.contrato_numero}</span></td>
-                  <td style={{fontSize:12}}>{r.periodo || mesLabel(r.mes_correspondiente)}</td>
+                  <td style={{fontSize:12}}>{r.periodo || (r.tipo === 'ABONO' ? 'Abono al contrato' : rangoMes(r.mes_correspondiente))}</td>
                   <td>
                     <span style={{display:'flex',alignItems:'center',gap:5,fontSize:12}}>
                       {METODO_ICON[r.metodo_pago]||<DollarSign size={13}/>}

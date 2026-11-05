@@ -17,7 +17,7 @@
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 import pool from '../config/database.js'
-import { diaAncla, normalizarInicio } from '../utils/periodosPoliza.js'
+import { diaAncla, normalizarInicio, rangoMes } from '../utils/periodosPoliza.js'
 
 // Estas rutas NO llevan verifyToken — son de solo lectura y sirven a la
 // landing page pública. Cada función selecciona a mano solo las columnas
@@ -210,7 +210,7 @@ export async function consultarEstado(req, reply) {
           nombre: b.razon_social || `${b.nombres || ''} ${b.apellidos || ''}`.trim(),
           parentesco: b.parentesco,
         })),
-        // Periodo de cobertura de cada pago ("Jun–Jul 2026"), contado desde la afiliación
+        // Periodo de cobertura de cada pago ("15/06/2026 → 14/07/2026"), contado desde la afiliación
         pagos: pagoRows.map(pg => ({
           ...pg,
           periodo: pg.tipo === 'AFILIACION' ? 'Afiliación' : normalizarInicio(pg.mes_correspondiente, diaAncla(pol)).etiqueta,
@@ -235,7 +235,7 @@ export async function consultarEstado(req, reply) {
   const cont = rows[0]
 
   const { rows: pagoRows } = await pool.query(`
-    SELECT numero_recibo, mes_correspondiente, monto, fecha_pago, metodo_pago
+    SELECT numero_recibo, tipo, mes_correspondiente, monto, fecha_pago, metodo_pago
     FROM pagos_contrato
     WHERE contrato_id = $1 AND anulado = FALSE
     ORDER BY fecha_pago DESC
@@ -262,7 +262,7 @@ export async function consultarEstado(req, reply) {
       fecha_inicio: cont.fecha_inicio,
       valor_total: cont.valor_total,
       valor_pagado: cont.valor_pagado,
-      pagos: pagoRows,
+      pagos: pagoRows.map(pg => ({ ...pg, periodo: pg.tipo === 'ABONO' ? 'Abono al contrato' : rangoMes(pg.mes_correspondiente) })),
     },
   })
 }

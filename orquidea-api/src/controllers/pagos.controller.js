@@ -192,7 +192,7 @@ export async function listar(req, reply) {
         AND ($5::uuid[] IS NULL OR p.sede_id = ANY($5::uuid[]))
     `, [busca, desde, hasta, incAnulados, sedeIds])
 
-    // Periodo de cada pago contado desde la afiliación ("Jun–Jul 2026")
+    // Periodo de cada pago contado desde la afiliación ("15/06/2026 → 14/07/2026")
     const data = res.rows.map(r => ({
       ...r,
       periodo: r.tipo === 'AFILIACION' ? 'Afiliación'

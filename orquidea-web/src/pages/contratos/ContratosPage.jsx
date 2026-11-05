@@ -36,6 +36,7 @@ import { toast } from '../../store/toast.store.js'
 import { useFormasPago } from '../../hooks/useFormasPago.js'
 import { ModalPago, CSS_PAGOS } from '../pagos/PagosPage.jsx'
 import { FormaPagoTag } from '../../components/ui/FormaPago.jsx'
+import { rangoMes } from '../../utils/periodosPoliza.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -962,7 +963,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                             textDecoration: p.anulado ? 'line-through' : 'none' }}>{fmt(p.total ?? p.monto)}</span>
                           <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6,
                             background: p.tipo === 'ABONO' ? '#EDE9FE' : '#E0F2FE', color: p.tipo === 'ABONO' ? '#6D28D9' : '#0369A1' }}>
-                            {p.tipo === 'ABONO' ? 'ABONO' : `CUOTA ${new Date(p.mes_correspondiente).toLocaleDateString('es-CO',{ month:'short', year:'numeric', timeZone:'UTC' })}`}
+                            {p.tipo === 'ABONO' ? 'ABONO' : `CUOTA ${rangoMes(p.mes_correspondiente)}`}
                           </span>
                           {p.anulado && <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6, background:'#FEE2E2', color:'#EF4444' }}>ANULADO</span>}
                           {p.numero_recibo && <span style={{ fontSize:10, fontWeight:700, color:'#059669' }}>N° {String(p.numero_recibo).padStart(6,'0')}</span>}

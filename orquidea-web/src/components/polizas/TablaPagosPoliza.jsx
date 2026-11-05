@@ -131,7 +131,7 @@ export default function TablaPagosPoliza({ pagos = [], poliza, fmtMetodo = x => 
     if (filtro === 'AFILIACION' && (p.anulado || !['AFIL', 'CAMBIO'].includes(p._i.concepto))) return false
     if (filtro === 'ANULADOS' && !p.anulado) return false
     if (!q.trim()) return true
-    const texto = norm([String(p.numero_recibo).padStart(6, '0'), p._i.etiqueta, CONCEPTOS[p._i.concepto].label,
+    const texto = norm([String(p.numero_recibo).padStart(6, '0'), p._i.etiqueta, fNum(p._i.desde), fNum(p._i.hasta), fCorta(p._i.desde), fCorta(p._i.hasta), CONCEPTOS[p._i.concepto].label,
       fmtMetodo(p.metodo_pago), p.cajero, p.referencia, fCorta(p.fecha_pago)].join(' '))
     return norm(q).split(/\s+/).every(t => texto.includes(t))
   })
@@ -185,13 +185,10 @@ export default function TablaPagosPoliza({ pagos = [], poliza, fmtMetodo = x => 
                       {p.anulado && <div style={{ fontSize:10.5, marginTop:2 }}>{c.label}</div>}
                     </td>
                     <td>
-                      <div className="tp-per" style={p.anulado ? { color:'#94a3b8' } : undefined}>{p._i.etiqueta}</div>
-                      {p._i.desde && (
-                        <div className="tp-rango">
-                          {fNum(p._i.desde)} → {p._i.hasta ? fNum(p._i.hasta) : '—'}
-                          {p._i.concepto === 'ABONO' && p._i.dias != null && <> · {p._i.dias} días</>}
-                        </div>
-                      )}
+                      <div className="tp-per" style={p.anulado ? { color:'#94a3b8' } : undefined}>
+                        {p._i.desde ? <>{fNum(p._i.desde)} → {p._i.hasta ? fNum(p._i.hasta) : '—'}</> : p._i.etiqueta}
+                      </div>
+                      {p._i.desde && p._i.concepto === 'ABONO' && p._i.dias != null && <div className="tp-rango">{p._i.dias} días</div>}
                       {p.anulado && (
                         <div className="tp-anulnota">
                           Anulado{p.anulado_por_nombre && <> por <strong>{p.anulado_por_nombre}</strong></>}

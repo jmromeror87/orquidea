@@ -91,18 +91,21 @@ function EstadoCobertura({ data }) {
       {siguiente && (
         <div style={{ fontSize:12, background:'rgba(255,255,255,.7)', borderRadius:10, padding:'8px 12px' }}>
           <div style={{ fontWeight:700, opacity:.75 }}>Próximo periodo a pagar</div>
-          <div style={{ fontWeight:800, fontSize:13.5 }}>{siguiente.etiqueta}</div>
-          <div style={{ opacity:.8 }}>{fLarga(siguiente.iso)} → {fLarga(siguiente.fin_iso)}</div>
+          <div style={{ fontWeight:800, fontSize:13.5 }}>{rangoPeriodo(siguiente)}</div>
         </div>
       )}
     </div>
   )
 }
 
-// Etiqueta de un pago de póliza: periodo ("Jun–Jul 2026") o afiliación
+// Un periodo se muestra solo con sus fechas: "24/11/2027 → 23/12/2027"
+const fNumPer = iso => String(iso).slice(0, 10).split('-').reverse().join('/')
+const rangoPeriodo = per => `${fNumPer(per.iso)} → ${fNumPer(per.fin_iso)}`
+
+// Etiqueta de un pago de póliza: fechas del periodo o afiliación
 const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
   ? (pago.beneficiario_id || pago.beneficiario_nombre ? `Cambio de beneficiario · ${pago.beneficiario_nombre || ''}` : 'Afiliación · titular')
-  : normalizarInicio(pago.mes_correspondiente, diaAncla(poliza)).etiqueta
+  : rangoPeriodo(normalizarInicio(pago.mes_correspondiente, diaAncla(poliza)))
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { verPDF, verHTML } from '../../store/visorPdf.store.js'
 import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
@@ -635,10 +638,10 @@ function ModalPago({ poliza, onClose, onSaved }) {
   const { formas, label: fmtMetodo } = useFormasPago()
 
   const cuota = Number(poliza.valor_cuota) || 0
-  // Periodos contados desde el día de afiliación ("Jun–Jul 2026": 15 jun → 14 jul)
+  // Periodos contados desde el día de afiliación ("15/06/2026 → 14/07/2026")
   const dia = diaAncla(poliza)
   const primerPeriodo = primerPeriodoAPagar(poliza)
-  const mesesPendientes = listarPeriodos(primerPeriodo, 18, dia).map(p => ({ iso: p.iso, label: `${p.etiqueta} (${p.iso.slice(8)}/${p.iso.slice(5,7)} → ${p.fin_iso.slice(8)}/${p.fin_iso.slice(5,7)})` }))
+  const mesesPendientes = listarPeriodos(primerPeriodo, 18, dia).map(p => ({ iso: p.iso, label: rangoPeriodo(p) }))
   const mesSugerido = mesesPendientes[0]?.iso
 
   const [modo, setModo] = useState('mes') // 'mes' | 'monto'
@@ -700,7 +703,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
   const candidatos = listarPeriodos(primerPeriodo, 24, dia, estadoPagos.completos).map(p => {
     const abonado = estadoPagos.abonado.get(p.iso) || 0
     const tarifa = cuotaFn(p)
-    return { iso: p.iso, label: p.etiqueta, periodo: p, abonado, tarifa, falta: Math.round((tarifa - abonado) * 100) / 100 }
+    return { iso: p.iso, label: rangoPeriodo(p), periodo: p, abonado, tarifa, falta: Math.round((tarifa - abonado) * 100) / 100 }
   })
 
   const total = Number(montoTotal)
@@ -790,8 +793,8 @@ function ModalPago({ poliza, onClose, onSaved }) {
         }
         const p = res.data
         const hasta = p.cubre_hasta ? new Date(p.cubre_hasta + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }) : ''
-        const periodos = (p.periodos_pagados || []).map(x => x.etiqueta).join(', ')
-        const abono = p.abono_parcial ? `abono de ${fmt(p.abono_parcial.monto)} (${p.abono_parcial.dias} días de ${p.abono_parcial.periodo})` : ''
+        const periodos = (p.periodos_pagados || []).map(x => `${fNumPer(x.inicio)} → ${fNumPer(x.fin)}`).join(', ')
+        const abono = p.abono_parcial ? `abono de ${fmt(p.abono_parcial.monto)} (${p.abono_parcial.dias} días desde ${fNumPer(p.abono_parcial.mes)})` : ''
         toast.success(`Pago registrado: ${[periodos, abono].filter(Boolean).join(' + ')}${hasta ? ` — cubierto hasta el ${hasta}` : ''}`)
       } else {
         res = await api.post(`/polizas/${poliza.id}/pagos`, form)
@@ -839,9 +842,9 @@ function ModalPago({ poliza, onClose, onSaved }) {
     setMesesPagar(v === '' ? '' : String(n))
     if (n > 0) atajo(n)
   }
-  // "24 nov 2027 → 23 dic 2027": qué días cubre cada periodo
-  const fDia = iso => new Date(iso + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }).replace('.', '')
-  const rangoPer = per => `${fDia(per.iso)} → ${fDia(per.fin_iso)}`
+  // "24/11/2027 → 23/12/2027": qué días cubre cada periodo
+  const fDia = fNumPer
+  const rangoPer = rangoPeriodo
   const paso = (n, titulo, ayuda) => (
     <div className="pg-paso"><span className="pg-num">{n}</span><div><b>{titulo}</b>{ayuda && <small>{ayuda}</small>}</div></div>
   )
@@ -921,7 +924,7 @@ function ModalPago({ poliza, onClose, onSaved }) {
                       const esAbono = !activo && preview?.mesAbono?.iso === m.iso
                       return (
                         <button type="button" key={m.iso} onClick={() => toggleMes(m.iso)} className={activo ? 'on' : esAbono ? 'abono' : ''}
-                          title={`${m.periodo.iso.split('-').reverse().join('/')} → ${m.periodo.fin_iso.split('-').reverse().join('/')} · tarifa ${fmt(m.tarifa)}`}>
+                          title={`Tarifa ${fmt(m.tarifa)}`}>
                           {activo ? '✓ ' : esAbono ? '◐ ' : ''}{m.label}
                           {m.abonado > 0 ? <em>falta {fmt(m.falta)}</em> : m.tarifa !== cuota ? <em>{fmt(m.tarifa)}</em> : null}
                         </button>
