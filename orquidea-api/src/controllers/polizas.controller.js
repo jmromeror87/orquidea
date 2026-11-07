@@ -58,7 +58,7 @@ const SELECT_LIST = `
     -- Plan (nombre/tipo se muestran en vivo; la COBERTURA se lee congelada
     -- desde la propia póliza — ver migración 034 — para que editar el plan
     -- después de la venta nunca cambie lo que esta póliza ya cubre)
-    pl.id AS plan_id, pl.nombre AS plan_nombre, pl.tipo AS plan_tipo,
+    pl.id AS plan_id, pl.nombre AS plan_nombre, pl.tipo AS plan_tipo, pl.edad_max_beneficiario AS plan_edad_max,
     p.max_beneficiarios, pl.meses_carencia,
     p.cubre_ataud, p.cubre_velacion_h,
     p.cubre_traslado_local, p.cubre_traslado_nacional,
