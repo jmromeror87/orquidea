@@ -109,6 +109,7 @@ const periodoLabel = (pago, poliza) => pago.tipo === 'AFILIACION'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { verPDF, verHTML } from '../../store/visorPdf.store.js'
 import { SelectorFormaPago, FormaPagoTag } from '../../components/ui/FormaPago.jsx'
+import Angelito from '../../components/ui/Angelito.jsx'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1896,7 +1897,7 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                         background: b.ejecutado ? 'linear-gradient(135deg,#64748B,#475569)' : 'linear-gradient(135deg,#059669,#047857)',
                         display:'flex', alignItems:'center', justifyContent:'center',
                         fontSize:15, fontWeight:800, color:'#fff' }}>
-                        {b.ejecutado ? '👼' : (b.nombre[0]||'?').toUpperCase()}
+                        {b.ejecutado ? <Angelito size={20}/> : (b.nombre[0]||'?').toUpperCase()}
                       </div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:13.5, fontWeight:800, color:'#0F1035' }}>{b.nombre}</div>

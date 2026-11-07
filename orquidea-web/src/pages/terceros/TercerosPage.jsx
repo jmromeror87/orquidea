@@ -28,6 +28,7 @@ import api from '../../services/api.js'
 import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
+import Angelito from '../../components/ui/Angelito.jsx'
 
 // ── Constantes ────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ const ROLES_META = {
   CLIENTE:        { label: 'Cliente',          color: '#10B981', bg: '#D1FAE5', Icon: User },
   TITULAR_POLIZA: { label: 'Titular de Póliza', color: '#6366F1', bg: '#EEF2FF', Icon: Star },
   BENEFICIARIO:   { label: 'Beneficiario',      color: '#0891B2', bg: '#CFFAFE', Icon: Heart },
-  DIFUNTO:        { label: 'Difunto',           color: '#64748B', bg: '#F1F5F9', Icon: () => <span style={{fontSize:18, lineHeight:1}}>👼</span> },
+  DIFUNTO:        { label: 'Difunto',           color: '#64748B', bg: '#F1F5F9', Icon: ({ size = 18 }) => <Angelito size={Math.max(14, size + 2)}/> },
   CONTRATANTE:    { label: 'Contratante',       color: '#F59E0B', bg: '#FEF3C7', Icon: Briefcase },
   ACUDIENTE:      { label: 'Acudiente',         color: '#8B5CF6', bg: '#EDE9FE', Icon: UserCheck },
   EMPLEADO:       { label: 'Empleado',          color: '#374151', bg: '#F3F4F6', Icon: Briefcase },
@@ -1491,7 +1492,7 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                     <button className="tp-btn-save"
                       style={{ background:'linear-gradient(135deg,#1E293B,#334155)' }}
                       onClick={guardarDefuncion} disabled={savingDef}>
-                      {savingDef ? <Loader2 size={14} className="tp-spin"/> : <span style={{fontSize:14}}>👼</span>}
+                      {savingDef ? <Loader2 size={14} className="tp-spin"/> : <Angelito size={16}/>}
                       {data.defuncion ? 'Actualizar defunción' : 'Registrar defunción'}
                     </button>
                   </div>

@@ -37,6 +37,7 @@ import { useFormasPago } from '../../hooks/useFormasPago.js'
 import { ModalPago, CSS_PAGOS } from '../pagos/PagosPage.jsx'
 import { FormaPagoTag } from '../../components/ui/FormaPago.jsx'
 import { rangoMes } from '../../utils/periodosPoliza.js'
+import Angelito from '../../components/ui/Angelito.jsx'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -471,7 +472,7 @@ function ModalForm({ contrato, paquetes, onClose, onSaved }) {
                     <div style={{ width:30, height:30, borderRadius:8, flexShrink:0,
                       background:'linear-gradient(135deg,#64748B,#475569)',
                       display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>
-                      👼
+                      <Angelito size={22}/>
                     </div>
                     <div>
                       <div style={{ fontSize:12.5, fontWeight:700, color:'#0F1035' }}>{c.nombres} {c.apellidos}</div>
@@ -1170,7 +1171,7 @@ export default function ContratosPage() {
                     </td>
                     <td>
                       {c.difunto_nombre
-                        ? <span style={{ fontSize:12.5, color:'#64748B' }}>👼 {c.difunto_nombre}</span>
+                        ? <span style={{ fontSize:12.5, color:'#64748B', display:'inline-flex', alignItems:'center', gap:5 }}><Angelito size={16}/> {c.difunto_nombre}</span>
                         : <span style={{ color:'#D1D5DB' }}>—</span>}
                     </td>
                     <td><TipoChip tipo={c.tipo_contrato}/></td>

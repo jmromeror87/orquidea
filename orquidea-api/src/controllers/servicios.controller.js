@@ -1216,7 +1216,13 @@ export async function stats(req, reply) {
       COUNT(*) FILTER (WHERE estado = 'CANCELADO')  AS cancelados,
       COUNT(*) FILTER (WHERE tipo_disposicion = 'INHUMACION') AS inhumaciones,
       COUNT(*) FILTER (WHERE tipo_disposicion = 'CREMACION')  AS cremaciones,
-      COUNT(*) FILTER (WHERE tramites_completos = FALSE AND estado NOT IN ('COMPLETADO','CANCELADO')) AS tramites_pendientes
+      COUNT(*) FILTER (WHERE tramites_completos = FALSE AND estado NOT IN ('COMPLETADO','CANCELADO')) AS tramites_pendientes,
+      COUNT(*) AS total,
+      COUNT(*) FILTER (WHERE estado <> 'CANCELADO' AND creado_en >= DATE_TRUNC('month', CURRENT_DATE)) AS este_mes,
+      COUNT(*) FILTER (WHERE estado <> 'CANCELADO' AND creado_en >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '1 month'
+                         AND creado_en < DATE_TRUNC('month', CURRENT_DATE)) AS mes_anterior,
+      COUNT(*) FILTER (WHERE estado <> 'CANCELADO' AND creado_en >= DATE_TRUNC('year', CURRENT_DATE)) AS este_anio,
+      COUNT(*) FILTER (WHERE estado = 'COMPLETADO' AND creado_en >= DATE_TRUNC('month', CURRENT_DATE)) AS completados_mes
     FROM servicios_funerarios
     WHERE ($1::uuid[] IS NULL OR sede_id = ANY($1::uuid[]))
   `, [sedeIds])

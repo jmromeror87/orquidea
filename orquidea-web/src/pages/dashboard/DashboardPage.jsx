@@ -28,6 +28,7 @@ import icoPolizas from '../../assets/dashboard/kpi-polizas.png'
 import icoRecaudo from '../../assets/dashboard/kpi-recaudo.png'
 import icoSalas from '../../assets/dashboard/kpi-salas.png'
 import icoVentas from '../../assets/dashboard/kpi-ventas.png'
+import icoTablero from '../../assets/iconos/dashboard.png'
 
 // ─── Gráfica de áreas: esperado vs. recaudado ─────────────────────────────────
 // Dos series con colores validados (incluido daltonismo): esperado en azul,
@@ -350,7 +351,7 @@ export default function DashboardPage() {
         <div style={styles.header}>
           <div>
             <h1 style={styles.headerTitle}>
-              <span style={{ marginRight: 8 }}>🌸</span>Dashboard
+              <img src={icoTablero} alt="" width={34} height={34} style={{ marginRight: 10, verticalAlign: '-6px', objectFit: 'contain' }}/>Dashboard
             </h1>
             <p style={styles.headerSub}>
               {fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1)}

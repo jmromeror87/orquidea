@@ -49,6 +49,14 @@ import { archivoUrl } from '../../utils/archivoUrl.js'
 import { FORMATOS_SERVICIO } from '../../utils/formatosServicio.js'
 import { verPDF } from '../../store/visorPdf.store.js'
 import { coincide, sinTildes } from '../../utils/textoFormato.js'
+import Angelito from '../../components/ui/Angelito.jsx'
+import icoRecibidos from '../../assets/servicios/kpi-recibidos.png'
+import icoEnCurso from '../../assets/servicios/kpi-en-curso.png'
+import icoCompletados from '../../assets/servicios/kpi-completados.png'
+import icoMes from '../../assets/servicios/kpi-mes.png'
+import icoPendientes from '../../assets/servicios/kpi-pendientes.png'
+import icoCremaciones from '../../assets/servicios/kpi-cremaciones.png'
+import icoAngelito from '../../assets/iconos/angelito.png'
 
 // ── Carroza fúnebre SVG ───────────────────────────────────────────────────────
 const HearseIcon = ({ size = 22, color = '#374151' }) => (
@@ -422,14 +430,20 @@ const CSS = `
     box-shadow:0 4px 12px rgba(139,92,246,.3); flex-shrink:0; }
   .sv-titulo { font-size:22px; font-weight:900; color:#0F1035; letter-spacing:-.5px; }
   .sv-sub { font-size:12px; color:#9CA3AF; margin-top:2px; }
-  .sv-kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px; }
-  .sv-kpi { background:#fff; border-radius:16px; overflow:hidden; border:1.5px solid #ECEDF8; transition:all .2s; }
+  .sv-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:14px; margin-bottom:22px; }
+  .sv-kpi { position:relative; text-align:left; font-family:inherit; background:#fff; border-radius:16px; overflow:hidden; border:1.5px solid #ECEDF8; transition:all .2s; padding:14px 15px 13px; display:flex; flex-direction:column; gap:6px; cursor:default; }
+  .sv-kpi::before { content:''; position:absolute; inset:0 0 auto 0; height:3px; background:var(--kc); }
+  .sv-kpi.clic { cursor:pointer; }
+  .sv-kpi.on { border-color:var(--kc-b); box-shadow:0 0 0 3px var(--kc-bg); }
+  .sv-kpi-top { display:flex; align-items:center; gap:10px; }
+  .sv-kpi-sub { font-size:11px; color:#94A3B8; line-height:1.35; }
+  .sv-kpi-filtro { position:absolute; top:10px; right:10px; font-size:10px; font-weight:800; color:var(--kc); background:var(--kc-bg); padding:2px 7px; border-radius:20px; }
   .sv-kpi:hover { transform:translateY(-2px); box-shadow:0 8px 22px rgba(0,0,0,.08); }
-  .sv-kpi-bar { height:3px; }
-  .sv-kpi-body { padding:14px 16px 12px; }
-  .sv-kpi-icon { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; margin-bottom:10px; font-size:18px; }
-  .sv-kpi-val { font-size:28px; font-weight:900; color:#0F1035; line-height:1; letter-spacing:-1px; }
-  .sv-kpi-label { font-size:11px; color:#9CA3AF; font-weight:600; margin-top:4px; }
+  .sv-kpi-icon { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:var(--kc-bg); }
+  .sv-kpi-icon img { width:28px; height:28px; object-fit:contain; transition:transform .2s; }
+  .sv-kpi:hover .sv-kpi-icon img { transform:scale(1.1); }
+  .sv-kpi-val { font-size:26px; font-weight:900; color:#0F1035; line-height:1.05; letter-spacing:-.8px; font-variant-numeric:tabular-nums; }
+  .sv-kpi-label { font-size:10.5px; color:#64748B; font-weight:800; text-transform:uppercase; letter-spacing:.5px; line-height:1.3; }
   .sv-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .sv-search { position:relative; flex:1; min-width:200px; max-width:340px; }
   .sv-search input { width:100%; padding:9px 12px 9px 36px; border:1.5px solid #E2E5F0;
@@ -1137,7 +1151,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                             onMouseLeave={e => e.currentTarget.style.background='#fff'}>
                             <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
                               background:'linear-gradient(135deg,#64748B,#475569)',
-                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>👼</div>
+                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}><Angelito size={20}/></div>
                             <div>
                               <div style={{ fontSize:12.5, fontWeight:700 }}>{c.nombres} {c.apellidos}</div>
                               <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}</div>
@@ -1371,7 +1385,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                             onMouseLeave={e => e.currentTarget.style.background='#fff'}>
                             <div style={{ width:28, height:28, borderRadius:8, flexShrink:0,
                               background:'linear-gradient(135deg,#64748B,#475569)',
-                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>👼</div>
+                              display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}><Angelito size={20}/></div>
                             <div>
                               <div style={{ fontSize:12.5, fontWeight:700 }}>{c.nombres} {c.apellidos}</div>
                               <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}</div>
@@ -1575,7 +1589,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                       <label>Difunto <span className="sv-req">*</span></label>
                       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
                         background:'#F0FDF4', border:'1.5px solid #6EE7B7', borderRadius:10 }}>
-                        <span style={{ fontSize:18 }}>👼</span>
+                        <Angelito size={22}/>
                         <div>
                           <div style={{ fontSize:13, fontWeight:700, color:'#065F46' }}>{busqDif}</div>
                           <div style={{ fontSize:11, color:'#059669' }}>Registrado automáticamente desde el grupo familiar</div>
@@ -1720,7 +1734,7 @@ function ModalForm({ servicio, salas, onClose, onSaved }) {
                         <label>Difunto</label>
                         <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
                           background:'#F0FDF4', border:'1.5px solid #6EE7B7', borderRadius:10 }}>
-                          <span style={{ fontSize:18 }}>👼</span>
+                          <Angelito size={22}/>
                           <span style={{ fontSize:13, fontWeight:700, color:'#065F46' }}>{busqDif}</span>
                         </div>
                       </div>
@@ -6065,12 +6079,20 @@ export default function ServiciosPage() {
     } catch (e) { toast.error(e.response?.data?.error || 'Error') }
   }
 
+  const n0 = v => Number(v || 0).toLocaleString('es-CO')
+  const anio = new Date().getFullYear()
+  const MES_ACT = new Date().toLocaleDateString('es-CO', { month:'long' })
+  // Cada recuadro: su ícono, la cifra real (de toda la base) y, si aplica, el
+  // filtro que se activa al hacer clic sobre él.
   const KPI_LIST = [
-    { key:'recibidos',          label:'Recibidos',          color:'#6366F1', bg:'#EEF2FF', emoji:'📋' },
-    { key:'en_curso',           label:'En curso',           color:'#F59E0B', bg:'#FEF3C7', emoji:'⚙️' },
-    { key:'completados',        label:'Completados',        color:'#059669', bg:'#D1FAE5', emoji:'✅' },
-    { key:'tramites_pendientes',label:'Trámites pendientes',color:'#EF4444', bg:'#FEE2E2', emoji:'📄' },
-    { key:'cremaciones',        label:'Cremaciones',        color:'#DC2626', bg:'#FEE2E2', emoji:'🔥' },
+    { key:'recibidos',   label:'Recibidos',  img:icoRecibidos,   color:'#6366F1', filtro:'RECIBIDO',   sub:'Esperando iniciar' },
+    { key:'en_curso',    label:'En curso',   img:icoEnCurso,     color:'#16A34A', filtro:'EN_CURSO',   sub:'Atendiéndose ahora' },
+    { key:'este_mes',    label:`Este mes`,   img:icoMes,         color:'#0EA5E9',
+      sub:`${n0(kpis.completados_mes)} completados · ${n0(kpis.mes_anterior)} el mes anterior` },
+    { key:'este_anio',   label:`Fallecidos ${anio}`, img:icoAngelito, color:'#D97706', sub:'Servicios prestados este año' },
+    { key:'completados', label:'Completados', img:icoCompletados, color:'#059669', filtro:'COMPLETADO', sub:`${n0(kpis.total)} servicios en la historia` },
+    { key:'tramites_pendientes', label:'Trámites pendientes', img:icoPendientes, color:'#F59E0B', sub:'Servicios abiertos sin trámites completos' },
+    { key:'cremaciones', label:'Cremaciones', img:icoCremaciones, color:'#DC2626', sub:`${n0(kpis.inhumaciones)} inhumaciones` },
   ]
 
   return (
@@ -6098,16 +6120,23 @@ export default function ServiciosPage() {
           </div>
 
           <div className="sv-kpis">
-            {KPI_LIST.map(k => (
-              <div key={k.key} className="sv-kpi">
-                <div className="sv-kpi-bar" style={{ background:k.color }}/>
-                <div className="sv-kpi-body">
-                  <div className="sv-kpi-icon" style={{ background:k.bg }}>{k.emoji}</div>
-                  <div className="sv-kpi-val">{kpis[k.key] ?? 0}</div>
-                  <div className="sv-kpi-label">{k.label}</div>
-                </div>
-              </div>
-            ))}
+            {KPI_LIST.map(k => {
+              const activo = k.filtro && estado === k.filtro
+              return (
+                <button key={k.key} type="button" className={`sv-kpi${k.filtro ? ' clic' : ''}${activo ? ' on' : ''}`}
+                  style={{ '--kc': k.color, '--kc-bg': `${k.color}14`, '--kc-b': `${k.color}66` }}
+                  title={k.filtro ? (activo ? 'Quitar el filtro' : `Ver solo: ${k.label.toLowerCase()}`) : undefined}
+                  onClick={() => k.filtro && setEstado(activo ? '' : k.filtro)}>
+                  <div className="sv-kpi-top">
+                    <div className="sv-kpi-icon"><img src={k.img} alt=""/></div>
+                    <div className="sv-kpi-label">{k.label}{k.key === 'este_mes' ? <span style={{ textTransform:'none', fontWeight:600 }}> · {MES_ACT}</span> : null}</div>
+                  </div>
+                  <div className="sv-kpi-val">{n0(kpis[k.key])}</div>
+                  <div className="sv-kpi-sub">{k.sub}</div>
+                  {activo && <div className="sv-kpi-filtro">Filtrando ✕</div>}
+                </button>
+              )
+            })}
           </div>
 
           <div className="sv-toolbar">
@@ -6174,7 +6203,7 @@ export default function ServiciosPage() {
                       </td>
                       <td>
                         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                          <span style={{ fontSize:16 }}>👼</span>
+                          <Angelito size={20}/>
                           <div>
                             <div style={{ fontSize:13, fontWeight:800, color:'#0F1035' }}>{s.difunto_nombre}</div>
                             {s.difunto_rh && (
