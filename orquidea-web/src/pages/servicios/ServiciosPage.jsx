@@ -33,6 +33,7 @@ import {
   Wrench, PackageSearch, ClipboardList, Users, UserPlus, UserMinus,
 } from 'lucide-react'
 import { CSS_FICHA, Seccion, Dato, Progreso, Ayuda, ListaFaltantes, iniciales } from './fichaUI.jsx'
+import InfoPisco from '../../components/servicios/InfoPisco.jsx'
 import ListaInteligente from '../../components/ui/ListaInteligente.jsx'
 import MenuFicha from '../../components/ui/MenuFicha.jsx'
 import AvisoOtrasPolizas from '../../components/polizas/AvisoOtrasPolizas.jsx'
@@ -2794,6 +2795,9 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
           </div>
         </div>
 
+        {data?.migrado_pisco ? (
+          <InfoPisco datos={data.datos_pisco} observaciones={data.observaciones}/>
+        ) : (
         <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.35fr) minmax(0,1fr)', gap:14, alignItems:'start' }}>
           {/* Desarrollo del servicio */}
           <Seccion icon="🗓️" titulo="Desarrollo del servicio" ayuda="Las etapas en orden. Se marcan como realizadas cuando pasa su fecha." cols={0}>
@@ -2828,6 +2832,7 @@ function TabInfoGeneral({ data, servicioId, onSaved, onEstado, esEditor, esAdmin
             </Seccion>
           </div>
         </div>
+        )}
       </div>
     )
   }
@@ -5000,7 +5005,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
                   )}
                 </div>
                 <div style={{ fontSize:19, fontWeight:900, color:'#fff', lineHeight:1.2 }}>
-                  {loading ? '…' : `#${data?.numero} — ${data?.difunto_nombre}`}
+                  {loading ? '…' : data?.migrado_pisco ? `Servicio Pisco N° ${data?.datos_pisco?.numero || String(data?.codigo || '').replace('PISCO-', '')} — ${data?.difunto_nombre}` : `#${data?.numero} — ${data?.difunto_nombre}`}
                 </div>
                 {!loading && (
                   <div style={{ display:'flex', gap:5, marginTop:5, flexWrap:'wrap' }}>
@@ -6158,7 +6163,7 @@ export default function ServiciosPage() {
                   const disp = DISPOSICION_META[s.tipo_disposicion] || {}
                   return (
                     <tr key={s.id} onClick={() => { setSelected(s); setModal('ficha') }}>
-                      <td><span style={{ fontWeight:900, color:'#0F1035' }}>#{s.numero}</span></td>
+                      <td><span style={{ fontWeight:900, color: s.migrado_pisco ? '#B45309' : '#0F1035' }} title={s.migrado_pisco ? 'Servicio migrado de Pisco' : undefined}>{s.migrado_pisco ? s.codigo : `#${s.numero}`}</span></td>
                       <td>
                         <span style={{ fontFamily:'monospace', fontSize:12, fontWeight:700,
                           color:'#7C3AED', background:'#F5F3FF', padding:'3px 8px',

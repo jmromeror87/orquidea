@@ -1572,7 +1572,8 @@ export default function TercerosPage() {
   const [tiposDocs, setTiposDocs] = useState([])
 
   // Filtros
-  const [q, setQ]               = useState('')
+  // ?buscar=<documento o nombre>: llega desde un enlace (p. ej. la ficha de un servicio de Pisco)
+  const [q, setQ]               = useState(() => { try { return new URLSearchParams(window.location.search).get('buscar') || '' } catch { return '' } })
   const [filtRol, setFiltRol]   = useState('')
   const [filtPersona, setFiltPersona] = useState('')
   const [filtActivo, setFiltActivo]   = useState('')

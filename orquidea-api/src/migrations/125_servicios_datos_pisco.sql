@@ -1,0 +1,17 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║              ORQUÍDEA ERP — Sistema de Gestión Funeraria               ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Cliente         : Funeraria San José de Abrego                        ║
+-- ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
+-- ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  Migración       : 125 — Datos ordenados del servicio en Pisco         ║
+-- ║  Fecha           : 2026-11-07                                          ║
+-- ╠══════════════════════════════════════════════════════════════════════════╣
+-- ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+-- Lo que Pisco guardaba del servicio y no tiene columna propia en Orquídea
+-- (valores, responsable, personal por rol, velación, cementerio, cofre…) se
+-- guarda ordenado para mostrarlo en la ficha con formato y enlaces, en vez de
+-- un bloque de texto en las observaciones.
+ALTER TABLE servicios_funerarios ADD COLUMN IF NOT EXISTS datos_pisco JSONB;
