@@ -216,9 +216,10 @@ async function eventosServicio(servicioId) {
 
   for (const s of srv) {
     const disp = DISPOSICION[s.tipo_disposicion] || s.tipo_disposicion || ''
-    add('srv', s.creado_en, 'SERVICIO', 'servicio', `Servicio ${s.codigo || 'N° ' + (s.numero ?? '')} abierto`,
-      `Difunto: ${s.difunto || '—'}${disp ? ` · ${disp}` : ''}`, s.usuario)
-    if (s.observaciones?.trim()) add('srv-obs', s.creado_en, 'OBSERVACION', 'nota', 'Observaciones del servicio', s.observaciones.trim(), s.usuario)
+    const quien = s.migrado_pisco ? 'Migrado desde Pisco' : s.usuario
+    add('srv', s.creado_en, 'SERVICIO', 'servicio', `Servicio ${s.codigo || 'N° ' + (s.numero ?? '')} ${s.migrado_pisco ? 'prestado (historial de Pisco)' : 'abierto'}`,
+      `Difunto: ${s.difunto || '—'}${disp ? ` · ${disp}` : ''}`, quien)
+    if (s.observaciones?.trim()) add('srv-obs', s.creado_en, 'OBSERVACION', 'nota', 'Observaciones del servicio', s.observaciones.trim(), quien)
     if (s.fecha_recogida) add('srv-rec', s.fecha_recogida, 'RECOGIDA', 'traslado', 'Recogida del cuerpo', s.lugar_recogida || '', null)
     if (s.fecha_velacion_ini) add('srv-vel', s.fecha_velacion_ini, 'VELACION', 'velacion', 'Inicio de la velación',
       `${s.sala || 'Sala'}${s.fecha_velacion_fin ? ` · hasta ${fHora(s.fecha_velacion_fin)}` : ''}`, null)

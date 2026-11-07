@@ -103,11 +103,13 @@ const ORIGEN_META = {
   CONVENIO: { label:'Convenio', icon:'🤝', color:'#0891B2', bg:'#ECFEFF', border:'#A5F3FC' },
   CONTRATO: { label:'Contrato', icon:'📋', color:'#2563EB', bg:'#EFF6FF', border:'#BFDBFE' },
   DIRECTO:  { label:'Directo',  icon:'⚡', color:'#6B7280', bg:'#F3F4F6', border:'#D1D5DB' },
+  PISCO:    { label:'Particular (Pisco)', icon:'🗂️', color:'#92400E', bg:'#FFFBEB', border:'#FCD34D' },
 }
 function origenServicio(s) {
   if (s?.poliza_id)   return 'POLIZA'
   if (s?.convenio_id) return 'CONVENIO'
   if (s?.contrato_id) return 'CONTRATO'
+  if (s?.migrado_pisco) return 'PISCO'
   return 'DIRECTO'
 }
 function OrigenChip({ servicio }) {
