@@ -88,7 +88,16 @@ export async function listar(req, reply) {
   const where  = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
   const offset = (Number(page) - 1) * Number(limit)
 
-  const [{ rows }, { rows: cnt }] = await Promise.all([
+  // Totales por rol de TODA la base (de la sede del usuario), no solo de la página
+  const kpisQ = pool.query(
+    `SELECT tr.rol, COUNT(DISTINCT t.id)::int AS n
+       FROM terceros t JOIN tercero_roles tr ON tr.tercero_id = t.id AND tr.activo = TRUE
+      WHERE ($1::uuid[] IS NULL OR t.sede_id = ANY($1::uuid[]))
+      GROUP BY tr.rol
+     UNION ALL
+     SELECT '_todos', COUNT(*)::int FROM terceros t WHERE ($1::uuid[] IS NULL OR t.sede_id = ANY($1::uuid[]))`, [sedeIds])
+
+  const [{ rows }, { rows: cnt }, { rows: kp }] = await Promise.all([
     pool.query(
       `${SELECT_TERCERO} ${where}
        GROUP BY t.id, td.sigla, td.nombre, td.requiere_dv, d.nombre, m.nombre, z.nombre, zr.nombre, zr.color
@@ -102,11 +111,13 @@ export async function listar(req, reply) {
        LEFT JOIN tercero_roles tr ON tr.tercero_id = t.id ${where}`,
       vals
     ),
+    kpisQ,
   ])
 
   return reply.send({
     data: rows,
-    meta: { total: Number(cnt[0].count), page: Number(page), limit: Number(limit) },
+    meta: { total: Number(cnt[0].count), page: Number(page), limit: Number(limit),
+            kpis: Object.fromEntries(kp.map(r => [r.rol, r.n])) },
     error: null,
   })
 }

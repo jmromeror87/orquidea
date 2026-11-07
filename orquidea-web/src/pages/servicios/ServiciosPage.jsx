@@ -34,6 +34,7 @@ import {
 } from 'lucide-react'
 import { CSS_FICHA, Seccion, Dato, Progreso, Ayuda, ListaFaltantes, iniciales } from './fichaUI.jsx'
 import InfoPisco from '../../components/servicios/InfoPisco.jsx'
+import PersonalServicio from '../../components/servicios/PersonalServicio.jsx'
 import ListaInteligente from '../../components/ui/ListaInteligente.jsx'
 import MenuFicha from '../../components/ui/MenuFicha.jsx'
 import AvisoOtrasPolizas from '../../components/polizas/AvisoOtrasPolizas.jsx'
@@ -5095,7 +5096,7 @@ function ModalFicha({ id, onClose, onEditar, onEstado }) {
           ) : tab === 'items' ? (
             <TabServicios data={data} servicioId={id} onSaved={cargar} esEditor={esEditor}/>
           ) : tab === 'personal' ? (
-            <TabPersonal servicioId={id} esEditor={esEditor} onItemAgregado={cargar}/>
+            <PersonalServicio servicioId={id} esEditor={esEditor}/>
           ) : tab === 'historial' ? (
             <TabHistorial servicioId={id}/>
           ) : tab === 'bitacora' ? (

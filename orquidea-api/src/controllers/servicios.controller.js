@@ -2268,13 +2268,19 @@ export async function eliminarItem(req, reply) {
 
 export async function listarPersonal(req, reply) {
   const { id } = req.params
+  // Personal interno (usuarios del sistema) y externo (terceros con rol
+  // EMPLEADO: damas de cortejo, auxiliares…), con su turno y lo que se le paga.
   const r = await pool.query(
-    `SELECT sp.id, sp.rol_servicio, sp.notas, sp.asignado_en,
-            u.id AS usuario_id, u.nombre, u.email, u.rol
-     FROM servicio_personal sp
-     JOIN usuarios u ON u.id = sp.usuario_id
-     WHERE sp.servicio_id = $1
-     ORDER BY sp.asignado_en`,
+    `SELECT sp.id, sp.rol_servicio, sp.notas, sp.asignado_en, sp.turno, sp.valor, sp.migrado_pisco,
+            sp.usuario_id, sp.tercero_id,
+            CASE WHEN sp.tercero_id IS NOT NULL THEN 'EXTERNO' ELSE 'USUARIO' END AS tipo,
+            COALESCE(u.nombre, NULLIF(trim(concat_ws(' ', t.nombres, t.apellidos)), ''), t.razon_social) AS nombre,
+            u.email, u.rol, t.numero_documento AS documento, t.telefono
+       FROM servicio_personal sp
+       LEFT JOIN usuarios u ON u.id = sp.usuario_id
+       LEFT JOIN terceros t ON t.id = sp.tercero_id
+      WHERE sp.servicio_id = $1
+      ORDER BY sp.rol_servicio, nombre`,
     [id]
   )
   return reply.send({ data: r.rows })
@@ -2282,30 +2288,61 @@ export async function listarPersonal(req, reply) {
 
 export async function asignarPersonal(req, reply) {
   const { id } = req.params
-  const { usuario_id, rol_servicio, notas } = req.body
-  if (!usuario_id || !rol_servicio)
-    return reply.code(400).send({ error: 'usuario_id y rol_servicio son obligatorios' })
+  const { usuario_id, tercero_id, rol_servicio, notas, turno, valor } = req.body
+  if ((!usuario_id && !tercero_id) || !rol_servicio)
+    return reply.code(400).send({ error: 'Elija la persona y su función en el servicio' })
 
-  const r = await pool.query(
-    `INSERT INTO servicio_personal (servicio_id, usuario_id, rol_servicio, notas)
-     VALUES ($1,$2,$3,$4)
-     ON CONFLICT (servicio_id, usuario_id)
-       DO UPDATE SET rol_servicio=$3, notas=$4, asignado_en=NOW()
-     RETURNING *`,
-    [id, usuario_id, rol_servicio, notas || null]
-  )
-  // obtener nombre del usuario para el log
-  const uRes = await pool.query('SELECT nombre FROM usuarios WHERE id=$1', [usuario_id])
-  const uNombre = uRes.rows[0]?.nombre || usuario_id
-  await audit(id, req.user?.id, 'personal', `Asignó a "${uNombre}" como ${rol_servicio}`)
+  let r, nombre
+  if (tercero_id) {
+    // Una persona externa puede tener varias funciones en el mismo servicio
+    // (ej. cortejo y cafetería); se repite solo si es la misma función.
+    const ya = await pool.query(
+      'SELECT id FROM servicio_personal WHERE servicio_id=$1 AND tercero_id=$2 AND rol_servicio=$3', [id, tercero_id, rol_servicio])
+    if (ya.rows.length) return reply.code(409).send({ error: 'Esa persona ya tiene esa función en el servicio' })
+    r = await pool.query(
+      `INSERT INTO servicio_personal (servicio_id, tercero_id, rol_servicio, notas, turno, valor)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [id, tercero_id, rol_servicio, notas || null, turno || null, Number(valor) || 0])
+    await pool.query(
+      `INSERT INTO tercero_roles (tercero_id, rol) VALUES ($1,'EMPLEADO')
+       ON CONFLICT (tercero_id, rol) DO UPDATE SET activo = TRUE`, [tercero_id])
+    const t = await pool.query(`SELECT COALESCE(NULLIF(trim(concat_ws(' ', nombres, apellidos)), ''), razon_social) AS n FROM terceros WHERE id=$1`, [tercero_id])
+    nombre = t.rows[0]?.n || tercero_id
+  } else {
+    r = await pool.query(
+      `INSERT INTO servicio_personal (servicio_id, usuario_id, rol_servicio, notas, turno, valor)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (servicio_id, usuario_id)
+         DO UPDATE SET rol_servicio=$3, notas=$4, turno=$5, valor=$6, asignado_en=NOW()
+       RETURNING *`,
+      [id, usuario_id, rol_servicio, notas || null, turno || null, Number(valor) || 0])
+    const u = await pool.query('SELECT nombre FROM usuarios WHERE id=$1', [usuario_id])
+    nombre = u.rows[0]?.nombre || usuario_id
+  }
+  await audit(id, req.user?.id, 'personal', `Asignó a "${nombre}" como ${rol_servicio}${turno ? ` (${turno})` : ''}`)
   return reply.code(201).send({ data: r.rows[0] })
+}
+
+export async function actualizarPersonal(req, reply) {
+  const { id, personalId } = req.params
+  const { turno, valor, notas } = req.body
+  const r = await pool.query(
+    `UPDATE servicio_personal SET turno = $3, valor = COALESCE($4, valor), notas = $5
+      WHERE id = $1 AND servicio_id = $2 RETURNING *`,
+    [personalId, id, turno || null, valor === undefined || valor === '' ? null : Number(valor), notas || null])
+  if (!r.rows.length) return reply.code(404).send({ error: 'Asignación no encontrada' })
+  await audit(id, req.user?.id, 'personal', `Actualizó turno/valor de ${r.rows[0].rol_servicio}`)
+  return reply.send({ data: r.rows[0] })
 }
 
 export async function quitarPersonal(req, reply) {
   const { id, personalId } = req.params
   const pRes = await pool.query(
-    `SELECT u.nombre, sp.rol_servicio FROM servicio_personal sp
-     JOIN usuarios u ON u.id=sp.usuario_id WHERE sp.id=$1`, [personalId]
+    `SELECT COALESCE(u.nombre, NULLIF(trim(concat_ws(' ', t.nombres, t.apellidos)), ''), t.razon_social) AS nombre, sp.rol_servicio
+       FROM servicio_personal sp
+       LEFT JOIN usuarios u ON u.id = sp.usuario_id
+       LEFT JOIN terceros t ON t.id = sp.tercero_id
+      WHERE sp.id=$1`, [personalId]
   )
   await pool.query('DELETE FROM servicio_personal WHERE id=$1 AND servicio_id=$2', [personalId, id])
   const p = pRes.rows[0]

@@ -27,7 +27,7 @@ import {
   actualizarChecklist, ordenImpresion,
   actualizarFallecido, actualizarContratante, asignarResponsable, recalcularConvenioCobertura,
   agregarItem, actualizarItem, eliminarItem, descargarInventarioPendiente,
-  listarPersonal, asignarPersonal, quitarPersonal, listarOperadores, historialServicio,
+  listarPersonal, asignarPersonal, quitarPersonal, actualizarPersonal, listarOperadores, historialServicio,
   subirSoporteDocumento,
   listarDocumentos, actualizarTramite, clasificarDocumento, subirDocumento, eliminarDocumento,
 } from '../controllers/servicios.controller.js'
@@ -80,5 +80,6 @@ export default async function serviciosRoutes(fastify) {
   fastify.get('/:id/historial',                  { preHandler: auth },     historialServicio)
   fastify.get('/:id/personal',                   { preHandler: auth },     listarPersonal)
   fastify.post('/:id/personal',                  { preHandler: editores }, asignarPersonal)
+  fastify.patch('/:id/personal/:personalId',     { preHandler: editores }, actualizarPersonal)
   fastify.delete('/:id/personal/:personalId',    { preHandler: editores }, quitarPersonal)
 }

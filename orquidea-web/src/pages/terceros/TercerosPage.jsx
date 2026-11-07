@@ -1601,14 +1601,10 @@ export default function TercerosPage() {
       setMeta(rRows.data.meta)
       setTiposDocs(rTd.data.data || [])
 
-      // KPIs de roles
-      const kpiMap = {}
-      for (const t of (rRows.data.data || [])) {
-        for (const r of (t.roles || [])) {
-          if (r.activo) kpiMap[r.rol] = (kpiMap[r.rol] || 0) + 1
-        }
-      }
-      kpiMap._total   = rRows.data.meta.total
+      // KPIs: totales reales de toda la base (los calcula el servidor). El total
+      // del primer recuadro sí sigue el filtro/búsqueda activa.
+      const kpiMap = { ...(rRows.data.meta.kpis || {}) }
+      kpiMap._total = rRows.data.meta.total
       setKpis(kpiMap)
     } finally {
       setLoading(false)
@@ -1657,7 +1653,7 @@ export default function TercerosPage() {
                   <k.Icon size={20} color={k.color}/>
                 </div>
                 <div>
-                  <div className="tp-stat-val">{kpis[k.key] ?? 0}</div>
+                  <div className="tp-stat-val">{Number(kpis[k.key] ?? 0).toLocaleString('es-CO')}</div>
                   <div className="tp-stat-label">{k.label}</div>
                 </div>
                 {isActive && <span className="tp-stat-badge">FILTRADO</span>}
