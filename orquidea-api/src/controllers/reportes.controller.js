@@ -20,7 +20,7 @@ import ExcelJS from 'exceljs'
 import pool from '../config/database.js'
 import { anthropic } from '../utils/anthropicClient.js'
 import { resolverSede } from '../utils/sede.js'
-import { listarRentabilidad, detalleRentabilidad } from '../services/rentabilidadPolizas.service.js'
+import { listarRentabilidad, detalleRentabilidad, listarRentabilidadServicios } from '../services/rentabilidadPolizas.service.js'
 
 // ── Helpers de filtro ───────────────────────────────────────────────────────
 // El rango de fechas es libre; la sede NUNCA se confía en lo que mande el
@@ -371,7 +371,7 @@ export async function analisisTanatopraxia(req, reply) {
 }
 
 
-// ── Rentabilidad de pólizas ─────────────────────────────────────────────────
+// ── Rentabilidad de pólizas (por recaudo) y de servicios ───────────────────
 const margenDe = q => { const m = Number(q.margen); return Number.isFinite(m) && m >= 0 && m < 95 ? m / 100 : 0.30 }
 
 export async function rentabilidadPolizas(req, reply) {
@@ -386,33 +386,72 @@ export async function rentabilidadPoliza(req, reply) {
   return reply.send({ data })
 }
 
+export async function rentabilidadServicios(req, reply) {
+  const { sedeIds } = resolverSede(req)
+  const { desde, hasta } = rangoFechas(req.query)
+  const data = await listarRentabilidadServicios({ sedeIds, desde, hasta })
+  return reply.send({ data })
+}
+
+function libro(nombreHoja, columnas, filas, monedas, porcentajes) {
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Orquídea ERP'
+  const ws = wb.addWorksheet(nombreHoja)
+  ws.columns = columnas
+  for (const f of filas) ws.addRow(f)
+  ws.getRow(1).eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E3192' } } })
+  monedas.forEach(k => { ws.getColumn(k).numFmt = '"$"#,##0' })
+  porcentajes.forEach(k => { ws.getColumn(k).numFmt = '0%' })
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columnas.length } }
+  return wb
+}
+async function enviarLibro(reply, wb, archivo) {
+  const buf = await wb.xlsx.writeBuffer()
+  reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  reply.header('Content-Disposition', `attachment; filename="${archivo}"`)
+  return reply.send(Buffer.from(buf))
+}
+
 export async function exportarRentabilidad(req, reply) {
   const { sedeIds } = resolverSede(req)
   const margen = margenDe(req.query)
   const filas = await listarRentabilidad({ sedeIds, margen })
-  const wb = new ExcelJS.Workbook(); wb.creator = 'Orquídea ERP'
-  const ws = wb.addWorksheet('Rentabilidad pólizas')
-  const V = { RENTABLE: 'Rentable', AJUSTADA: 'Ajustada', PERDIDA: 'Pérdida', SIN_DATOS: 'Sin datos' }
-  const Rg = { ALTO: 'Alto', MEDIO: 'Medio', BAJO: 'Bajo', NINGUNO: '—' }
-  ws.columns = [
+  const V = { CONVIENE: 'Conviene', REVISAR: 'Revisar', NO_CONVIENE: 'No conviene', CANCELADA: 'Cancelada', EJECUTADA: 'Ejecutada' }
+  const RN = { AL_DIA: 'Al día', IRREGULAR: 'Irregular', MALO: 'Malo', NINGUNO: '' }
+  const CN = { CUBRE: 'Cubre', AJUSTADA: 'Ajustada', NO_CUBRE: 'No cubre', NINGUNO: '' }
+  const wb = libro('Pólizas por recaudo', [
     { header: 'Póliza', key: 'num', width: 10 }, { header: 'Titular', key: 'titular', width: 34 }, { header: 'Plan', key: 'plan', width: 24 },
     { header: 'Estado', key: 'estado', width: 12 }, { header: 'Años', key: 'anios', width: 7 },
-    { header: 'Cuota inicial', key: 'cuota_inicial', width: 13 }, { header: 'Cuota actual', key: 'valor_cuota', width: 13 },
-    { header: 'Ingresos', key: 'ingresos', width: 15 }, { header: 'Fallecidos', key: 'fallecidos', width: 10 },
-    { header: 'Costo servicios', key: 'costo_servicios', width: 15 }, { header: 'Resultado', key: 'resultado', width: 15 },
-    { header: 'Margen', key: 'margen', width: 9 }, { header: 'Vivos', key: 'vivos', width: 7 }, { header: 'Mayores 65', key: 'mayores_65', width: 10 },
+    { header: 'Cuota inicial', key: 'cuota_inicial', width: 13 }, { header: 'Cuota actual', key: 'valor_cuota', width: 13 }, { header: 'Incremento', key: 'incremento', width: 11 },
+    { header: 'Recaudo total', key: 'recaudo', width: 15 }, { header: 'Recaudo 12 meses', key: 'recaudo_12m', width: 15 }, { header: 'Esperado 12 meses', key: 'esperado_12m', width: 15 },
+    { header: 'Cumplimiento', key: 'cumplimiento', width: 12 }, { header: 'Recaudo', key: 'rn', width: 11 },
+    { header: 'Costo del plan', key: 'costo_plan', width: 14 }, { header: 'Veces que pagó el plan', key: 'veces_plan', width: 12 },
+    { header: 'Vivos', key: 'vivos', width: 7 }, { header: 'Mayores 65', key: 'mayores_65', width: 10 },
     { header: 'Costo esperado/año', key: 'costo_anual_esperado', width: 16 }, { header: 'Cuota equilibrio', key: 'cuota_equilibrio', width: 15 },
-    { header: `Cuota recomendada (${Math.round(margen * 100)}%)`, key: 'cuota_recomendada', width: 18 },
-    { header: 'Veredicto', key: 'veredicto', width: 11 }, { header: 'Riesgo futuro', key: 'riesgo', width: 12 },
-  ]
-  for (const f of filas) ws.addRow({ ...f, num: f.numero_legado || f.numero, veredicto: V[f.veredicto], riesgo: Rg[f.riesgo] })
-  ws.getRow(1).eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E3192' } } })
-  ;['cuota_inicial','valor_cuota','ingresos','costo_servicios','resultado','costo_anual_esperado','cuota_equilibrio','cuota_recomendada'].forEach(k => { ws.getColumn(k).numFmt = '"$"#,##0' })
-  ws.getColumn('margen').numFmt = '0%'
-  ws.views = [{ state: 'frozen', ySplit: 1 }]
-  ws.autoFilter = { from: 'A1', to: 'S1' }
-  const buf = await wb.xlsx.writeBuffer()
-  reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-  reply.header('Content-Disposition', 'attachment; filename="rentabilidad-polizas.xlsx"')
-  return reply.send(Buffer.from(buf))
+    { header: `Cuota sugerida (${Math.round(margen * 100)}%)`, key: 'cuota_recomendada', width: 17 }, { header: 'Subir al mes', key: 'ajuste_sugerido', width: 12 },
+    { header: 'Cuota', key: 'cn', width: 10 }, { header: '¿Conviene?', key: 'v', width: 12 },
+  ], filas.map(f => ({ ...f, num: f.numero_legado || f.numero, veces_plan: f.veces_plan != null ? +f.veces_plan.toFixed(1) : null,
+    rn: RN[f.recaudo_nivel], cn: CN[f.cuota_nivel], v: V[f.veredicto] })),
+  ['cuota_inicial', 'valor_cuota', 'recaudo', 'recaudo_12m', 'esperado_12m', 'costo_plan', 'costo_anual_esperado', 'cuota_equilibrio', 'cuota_recomendada', 'ajuste_sugerido'],
+  ['incremento', 'cumplimiento'])
+  return enviarLibro(reply, wb, 'rentabilidad-polizas.xlsx')
+}
+
+export async function exportarRentabilidadServicios(req, reply) {
+  const { sedeIds } = resolverSede(req)
+  const { desde, hasta } = rangoFechas(req.query)
+  const filas = await listarRentabilidadServicios({ sedeIds, desde, hasta })
+  const O = { POLIZA: 'Póliza', PARTICULAR: 'Particular', CONVENIO: 'Convenio', CONTRATO: 'Contrato' }
+  const D = { COMPLETO: 'Completo', SIN_VENTA: 'Sin valor de venta', SIN_COSTO: 'Sin costo', SIN_DATOS: 'Sin datos' }
+  const wb = libro('Servicios', [
+    { header: 'Fecha', key: 'fecha', width: 12 }, { header: 'Servicio', key: 'cod', width: 16 }, { header: 'Fallecido', key: 'fallecido', width: 34 },
+    { header: 'Origen', key: 'o', width: 11 }, { header: 'Póliza / convenio', key: 'ref', width: 22 }, { header: 'Plan', key: 'plan', width: 24 },
+    { header: 'Venta / cobrado', key: 'venta', width: 15 }, { header: 'Costo', key: 'costo', width: 14 }, { header: 'Utilidad', key: 'utilidad', width: 14 },
+    { header: 'Margen', key: 'margen', width: 9 }, { header: 'Costo del plan', key: 'costo_plan', width: 14 }, { header: 'Costo vs plan', key: 'dif_plan', width: 14 },
+    { header: 'Datos', key: 'd', width: 18 },
+  ], filas.map(f => ({ ...f, fecha: f.fecha ? new Date(f.fecha) : null, cod: f.codigo ? f.codigo.replace('PISCO-', 'Pisco N° ') : f.numero,
+    o: O[f.origen], ref: f.poliza ? `Póliza ${f.poliza}` : (f.convenio || ''), d: D[f.datos] })),
+  ['venta', 'costo', 'utilidad', 'costo_plan', 'dif_plan'], ['margen'])
+  wb.worksheets[0].getColumn('fecha').numFmt = 'dd/mm/yyyy'
+  return enviarLibro(reply, wb, 'rentabilidad-servicios.xlsx')
 }

@@ -20,9 +20,10 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   BarChart2, DollarSign, TrendingUp, ShieldCheck, Package,
   Download, FileSpreadsheet, FileText as FileIcon, Wallet, AlertTriangle,
-  Sparkles, Syringe, PiggyBank,
+  Sparkles, Syringe, PiggyBank, Scale,
 } from 'lucide-react'
 import RentabilidadPolizas from '../../components/reportes/RentabilidadPolizas.jsx'
+import RentabilidadServicios from '../../components/reportes/RentabilidadServicios.jsx'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import api from '../../services/api.js'
@@ -48,6 +49,7 @@ const TABS = [
   { key: 'operativo',  label: 'Operativo',  Icon: Package },
   { key: 'tanatopraxia', label: 'Tanatopraxia', Icon: Syringe },
   { key: 'rentabilidad', label: 'Rentabilidad de pólizas', Icon: PiggyBank },
+  { key: 'rent_servicios', label: 'Rentabilidad de servicios', Icon: Scale },
 ]
 
 const CSS = `
@@ -469,7 +471,7 @@ export default function ReportesPage() {
           </select>
         </div>
         <div className="rp-spacer" />
-        {tab !== 'tanatopraxia' && tab !== 'rentabilidad' && (
+        {!['tanatopraxia', 'rentabilidad', 'rent_servicios'].includes(tab) && (
           <>
             <button className="rp-btn-exp" onClick={exportarExcel}><FileSpreadsheet size={14} /> Excel</button>
             <button className="rp-btn-exp" onClick={exportarPDF}><Download size={14} /> PDF</button>
@@ -484,6 +486,7 @@ export default function ReportesPage() {
         {tab === 'operativo' && <TabOperativo filtros={filtros} />}
         {tab === 'tanatopraxia' && <TabTanatopraxia filtros={filtros} />}
         {tab === 'rentabilidad' && <RentabilidadPolizas sede={sede} />}
+        {tab === 'rent_servicios' && <RentabilidadServicios filtros={filtros} />}
       </div>
     </div>
   )

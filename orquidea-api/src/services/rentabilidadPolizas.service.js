@@ -6,9 +6,9 @@
  * ║  Desarrollado por: Ing. Jhoan M. Romero Rivera                         ║
  * ║  LinkedIn        : https://linkedin.com/in/jmromeror87                 ║
  * ╠══════════════════════════════════════════════════════════════════════════╣
- * ║  Módulo          : Reportes — rentabilidad de pólizas                   ║
+ * ║  Módulo          : Reportes — rentabilidad de pólizas y de servicios    ║
  * ║  Archivo         : services/rentabilidadPolizas.service.js              ║
- * ║  Versión         : v1.0.0                                               ║
+ * ║  Versión         : v2.0.0                                               ║
  * ║  Fecha           : 2026-11-07                                          ║
  * ╠══════════════════════════════════════════════════════════════════════════╣
  * ║  © 2026 Funeraria San José de Abrego. Todos los derechos reservados.  ║
@@ -16,18 +16,23 @@
  * ║  comercialización sin autorización escrita del titular.                ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  *
- * ¿Me conviene esta póliza? Para cada póliza:
- *  · Ingresos: todos sus pagos no anulados (incluye el historial de Pisco).
- *  · Costo de servicios: por cada fallecido de la póliza (titular o
- *    beneficiario), el costo REAL de su servicio si se conoce (ítems con
- *    costo); si no, el costo ESTIMADO = costo actual de los servicios del plan.
- *  · Resultado = ingresos − costos, y su margen.
- *  · Riesgo futuro: costo esperado al año = Σ (probabilidad de fallecer en un
- *    año según la edad de cada miembro vivo) × costo del plan.
- *  · Cuota de equilibrio = costo esperado / 12; cuota recomendada = la que deja
- *    el margen objetivo (redondeada a la centena).
- * Las probabilidades son referenciales (tabla de mortalidad aproximada por
- * edad, Colombia); sirven para comparar pólizas, no son un cálculo actuarial.
+ * Póliza y servicio son negocios distintos y se analizan por separado.
+ *
+ * PÓLIZAS (por recaudo):
+ *  · Recaudo: todo lo pagado (incluye el historial de Pisco), lo de los
+ *    últimos 12 meses frente a lo esperado (cuota × 12) y meses al día.
+ *  · Costo del plan (suma del costo de los servicios del plan en el catálogo)
+ *    como referencia: cuántas veces el recaudo ha cubierto el plan y cuántos
+ *    meses de cuota cuesta un plan.
+ *  · Riesgo del grupo: Σ (probabilidad de fallecer en un año según la edad de
+ *    cada miembro vivo) × costo del plan = costo esperado al año.
+ *    Cuota de equilibrio = costo esperado / 12; cuota sugerida = la que deja
+ *    la utilidad deseada (redondeada a la centena).
+ *  Las probabilidades son referenciales (no es un cálculo actuarial).
+ *
+ * SERVICIOS (por servicio): venta (contrato, convenio, valor de Pisco o
+ * ítems cobrados) frente al costo de sus ítems; en los de póliza, el costo
+ * real frente al costo del plan.
  */
 import pool from '../config/database.js'
 
@@ -42,41 +47,29 @@ export const probFallecer = edad => {
   return TABLA_MORTALIDAD.find(([hasta]) => e < hasta)[1]
 }
 const centena = v => Math.ceil(v / 100) * 100
+const mesesEntre = (a, b) => {
+  if (!a || !b) return 0
+  const x = new Date(a), y = new Date(b)
+  return Math.max(0, (y.getFullYear() - x.getFullYear()) * 12 + (y.getMonth() - x.getMonth()))
+}
 
-const SQL_BASE = `
+// ── PÓLIZAS ──────────────────────────────────────────────────────────────────
+const SQL_POLIZAS = `
   WITH costo_plan AS (
     SELECT ps.plan_id, SUM(sc.costo) AS costo
       FROM plan_servicios ps JOIN servicios_catalogo sc ON sc.id = ps.servicio_id AND sc.activo
      GROUP BY 1
   ), ing AS (
-    SELECT poliza_id, SUM(monto) AS total, COUNT(*) AS n, MIN(fecha_pago) AS primero, MAX(fecha_pago) AS ultimo
+    SELECT poliza_id, SUM(monto) AS total, COUNT(*) AS n, MIN(fecha_pago) AS primero, MAX(fecha_pago) AS ultimo,
+           SUM(monto) FILTER (WHERE fecha_pago > CURRENT_DATE - INTERVAL '12 months') AS ult12
       FROM pagos_poliza WHERE NOT anulado GROUP BY 1
   ), primera AS (
     SELECT DISTINCT ON (poliza_id) poliza_id,
            monto / GREATEST(1, ROUND(GREATEST(COALESCE(periodo_hasta, mes_correspondiente) - mes_correspondiente, 0) / 30.4)) AS cuota_inicial
       FROM pagos_poliza WHERE NOT anulado AND tipo = 'CUOTA' AND NOT parcial AND monto > 0
      ORDER BY poliza_id, mes_correspondiente
-  ), fall AS (
-    SELECT pb.poliza_id, pb.tercero_id,
-           COALESCE(pb.servicio_id, (SELECT sf.id FROM servicios_funerarios sf WHERE sf.poliza_id = pb.poliza_id AND sf.difunto_id = pb.tercero_id LIMIT 1)) AS sid,
-           pb.fecha_ejecucion AS fecha
-      FROM poliza_beneficiarios pb WHERE pb.ejecutado
-    UNION ALL
-    SELECT p.id, p.titular_id,
-           (SELECT sf.id FROM servicios_funerarios sf WHERE sf.poliza_id = p.id AND sf.difunto_id = p.titular_id LIMIT 1),
-           COALESCE(p.titular_fallecido_en, (SELECT d.fecha_fallecimiento FROM defunciones d WHERE d.tercero_id = p.titular_id LIMIT 1))
-      FROM polizas p
-     WHERE p.titular_fallecido_en IS NOT NULL
-        OR EXISTS (SELECT 1 FROM servicios_funerarios sf WHERE sf.poliza_id = p.id AND sf.difunto_id = p.titular_id)
-  ), costo_real AS (
-    SELECT servicio_id, SUM(costo_unitario * cantidad) AS c FROM items_servicio GROUP BY 1
-  ), fc AS (
-    SELECT f.poliza_id, COUNT(*) AS n, COUNT(*) FILTER (WHERE cr.c > 0) AS n_real,
-           SUM(CASE WHEN cr.c > 0 THEN cr.c ELSE COALESCE(cp.costo, 0) END) AS costo
-      FROM fall f JOIN polizas p ON p.id = f.poliza_id
-      LEFT JOIN costo_real cr ON cr.servicio_id = f.sid
-      LEFT JOIN costo_plan cp ON cp.plan_id = p.plan_id
-     GROUP BY 1
+  ), ejec AS (
+    SELECT poliza_id, COUNT(*) AS n FROM poliza_beneficiarios WHERE ejecutado GROUP BY 1
   ), viv AS (
     SELECT x.poliza_id, array_agg(x.edad) AS edades
       FROM (
@@ -90,11 +83,11 @@ const SQL_BASE = `
       ) x GROUP BY 1
   )
   SELECT p.id, p.numero, p.numero_legado, p.estado, p.fecha_inicio, p.valor_cuota, p.meses_mora, p.pago_hasta,
-         pl.nombre AS plan, pl.id AS plan_id, COALESCE(cp.costo, 0) AS costo_plan,
+         pl.nombre AS plan, COALESCE(cp.costo, 0) AS costo_plan,
          COALESCE(t.nombres || ' ' || t.apellidos, t.razon_social) AS titular, t.numero_documento AS titular_doc,
-         COALESCE(ing.total, 0) AS ingresos, COALESCE(ing.n, 0) AS pagos, ing.primero AS primer_pago, ing.ultimo AS ultimo_pago,
-         primera.cuota_inicial,
-         COALESCE(fc.n, 0) AS fallecidos, COALESCE(fc.n_real, 0) AS fallecidos_costo_real, COALESCE(fc.costo, 0) AS costo_servicios,
+         COALESCE(ing.total, 0) AS recaudo, COALESCE(ing.ult12, 0) AS recaudo_12m, COALESCE(ing.n, 0) AS pagos,
+         ing.primero AS primer_pago, ing.ultimo AS ultimo_pago, primera.cuota_inicial,
+         COALESCE(ejec.n, 0) + CASE WHEN p.titular_fallecido_en IS NOT NULL THEN 1 ELSE 0 END AS fallecidos,
          COALESCE(viv.edades, '{}') AS edades_vivos
     FROM polizas p
     JOIN planes_poliza pl ON pl.id = p.plan_id
@@ -102,77 +95,75 @@ const SQL_BASE = `
     LEFT JOIN costo_plan cp ON cp.plan_id = p.plan_id
     LEFT JOIN ing ON ing.poliza_id = p.id
     LEFT JOIN primera ON primera.poliza_id = p.id
-    LEFT JOIN fc ON fc.poliza_id = p.id
+    LEFT JOIN ejec ON ejec.poliza_id = p.id
     LEFT JOIN viv ON viv.poliza_id = p.id`
 
-// Indicadores y veredicto de una póliza (fila de SQL_BASE)
-export function analizar(r, margenObjetivo = 0.30) {
-  const ingresos = +r.ingresos, costo = +r.costo_servicios, costoPlan = +r.costo_plan
-  const resultado = ingresos - costo
-  const margen = ingresos > 0 ? resultado / ingresos : (costo > 0 ? -1 : 0)
-  const anios = Math.max(0, (Date.now() - new Date(r.fecha_inicio)) / (365.25 * 864e5))
+export function analizarPoliza(r, margenObjetivo = 0.30) {
+  const hoy = new Date()
+  const recaudo = +r.recaudo, costoPlan = +r.costo_plan, cuota = +r.valor_cuota
+  const anios = Math.max(0, (hoy - new Date(r.fecha_inicio)) / (365.25 * 864e5))
+  const activa = !['CANCELADA', 'EJECUTADA'].includes(r.estado)
+
+  // Recaudo de los últimos 12 meses frente a lo esperado (o los meses que lleve si es nueva)
+  const mesesVida = mesesEntre(r.fecha_inicio, hoy)
+  const esperado12 = cuota * Math.min(12, Math.max(1, mesesVida))
+  const cumplimiento = esperado12 > 0 ? +r.recaudo_12m / esperado12 : null
+  // Meses al día en toda la historia (pagada hasta vs. meses transcurridos)
+  const mesesPagados = r.pago_hasta ? mesesEntre(r.fecha_inicio, r.pago_hasta) + 1 : 0
+  const alDiaHist = mesesVida > 0 ? Math.min(1, mesesPagados / mesesVida) : null
+
   const edades = (r.edades_vivos || []).map(e => (e == null ? null : +e))
+  const conEdad = edades.filter(e => e != null)
   const costoAnualEsperado = edades.reduce((s, e) => s + probFallecer(e) * costoPlan, 0)
-  const cuota = +r.valor_cuota
-  const ingresoAnual = cuota * 12
   const cuotaEquilibrio = costoAnualEsperado / 12
-  const cuotaRecomendada = margenObjetivo < 1 ? centena(cuotaEquilibrio / (1 - margenObjetivo)) : null
-  const ratioRiesgo = ingresoAnual > 0 ? costoAnualEsperado / ingresoAnual : (costoAnualEsperado > 0 ? 9 : 0)
+  const cuotaRecomendada = centena(cuotaEquilibrio / (1 - margenObjetivo))
+  const margenCuota = cuota > 0 ? (cuota - cuotaEquilibrio) / cuota : null
   const cuotaInicial = r.cuota_inicial != null ? +r.cuota_inicial : null
-  const veredicto = r.estado === 'CANCELADA' && ingresos === 0 ? 'SIN_DATOS'
-    : margen >= 0.30 ? 'RENTABLE' : margen >= 0 ? 'AJUSTADA' : 'PERDIDA'
-  const riesgo = r.estado === 'CANCELADA' ? 'NINGUNO' : ratioRiesgo >= 1 ? 'ALTO' : ratioRiesgo >= 0.6 ? 'MEDIO' : 'BAJO'
+
+  const recaudoNivel = !activa ? 'NINGUNO' : cumplimiento == null ? 'NINGUNO'
+    : cumplimiento >= 0.9 ? 'AL_DIA' : cumplimiento >= 0.5 ? 'IRREGULAR' : 'MALO'
+  const cuotaNivel = !activa ? 'NINGUNO' : cuota >= cuotaRecomendada ? 'CUBRE'
+    : cuota >= cuotaEquilibrio ? 'AJUSTADA' : 'NO_CUBRE'
+  const veredicto = !activa ? (r.estado === 'EJECUTADA' ? 'EJECUTADA' : 'CANCELADA')
+    : cuotaNivel === 'NO_CUBRE' || recaudoNivel === 'MALO' ? 'NO_CONVIENE'
+    : cuotaNivel === 'CUBRE' && recaudoNivel === 'AL_DIA' ? 'CONVIENE' : 'REVISAR'
+
   return {
     id: r.id, numero: r.numero, numero_legado: r.numero_legado, estado: r.estado, plan: r.plan,
     titular: r.titular, titular_doc: r.titular_doc, fecha_inicio: r.fecha_inicio, anios: +anios.toFixed(1),
     valor_cuota: cuota, cuota_inicial: cuotaInicial,
     incremento: cuotaInicial && cuotaInicial > 0 ? (cuota - cuotaInicial) / cuotaInicial : null,
-    ingresos, pagos: +r.pagos, ultimo_pago: r.ultimo_pago, meses_mora: +r.meses_mora || 0,
-    fallecidos: +r.fallecidos, fallecidos_costo_real: +r.fallecidos_costo_real, costo_servicios: costo, costo_plan: costoPlan,
-    resultado, margen,
-    vivos: edades.length, edad_promedio: edades.filter(e => e != null).length
-      ? Math.round(edades.filter(e => e != null).reduce((a, b) => a + b, 0) / edades.filter(e => e != null).length) : null,
-    mayores_65: edades.filter(e => e != null && e > 65).length,
-    costo_anual_esperado: Math.round(costoAnualEsperado), ingreso_anual: ingresoAnual,
-    cuota_equilibrio: Math.round(cuotaEquilibrio), cuota_recomendada: cuotaRecomendada,
-    ajuste_sugerido: cuotaRecomendada && cuota > 0 && r.estado !== 'CANCELADA' && cuotaRecomendada > cuota ? cuotaRecomendada - cuota : 0,
-    veredicto, riesgo,
+    recaudo, recaudo_12m: +r.recaudo_12m, esperado_12m: activa ? esperado12 : 0, cumplimiento: activa ? cumplimiento : null,
+    al_dia_historico: alDiaHist, pagos: +r.pagos, ultimo_pago: r.ultimo_pago, pago_hasta: r.pago_hasta,
+    meses_mora: +r.meses_mora || 0, recaudo_promedio_anual: anios >= 1 ? recaudo / anios : recaudo,
+    costo_plan: costoPlan,
+    veces_plan: costoPlan > 0 ? recaudo / costoPlan : null,
+    meses_por_plan: cuota > 0 && costoPlan > 0 ? costoPlan / cuota : null,
+    fallecidos: +r.fallecidos,
+    vivos: edades.length, edad_promedio: conEdad.length ? Math.round(conEdad.reduce((a, b) => a + b, 0) / conEdad.length) : null,
+    mayores_65: conEdad.filter(e => e > 65).length,
+    costo_anual_esperado: Math.round(costoAnualEsperado), ingreso_anual: cuota * 12,
+    cuota_equilibrio: Math.round(cuotaEquilibrio), cuota_recomendada: cuotaRecomendada, margen_cuota: margenCuota,
+    ajuste_sugerido: activa && cuota > 0 && cuotaRecomendada > cuota ? cuotaRecomendada - cuota : 0,
+    recaudo_nivel: recaudoNivel, cuota_nivel: cuotaNivel, veredicto,
   }
 }
 
 export async function listarRentabilidad({ sedeIds, margen = 0.30 }) {
-  const { rows } = await pool.query(`${SQL_BASE}
+  const { rows } = await pool.query(`${SQL_POLIZAS}
     WHERE ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[]))
     ORDER BY p.numero`, [sedeIds])
-  return rows.map(r => analizar(r, margen))
+  return rows.map(r => analizarPoliza(r, margen))
 }
 
 export async function detalleRentabilidad({ id, margen = 0.30 }) {
-  const { rows } = await pool.query(`${SQL_BASE} WHERE p.id = $1`, [id])
+  const { rows } = await pool.query(`${SQL_POLIZAS} WHERE p.id = $1`, [id])
   if (!rows.length) return null
-  const a = analizar(rows[0], margen)
-  const [porAnio, fallecidos, miembros] = await Promise.all([
+  const a = analizarPoliza(rows[0], margen)
+  const [porAnio, miembros] = await Promise.all([
     pool.query(`
-      SELECT EXTRACT(YEAR FROM fecha_pago)::int AS anio, SUM(monto) AS ingresos, COUNT(*) AS pagos
+      SELECT EXTRACT(YEAR FROM fecha_pago)::int AS anio, SUM(monto) AS recaudo, COUNT(*) AS pagos
         FROM pagos_poliza WHERE poliza_id = $1 AND NOT anulado GROUP BY 1 ORDER BY 1`, [id]),
-    pool.query(`
-      WITH f AS (
-        SELECT pb.tercero_id, pb.parentesco,
-               COALESCE(pb.servicio_id, (SELECT sf.id FROM servicios_funerarios sf WHERE sf.poliza_id = pb.poliza_id AND sf.difunto_id = pb.tercero_id LIMIT 1)) AS sid,
-               pb.fecha_ejecucion AS fecha
-          FROM poliza_beneficiarios pb WHERE pb.poliza_id = $1 AND pb.ejecutado
-        UNION ALL
-        SELECT p.titular_id, 'titular',
-               (SELECT sf.id FROM servicios_funerarios sf WHERE sf.poliza_id = p.id AND sf.difunto_id = p.titular_id LIMIT 1),
-               COALESCE(p.titular_fallecido_en, (SELECT d.fecha_fallecimiento FROM defunciones d WHERE d.tercero_id = p.titular_id LIMIT 1))
-          FROM polizas p WHERE p.id = $1
-           AND (p.titular_fallecido_en IS NOT NULL OR EXISTS (SELECT 1 FROM servicios_funerarios sf WHERE sf.poliza_id = p.id AND sf.difunto_id = p.titular_id))
-      )
-      SELECT f.tercero_id, f.parentesco, f.fecha, concat_ws(' ', t.nombres, t.apellidos) AS nombre,
-             s.codigo, (SELECT SUM(i.costo_unitario * i.cantidad) FROM items_servicio i WHERE i.servicio_id = f.sid) AS costo_real
-        FROM f JOIN terceros t ON t.id = f.tercero_id
-        LEFT JOIN servicios_funerarios s ON s.id = f.sid
-       ORDER BY f.fecha NULLS LAST`, [id]),
     pool.query(`
       SELECT t.id, concat_ws(' ', t.nombres, t.apellidos) AS nombre, pb.parentesco, t.fecha_nacimiento,
              DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::int AS edad
@@ -183,20 +174,64 @@ export async function detalleRentabilidad({ id, margen = 0.30 }) {
         FROM polizas p JOIN terceros t ON t.id = p.titular_id
        WHERE p.id = $1 AND p.titular_fallecido_en IS NULL AND NOT EXISTS (SELECT 1 FROM defunciones d WHERE d.tercero_id = t.id)`, [id]),
   ])
-  const costoPlan = a.costo_plan
-  const servicios = fallecidos.rows.map(f => ({
-    nombre: f.nombre, parentesco: f.parentesco, fecha: f.fecha, codigo: f.codigo,
-    costo: +f.costo_real > 0 ? +f.costo_real : costoPlan, tipo_costo: +f.costo_real > 0 ? 'REAL' : 'ESTIMADO',
-    anio: f.fecha ? new Date(f.fecha).getFullYear() : null,
-  }))
-  // Historia año a año: ingresos vs. costo de servicios y acumulado
-  const anios = new Map()
-  for (const r of porAnio.rows) anios.set(r.anio, { anio: r.anio, ingresos: +r.ingresos, costos: 0 })
-  for (const s of servicios) if (s.anio) { const x = anios.get(s.anio) || { anio: s.anio, ingresos: 0, costos: 0 }; x.costos += s.costo; anios.set(s.anio, x) }
   let acum = 0
-  const historia = [...anios.values()].sort((x, y) => x.anio - y.anio).map(x => ({ ...x, acumulado: (acum += x.ingresos - x.costos) }))
+  const historia = porAnio.rows.map(r => ({ anio: r.anio, recaudo: +r.recaudo, pagos: +r.pagos, acumulado: (acum += +r.recaudo) }))
   return {
-    ...a, historia, servicios,
-    miembros: miembros.rows.map(m => ({ ...m, probabilidad: probFallecer(m.edad), costo_esperado: Math.round(probFallecer(m.edad) * costoPlan) })),
+    ...a, historia,
+    miembros: miembros.rows.map(m => ({ ...m, probabilidad: probFallecer(m.edad), costo_esperado: Math.round(probFallecer(m.edad) * a.costo_plan) })),
   }
+}
+
+// ── SERVICIOS ────────────────────────────────────────────────────────────────
+const SQL_SERVICIOS = `
+  WITH costo_plan AS (
+    SELECT ps.plan_id, SUM(sc.costo) AS costo
+      FROM plan_servicios ps JOIN servicios_catalogo sc ON sc.id = ps.servicio_id AND sc.activo
+     GROUP BY 1
+  ), it AS (
+    SELECT servicio_id,
+           SUM(costo_unitario * cantidad) FILTER (WHERE costo_unitario > 0) AS costo,
+           SUM(precio_unit * cantidad) FILTER (WHERE NOT COALESCE(es_cobertura, false) AND precio_unit > 0) AS cobrado_items,
+           COUNT(*) AS items
+      FROM items_servicio GROUP BY 1
+  )
+  SELECT s.id, s.codigo, s.numero, s.estado, s.creado_en AS fecha, s.migrado_pisco, s.tipo_disposicion,
+         concat_ws(' ', d.nombres, d.apellidos) AS fallecido,
+         CASE WHEN s.poliza_id IS NOT NULL THEN 'POLIZA' WHEN s.contrato_id IS NOT NULL THEN 'CONTRATO'
+              WHEN s.convenio_id IS NOT NULL THEN 'CONVENIO'
+              WHEN s.datos_pisco->>'tipo' IN ('AfiliadoCD', 'AfiliadoSD') THEN 'POLIZA'
+              WHEN s.datos_pisco->>'tipo' = 'Convenio' THEN 'CONVENIO' ELSE 'PARTICULAR' END AS origen,
+         COALESCE(pl.nombre, s.datos_pisco->>'plan') AS plan, cp.costo AS costo_plan,
+         COALESCE(p.numero_legado, p.numero::text) AS poliza, cv.nombre AS convenio,
+         COALESCE(NULLIF(c.valor_total, 0), NULLIF(s.convenio_valor_servicio, 0),
+                  NULLIF((s.datos_pisco->'valores'->>'total')::numeric, 0), NULLIF(it.cobrado_items, 0)) AS venta,
+         it.costo
+    FROM servicios_funerarios s
+    LEFT JOIN terceros d ON d.id = s.difunto_id
+    LEFT JOIN polizas p ON p.id = s.poliza_id
+    LEFT JOIN planes_poliza pl ON pl.id = p.plan_id
+    LEFT JOIN costo_plan cp ON cp.plan_id = p.plan_id
+    LEFT JOIN contratos c ON c.id = s.contrato_id
+    LEFT JOIN convenios cv ON cv.id = s.convenio_id
+    LEFT JOIN it ON it.servicio_id = s.id
+   WHERE s.estado <> 'CANCELADO'
+     AND s.creado_en >= $1::date AND s.creado_en < $2::date + 1
+     AND ($3::uuid[] IS NULL OR s.sede_id = ANY($3::uuid[]))
+   ORDER BY s.creado_en DESC`
+
+export async function listarRentabilidadServicios({ sedeIds, desde, hasta }) {
+  const { rows } = await pool.query(SQL_SERVICIOS, [desde, hasta, sedeIds])
+  return rows.map(r => {
+    const venta = r.venta != null ? +r.venta : null
+    const costo = r.costo != null ? +r.costo : null
+    const costoPlan = r.costo_plan != null ? +r.costo_plan : null
+    const utilidad = venta != null && costo != null ? venta - costo : null
+    return {
+      ...r, venta, costo, costo_plan: costoPlan, utilidad,
+      margen: utilidad != null && venta > 0 ? utilidad / venta : null,
+      // En los de póliza: ¿costó más o menos de lo que vale el plan?
+      dif_plan: r.origen === 'POLIZA' && costo != null && costoPlan ? costo - costoPlan : null,
+      datos: venta != null && costo != null ? 'COMPLETO' : venta == null && costo == null ? 'SIN_DATOS' : venta == null ? 'SIN_VENTA' : 'SIN_COSTO',
+    }
+  })
 }

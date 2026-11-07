@@ -34,5 +34,7 @@ export default async function routes(fastify) {
   fastify.get('/tanatopraxia-analisis', { preHandler: auth }, ctrl.analisisTanatopraxia)
   fastify.get('/rentabilidad-polizas',            { preHandler: auth }, ctrl.rentabilidadPolizas)
   fastify.get('/rentabilidad-polizas/export',     { preHandler: auth }, ctrl.exportarRentabilidad)
+  fastify.get('/rentabilidad-servicios',          { preHandler: auth }, ctrl.rentabilidadServicios)
+  fastify.get('/rentabilidad-servicios/export',   { preHandler: auth }, ctrl.exportarRentabilidadServicios)
   fastify.get('/rentabilidad-polizas/:id',        { preHandler: auth }, ctrl.rentabilidadPoliza)
 }
