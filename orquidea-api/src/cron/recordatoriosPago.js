@@ -84,6 +84,13 @@ async function recordarMora() {
 }
 
 export async function ejecutarRecordatoriosPago() {
+  // Interruptor: los recordatorios automáticos a clientes van APAGADOS por
+  // defecto (decisión 2026-11-07, migración desde Pisco). Se encienden con
+  // RECORDATORIOS_PAGO_ACTIVOS=true en el .env y `pm2 restart orquidea-api --update-env`.
+  if (process.env.RECORDATORIOS_PAGO_ACTIVOS !== 'true') {
+    console.log(`[CRON] Recordatorios de pago en pausa (RECORDATORIOS_PAGO_ACTIVOS≠true) — ${new Date().toISOString()}`)
+    return
+  }
   try {
     const n1 = await recordarProximoVencimiento()
     const n2 = await recordarMora()
