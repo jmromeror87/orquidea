@@ -20,6 +20,14 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
 import api from '../../services/api.js'
+import { useNavigate } from 'react-router-dom'
+import icoServActivos from '../../assets/dashboard/kpi-servicios-activos.png'
+import icoServHoy from '../../assets/dashboard/kpi-servicios-hoy.png'
+import icoContratos from '../../assets/dashboard/kpi-contratos.png'
+import icoPolizas from '../../assets/dashboard/kpi-polizas.png'
+import icoRecaudo from '../../assets/dashboard/kpi-recaudo.png'
+import icoSalas from '../../assets/dashboard/kpi-salas.png'
+import icoVentas from '../../assets/dashboard/kpi-ventas.png'
 
 // ─── Gráfica de áreas: esperado vs. recaudado ─────────────────────────────────
 // Dos series con colores validados (incluido daltonismo): esperado en azul,
@@ -167,33 +175,50 @@ function SkeletonChart({ h = 260 }) {
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
-function KpiCard({ icon, label, value, sub, trend, trendLabel, color = '#6366F1' }) {
-  const trendPositive = trend > 0
-  const trendIcon = trendPositive ? '↑' : trend < 0 ? '↓' : '→'
-  const trendColor = trendPositive ? '#10B981' : trend < 0 ? '#EF4444' : '#94A3B8'
+const KPI_CSS = `
+.kpi { position:relative; text-align:left; background:#fff; border:1px solid #ECEDF8; border-radius:18px; padding:16px 16px 14px;
+  display:flex; flex-direction:column; gap:10px; box-shadow:0 1px 6px rgba(99,102,241,.05); cursor:pointer; font-family:inherit;
+  transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease; overflow:hidden; min-width:0; }
+.kpi::before { content:''; position:absolute; inset:0 0 auto 0; height:3px; background:var(--kc); opacity:.0; transition:opacity .18s; }
+.kpi:hover { transform:translateY(-3px); box-shadow:0 12px 28px rgba(15,16,53,.10); border-color:var(--kc-b); }
+.kpi:hover::before { opacity:1; }
+.kpi:focus-visible { outline:3px solid var(--kc-b); outline-offset:2px; }
+.kpi-top { display:flex; align-items:center; gap:12px; }
+.kpi-ic { width:52px; height:52px; border-radius:15px; background:var(--kc-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.kpi-ic img { width:34px; height:34px; object-fit:contain; transition:transform .18s ease; }
+.kpi:hover .kpi-ic img { transform:scale(1.08); }
+.kpi-lbl { font-size:10.5px; font-weight:800; color:#64748B; text-transform:uppercase; letter-spacing:.6px; line-height:1.3; }
+.kpi-val { font-size:22px; font-weight:900; color:#0F1035; letter-spacing:-.4px; font-variant-numeric:tabular-nums; line-height:1.1; overflow-wrap:anywhere; }
+.kpi-sub { font-size:11.5px; color:#64748B; line-height:1.4; }
+.kpi-pie { display:flex; align-items:center; gap:8px; justify-content:space-between; margin-top:auto; }
+.kpi-trend { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; padding:3px 8px; border-radius:20px; }
+.kpi-ir { font-size:11.5px; font-weight:800; color:var(--kc); opacity:.0; transform:translateX(-4px); transition:all .18s ease; white-space:nowrap; margin-left:auto; }
+.kpi:hover .kpi-ir { opacity:1; transform:none; }
+`
 
+function KpiCard({ img, label, value, sub, trend, trendLabel, color = '#6366F1', to, onIr }) {
+  const sube = trend > 0
+  const tono = trend == null ? null : sube ? ['#ECFDF5', '#047857'] : trend < 0 ? ['#FEF2F2', '#B91C1C'] : ['#F1F5F9', '#475569']
   return (
-    <div style={styles.kpiCard}>
-      <div
-        style={{
-          ...styles.kpiIcon,
-          background: `linear-gradient(135deg, ${color}1A, ${color}33)`,
-          color,
-        }}
-      >
-        {icon}
+    <button type="button" className="kpi" onClick={() => onIr?.(to)} title={`Ir a ${label.toLowerCase()}`}
+      style={{ '--kc': color, '--kc-bg': `${color}14`, '--kc-b': `${color}66` }}>
+      <div className="kpi-top">
+        <div className="kpi-ic"><img src={img} alt="" loading="lazy"/></div>
+        <div style={{ minWidth: 0 }}>
+          <div className="kpi-lbl">{label}</div>
+          <div className="kpi-val">{value}</div>
+        </div>
       </div>
-      <div style={styles.kpiContent}>
-        <p style={styles.kpiLabel}>{label}</p>
-        <p style={styles.kpiValue}>{value}</p>
-        <p style={styles.kpiSub}>{sub}</p>
-        {trend !== undefined && trend !== null && (
-          <span style={{ ...styles.kpiBadge, color: trendColor }}>
-            {trendIcon} {Math.abs(trend).toFixed(1)}% {trendLabel}
+      <div className="kpi-sub">{sub}</div>
+      <div className="kpi-pie">
+        {tono && (
+          <span className="kpi-trend" style={{ background: tono[0], color: tono[1] }} title={trendLabel}>
+            {sube ? '▲' : trend < 0 ? '▼' : '■'} {Math.abs(trend).toLocaleString('es-CO', { maximumFractionDigits: 1 })} %
           </span>
         )}
+        <span className="kpi-ir">Ver →</span>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -256,27 +281,37 @@ export default function DashboardPage() {
     return () => clearInterval(t)
   }, [])
 
-  const fetchDashboard = useCallback(async () => {
+  const navigate = useNavigate()
+  const [actualizado, setActualizado] = useState(null)
+  const fetchDashboard = useCallback(async (silencioso = false) => {
     try {
-      setLoading(true)
-      setError(null)
+      if (!silencioso) { setLoading(true); setError(null) }
       const res = await api.get('/dashboard')
       setData(res.data.data)
+      setActualizado(new Date())
     } catch (e) {
-      setError(e.response?.data?.message || e.message || 'Error al cargar el dashboard')
+      if (!silencioso) setError(e.response?.data?.message || e.message || 'Error al cargar el dashboard')
     } finally {
-      setLoading(false)
+      if (!silencioso) setLoading(false)
     }
   }, [])
 
   useEffect(() => { fetchDashboard() }, [fetchDashboard])
+  // En vivo: se actualiza solo cada minuto, sin parpadear (y al volver a la pestaña)
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === 'visible') fetchDashboard(true) }, 60000)
+    const alVolver = () => { if (document.visibilityState === 'visible') fetchDashboard(true) }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver) }
+  }, [fetchDashboard])
 
   const fechaStr = now.toLocaleDateString('es-CO', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })
 
-  const trendRecaudo = data && data.kpis.recaudo_mes_anterior > 0
-    ? ((data.kpis.recaudo_mes - data.kpis.recaudo_mes_anterior) / data.kpis.recaudo_mes_anterior) * 100
+  const baseRecaudo = data ? (data.kpis.recaudo_mes_anterior_corte ?? data.kpis.recaudo_mes_anterior) : 0
+  const trendRecaudo = data && baseRecaudo > 0
+    ? ((data.kpis.recaudo_mes - baseRecaudo) / baseRecaudo) * 100
     : null
 
   if (error) {
@@ -297,6 +332,8 @@ export default function DashboardPage() {
   return (
     <>
       <style>{`
+        @keyframes pulsoVivo { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+        ${KPI_CSS}
         @keyframes shimmer {
           0%   { background-position: 200% 0; }
           100% { background-position: -200% 0; }
@@ -319,6 +356,13 @@ export default function DashboardPage() {
               {fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1)}
             </p>
           </div>
+          {actualizado && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'#64748B', background:'#fff', border:'1px solid #ECEDF8', borderRadius:20, padding:'6px 12px' }}
+              title="El tablero se actualiza solo cada minuto">
+              <span style={{ width:8, height:8, borderRadius:'50%', background:'#10B981', boxShadow:'0 0 0 3px #D1FAE5', animation:'pulsoVivo 1.8s ease-in-out infinite' }}/>
+              En vivo · actualizado {actualizado.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })}
+            </div>
+          )}
         </div>
 
         {/* ── Fila 1: 6 KPIs ──────────────────────────────────────────── */}
@@ -328,51 +372,51 @@ export default function DashboardPage() {
           ) : (
             <>
               <KpiCard
-                icon="⚗️"
+                img={icoServActivos} to="/servicios" onIr={navigate}
                 label="Servicios Activos"
                 value={num(data.kpis.servicios_activos)}
                 sub={`${num(data.kpis.en_curso)} en curso ahora`}
                 color="#6366F1"
               />
               <KpiCard
-                icon="📅"
+                img={icoServHoy} to="/servicios" onIr={navigate}
                 label="Servicios Hoy"
                 value={num(data.kpis.hoy)}
                 sub="Ingresados hoy"
                 color="#8B5CF6"
               />
               <KpiCard
-                icon="📋"
+                img={icoContratos} to="/contratos" onIr={navigate}
                 label="Contratos del Mes"
                 value={num(data.kpis.contratos_mes)}
-                sub="Prevención este mes"
+                sub="Firmados este mes"
                 color="#10B981"
               />
               <KpiCard
-                icon="🛡️"
+                img={icoPolizas} to="/polizas" onIr={navigate}
                 label="Pólizas Vigentes"
                 value={num(data.kpis.polizas_vigentes)}
                 sub={`${num(data.kpis.polizas_mora)} con mora activa`}
                 color="#F59E0B"
               />
               <KpiCard
-                icon="💰"
+                img={icoRecaudo} to="/recaudo" onIr={navigate}
                 label="Recaudo del Mes"
                 value={cop(data.kpis.recaudo_mes)}
-                sub={`Mes anterior: ${cop(data.kpis.recaudo_mes_anterior)}`}
+                sub={`Mismo periodo del mes anterior: ${cop(baseRecaudo)}`}
                 trend={trendRecaudo}
-                trendLabel="vs mes anterior"
+                trendLabel="Comparado con el mismo periodo del mes anterior"
                 color="#10B981"
               />
               <KpiCard
-                icon="🏛️"
+                img={icoSalas} to="/configuracion?tab=salas" onIr={navigate}
                 label="Salas Ocupadas"
                 value={`${num(data.kpis.salas_ocupadas)} / ${num(data.kpis.total_salas)}`}
                 sub={`${data.kpis.total_salas - data.kpis.salas_ocupadas} disponibles`}
                 color="#6366F1"
               />
               <KpiCard
-                icon="🛒"
+                img={icoVentas} to="/pos" onIr={navigate}
                 label="Ventas POS Hoy"
                 value={cop(data.kpis.pos_total_hoy)}
                 sub={`${num(data.kpis.pos_ventas_hoy)} venta${data.kpis.pos_ventas_hoy === 1 ? '' : 's'} de mostrador`}

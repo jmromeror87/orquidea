@@ -895,7 +895,8 @@ function TabPaquetes() {
    PÁGINA PRINCIPAL
 ════════════════════════════════════ */
 export default function ConfiguracionPage() {
-  const [tab,      setTab]    = useState('empresa')
+  // ?tab=salas (u otra sección) abre directo esa pestaña, p. ej. desde el dashboard
+  const [tab,      setTab]    = useState(() => { try { return new URLSearchParams(window.location.search).get('tab') || 'empresa' } catch { return 'empresa' } })
   const [empresa,   setEmpresa]  = useState(null)
   const [sedes,     setSedes]    = useState([])
   const [salas,     setSalas]    = useState([])

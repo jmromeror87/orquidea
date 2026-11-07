@@ -46,6 +46,11 @@ export async function getDashboard(req, reply) {
           UNION ALL
           SELECT monto FROM pagos_contrato pc JOIN contratos c ON c.id=pc.contrato_id WHERE DATE_TRUNC('month',pc.fecha_pago)=DATE_TRUNC('month',NOW()-INTERVAL '1 month') AND pc.anulado=FALSE AND ($1::uuid[] IS NULL OR c.sede_id = ANY($1::uuid[]))
         ) t) AS recaudo_mes_anterior,
+        (SELECT COALESCE(SUM(monto),0) FROM (
+          SELECT monto FROM pagos_poliza pp JOIN polizas p ON p.id=pp.poliza_id WHERE pp.fecha_pago >= DATE_TRUNC('month',NOW()-INTERVAL '1 month') AND pp.fecha_pago <= (CURRENT_DATE - INTERVAL '1 month') AND pp.anulado=FALSE AND ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[]))
+          UNION ALL
+          SELECT monto FROM pagos_contrato pc JOIN contratos c ON c.id=pc.contrato_id WHERE pc.fecha_pago >= DATE_TRUNC('month',NOW()-INTERVAL '1 month') AND pc.fecha_pago <= (CURRENT_DATE - INTERVAL '1 month') AND pc.anulado=FALSE AND ($1::uuid[] IS NULL OR c.sede_id = ANY($1::uuid[]))
+        ) t) AS recaudo_mes_anterior_corte,
         (SELECT COUNT(*) FROM salas_velacion WHERE activa AND ($1::uuid[] IS NULL OR sede_id = ANY($1::uuid[]))) AS total_salas,
         (SELECT COUNT(DISTINCT sf.sala_id) FROM servicios_funerarios sf WHERE sf.sala_id IS NOT NULL AND sf.estado NOT IN ('COMPLETADO','CANCELADO') AND ($1::uuid[] IS NULL OR sf.sede_id = ANY($1::uuid[]))) AS salas_ocupadas,
         (SELECT COUNT(*) FROM terceros) AS total_terceros,
@@ -176,6 +181,7 @@ export async function getDashboard(req, reply) {
         polizas_mora:         +k.polizas_mora,
         recaudo_mes:          +k.recaudo_mes,
         recaudo_mes_anterior: +k.recaudo_mes_anterior,
+        recaudo_mes_anterior_corte: +k.recaudo_mes_anterior_corte,
         total_salas:          +k.total_salas,
         salas_ocupadas:       +k.salas_ocupadas,
         total_terceros:       +k.total_terceros,
