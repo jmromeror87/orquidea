@@ -32,4 +32,7 @@ export default async function routes(fastify) {
   fastify.get('/operativo',         { preHandler: auth }, ctrl.operativo)
   fastify.get('/export/:tipo',      { preHandler: auth }, ctrl.exportarExcel)
   fastify.get('/tanatopraxia-analisis', { preHandler: auth }, ctrl.analisisTanatopraxia)
+  fastify.get('/rentabilidad-polizas',            { preHandler: auth }, ctrl.rentabilidadPolizas)
+  fastify.get('/rentabilidad-polizas/export',     { preHandler: auth }, ctrl.exportarRentabilidad)
+  fastify.get('/rentabilidad-polizas/:id',        { preHandler: auth }, ctrl.rentabilidadPoliza)
 }

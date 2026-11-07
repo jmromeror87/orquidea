@@ -20,6 +20,7 @@ import ExcelJS from 'exceljs'
 import pool from '../config/database.js'
 import { anthropic } from '../utils/anthropicClient.js'
 import { resolverSede } from '../utils/sede.js'
+import { listarRentabilidad, detalleRentabilidad } from '../services/rentabilidadPolizas.service.js'
 
 // ── Helpers de filtro ───────────────────────────────────────────────────────
 // El rango de fechas es libre; la sede NUNCA se confía en lo que mande el
@@ -367,4 +368,51 @@ export async function analisisTanatopraxia(req, reply) {
   } catch (e) {
     return reply.send({ data: { ...data, narrativa: null, narrativa_nota: 'Error al generar el resumen con IA: ' + e.message } })
   }
+}
+
+
+// ── Rentabilidad de pólizas ─────────────────────────────────────────────────
+const margenDe = q => { const m = Number(q.margen); return Number.isFinite(m) && m >= 0 && m < 95 ? m / 100 : 0.30 }
+
+export async function rentabilidadPolizas(req, reply) {
+  const { sedeIds } = resolverSede(req)
+  const data = await listarRentabilidad({ sedeIds, margen: margenDe(req.query) })
+  return reply.send({ data })
+}
+
+export async function rentabilidadPoliza(req, reply) {
+  const data = await detalleRentabilidad({ id: req.params.id, margen: margenDe(req.query) })
+  if (!data) return reply.code(404).send({ error: 'Póliza no encontrada' })
+  return reply.send({ data })
+}
+
+export async function exportarRentabilidad(req, reply) {
+  const { sedeIds } = resolverSede(req)
+  const margen = margenDe(req.query)
+  const filas = await listarRentabilidad({ sedeIds, margen })
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Orquídea ERP'
+  const ws = wb.addWorksheet('Rentabilidad pólizas')
+  const V = { RENTABLE: 'Rentable', AJUSTADA: 'Ajustada', PERDIDA: 'Pérdida', SIN_DATOS: 'Sin datos' }
+  const Rg = { ALTO: 'Alto', MEDIO: 'Medio', BAJO: 'Bajo', NINGUNO: '—' }
+  ws.columns = [
+    { header: 'Póliza', key: 'num', width: 10 }, { header: 'Titular', key: 'titular', width: 34 }, { header: 'Plan', key: 'plan', width: 24 },
+    { header: 'Estado', key: 'estado', width: 12 }, { header: 'Años', key: 'anios', width: 7 },
+    { header: 'Cuota inicial', key: 'cuota_inicial', width: 13 }, { header: 'Cuota actual', key: 'valor_cuota', width: 13 },
+    { header: 'Ingresos', key: 'ingresos', width: 15 }, { header: 'Fallecidos', key: 'fallecidos', width: 10 },
+    { header: 'Costo servicios', key: 'costo_servicios', width: 15 }, { header: 'Resultado', key: 'resultado', width: 15 },
+    { header: 'Margen', key: 'margen', width: 9 }, { header: 'Vivos', key: 'vivos', width: 7 }, { header: 'Mayores 65', key: 'mayores_65', width: 10 },
+    { header: 'Costo esperado/año', key: 'costo_anual_esperado', width: 16 }, { header: 'Cuota equilibrio', key: 'cuota_equilibrio', width: 15 },
+    { header: `Cuota recomendada (${Math.round(margen * 100)}%)`, key: 'cuota_recomendada', width: 18 },
+    { header: 'Veredicto', key: 'veredicto', width: 11 }, { header: 'Riesgo futuro', key: 'riesgo', width: 12 },
+  ]
+  for (const f of filas) ws.addRow({ ...f, num: f.numero_legado || f.numero, veredicto: V[f.veredicto], riesgo: Rg[f.riesgo] })
+  ws.getRow(1).eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E3192' } } })
+  ;['cuota_inicial','valor_cuota','ingresos','costo_servicios','resultado','costo_anual_esperado','cuota_equilibrio','cuota_recomendada'].forEach(k => { ws.getColumn(k).numFmt = '"$"#,##0' })
+  ws.getColumn('margen').numFmt = '0%'
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
+  ws.autoFilter = { from: 'A1', to: 'S1' }
+  const buf = await wb.xlsx.writeBuffer()
+  reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  reply.header('Content-Disposition', 'attachment; filename="rentabilidad-polizas.xlsx"')
+  return reply.send(Buffer.from(buf))
 }

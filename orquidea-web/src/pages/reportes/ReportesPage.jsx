@@ -20,8 +20,9 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   BarChart2, DollarSign, TrendingUp, ShieldCheck, Package,
   Download, FileSpreadsheet, FileText as FileIcon, Wallet, AlertTriangle,
-  Sparkles, Syringe,
+  Sparkles, Syringe, PiggyBank,
 } from 'lucide-react'
+import RentabilidadPolizas from '../../components/reportes/RentabilidadPolizas.jsx'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import api from '../../services/api.js'
@@ -46,6 +47,7 @@ const TABS = [
   { key: 'cartera',    label: 'Cartera',    Icon: ShieldCheck },
   { key: 'operativo',  label: 'Operativo',  Icon: Package },
   { key: 'tanatopraxia', label: 'Tanatopraxia', Icon: Syringe },
+  { key: 'rentabilidad', label: 'Rentabilidad de pólizas', Icon: PiggyBank },
 ]
 
 const CSS = `
@@ -449,6 +451,7 @@ export default function ReportesPage() {
       </div>
 
       <div className="rp-filters">
+        {tab !== 'rentabilidad' && <>
         <div className="rp-field">
           <label>Desde</label>
           <input type="date" value={desde} onChange={e => setDesde(e.target.value)} />
@@ -457,6 +460,7 @@ export default function ReportesPage() {
           <label>Hasta</label>
           <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} />
         </div>
+        </>}
         <div className="rp-field">
           <label>Sede</label>
           <select value={sede} onChange={e => setSede(e.target.value)}>
@@ -465,7 +469,7 @@ export default function ReportesPage() {
           </select>
         </div>
         <div className="rp-spacer" />
-        {tab !== 'tanatopraxia' && (
+        {tab !== 'tanatopraxia' && tab !== 'rentabilidad' && (
           <>
             <button className="rp-btn-exp" onClick={exportarExcel}><FileSpreadsheet size={14} /> Excel</button>
             <button className="rp-btn-exp" onClick={exportarPDF}><Download size={14} /> PDF</button>
@@ -479,6 +483,7 @@ export default function ReportesPage() {
         {tab === 'cartera' && <TabCartera filtros={filtros} />}
         {tab === 'operativo' && <TabOperativo filtros={filtros} />}
         {tab === 'tanatopraxia' && <TabTanatopraxia filtros={filtros} />}
+        {tab === 'rentabilidad' && <RentabilidadPolizas sede={sede} />}
       </div>
     </div>
   )
