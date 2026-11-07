@@ -117,15 +117,17 @@ const fCorta = d => d ? new Date(d).toISOString().slice(0, 10).split('-').revers
 async function eventosPoliza(polizaId) {
   const q = (sql) => pool.query(sql, [polizaId]).then(r => r.rows)
   const [pol, pagos, bens, transf, react, servs, renov] = await Promise.all([
-    q(`SELECT p.creado_en, u.nombre AS usuario, pl.nombre AS plan, p.valor_cuota, p.numero, p.observaciones
+    q(`SELECT p.creado_en, p.fecha_inicio, p.numero_legado, u.nombre AS usuario, pl.nombre AS plan, p.valor_cuota, p.numero, p.observaciones
          FROM polizas p JOIN planes_poliza pl ON pl.id = p.plan_id LEFT JOIN usuarios u ON u.id = p.usuario_id
         WHERE p.id = $1`),
     q(`SELECT pp.id, pp.numero_recibo, pp.tipo, pp.monto, pp.parcial, pp.mes_correspondiente, pp.periodo_hasta,
               pp.creado_en, pp.anulado, pp.anulado_en, pp.fecha_anulacion, pp.motivo_anulacion,
-              u.nombre AS usuario, ua.nombre AS anulado_por
+              pp.migrado_pisco, pp.referencia, pp.fecha_pago,
+              CASE WHEN pp.migrado_pisco THEN 'Migrado desde Pisco' || COALESCE(' · ' || NULLIF(btrim(substring(pp.observaciones from 'Usuario ([^·]+)')), ''), '')
+                   ELSE u.nombre END AS usuario, ua.nombre AS anulado_por
          FROM pagos_poliza pp LEFT JOIN usuarios u ON u.id = pp.usuario_id LEFT JOIN usuarios ua ON ua.id = pp.anulado_por
         WHERE pp.poliza_id = $1`),
-    q(`SELECT pb.id, pb.parentesco, pb.creado_en, pb.ejecutado, pb.fecha_ejecucion, pb.activo, pb.es_cambio,
+    q(`SELECT pb.id, pb.parentesco, pb.creado_en, pb.fecha_afiliacion, pb.ejecutado, pb.fecha_ejecucion, pb.activo, pb.es_cambio,
               COALESCE(t.nombres||' '||t.apellidos, t.razon_social) AS nombre
          FROM poliza_beneficiarios pb JOIN terceros t ON t.id = pb.tercero_id WHERE pb.poliza_id = $1`),
     q(`SELECT pt.id, pt.creado_en, pt.motivo, u.nombre AS usuario,
@@ -146,20 +148,26 @@ async function eventosPoliza(polizaId) {
   const ev = []
   const add = (id, fecha, tipo, icono, titulo, detalle, usuario) => fecha && ev.push({ id, fecha, tipo, icono, titulo, detalle, usuario })
 
+  // Pólizas migradas de Pisco: los eventos van con la fecha real de Pisco y
+  // "Migrado desde Pisco", no con la hora de la carga ni el usuario que migró.
+  const migrada = pol.some(p => /^Migrada desde Pisco/.test(p.observaciones || ''))
   for (const p of pol) {
-    add('pol', p.creado_en, 'POLIZA', 'shield', 'Póliza creada', `${p.plan} · cuota ${pesos(p.valor_cuota)}`, p.usuario)
+    const cuando = migrada ? p.fecha_inicio : p.creado_en
+    const quien = migrada ? 'Migrado desde Pisco' : p.usuario
+    add('pol', cuando, 'POLIZA', 'shield', migrada ? `Póliza afiliada (contrato ${p.numero_legado} de Pisco)` : 'Póliza creada', `${p.plan} · cuota ${pesos(p.valor_cuota)}`, quien)
     // Las observaciones del formulario de la póliza también se ven aquí
-    if (p.observaciones?.trim()) add('pol-obs', p.creado_en, 'OBSERVACION', 'nota', 'Observaciones de la póliza', p.observaciones.trim(), p.usuario)
+    if (p.observaciones?.trim()) add('pol-obs', cuando, 'OBSERVACION', 'nota', 'Observaciones de la póliza', p.observaciones.trim(), quien)
   }
   for (const p of pagos) {
     const que = p.tipo === 'AFILIACION' ? 'Afiliación / cambio de beneficiario'
       : `${p.parcial ? 'Abono' : 'Cuota'} del periodo ${fCorta(p.mes_correspondiente)} → ${fCorta(p.periodo_hasta)}`
-    add(`pago-${p.id}`, p.creado_en, 'PAGO', 'pago', `Pago registrado · recibo N° ${String(p.numero_recibo).padStart(6, '0')}`, `${que} · ${pesos(p.monto)}`, p.usuario)
+    const recibo = p.migrado_pisco && p.referencia ? p.referencia : String(p.numero_recibo).padStart(6, '0')
+    add(`pago-${p.id}`, p.migrado_pisco ? p.fecha_pago : p.creado_en, 'PAGO', 'pago', `Pago registrado · recibo N° ${recibo}`, `${que} · ${pesos(p.monto)}`, p.usuario)
     if (p.anulado) add(`anul-${p.id}`, p.anulado_en || p.fecha_anulacion, 'ANULACION', 'anulado',
       `Pago anulado · recibo N° ${String(p.numero_recibo).padStart(6, '0')}`, `${pesos(p.monto)}${p.motivo_anulacion ? ` — ${p.motivo_anulacion}` : ''}`, p.anulado_por)
   }
   for (const b of bens) {
-    add(`ben-${b.id}`, b.creado_en, 'BENEFICIARIO', 'persona', `Beneficiario agregado: ${b.nombre}`,
+    add(`ben-${b.id}`, migrada ? (b.fecha_afiliacion || b.creado_en) : b.creado_en, 'BENEFICIARIO', 'persona', `Beneficiario agregado: ${b.nombre}`,
       `Parentesco: ${b.parentesco}${b.es_cambio ? ' · ingresó como cambio de beneficiario' : ''}${!b.activo && !b.ejecutado ? ' · (luego retirado)' : ''}`, null)
     if (b.ejecutado) add(`eje-${b.id}`, b.fecha_ejecucion, 'EJECUCION', 'ejecucion', `Póliza ejecutada por fallecimiento de ${b.nombre}`, `Parentesco: ${b.parentesco}`, null)
   }

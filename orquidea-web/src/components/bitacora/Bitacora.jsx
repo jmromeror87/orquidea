@@ -202,6 +202,7 @@ export default function Bitacora({ tipo = 'poliza', entidadId, titulo = '', pued
   const [motivo, setMotivo] = useState('')
   const [borrando, setBorrando] = useState(false)
   const [versiones, setVersiones] = useState(null)   // { nota, lista }
+  const [pagina, setPagina] = useState(1)
 
   const cargar = useCallback(async () => {
     try {
@@ -232,11 +233,17 @@ export default function Bitacora({ tipo = 'poliza', entidadId, titulo = '', pued
     const todos = filtro === 'NOTAS' ? ns : filtro === 'EVENTOS' ? es : [...ns, ...es]
     return todos.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
   }, [notas, eventos, q, categoria, filtro, verEliminadas])
+  useEffect(() => { setPagina(1) }, [q, categoria, filtro, verEliminadas, entidadId])
 
   const fijadas = filtro !== 'EVENTOS' ? items.filter(i => i.clase === 'nota' && i.nota.fijada && !i.nota.eliminado) : []
   const resto = items.filter(i => !(i.clase === 'nota' && i.nota.fijada && !i.nota.eliminado) || filtro === 'EVENTOS')
+  // Paginación: 20 registros por página (pólizas migradas traen cientos de eventos)
+  const POR_PAGINA = 20
+  const totalPaginas = Math.max(1, Math.ceil(resto.length / POR_PAGINA))
+  const paginaSeg = Math.min(pagina, totalPaginas)
+  const restoPagina = resto.slice((paginaSeg - 1) * POR_PAGINA, paginaSeg * POR_PAGINA)
   const porDia = []
-  for (const it of resto) {
+  for (const it of restoPagina) {
     const d = diaLabel(it.fecha)
     if (!porDia.length || porDia[porDia.length - 1].dia !== d) porDia.push({ dia: d, items: [] })
     porDia[porDia.length - 1].items.push(it)
@@ -432,6 +439,19 @@ export default function Bitacora({ tipo = 'poliza', entidadId, titulo = '', pued
               <div className="bt-linea">{g.items.map(it => <Item key={it.k} it={it}/>)}</div>
             </div>
           ))}
+          {totalPaginas > 1 && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginTop:14, fontSize:12.5, color:'#475569' }}>
+              <button type="button" disabled={paginaSeg <= 1} onClick={() => setPagina(1)}
+                style={{ border:'1.5px solid #e2e8f0', background:'#fff', borderRadius:8, padding:'5px 10px', cursor:paginaSeg <= 1 ? 'default' : 'pointer', opacity:paginaSeg <= 1 ? .45 : 1, fontFamily:'inherit', fontWeight:700 }}>«</button>
+              <button type="button" disabled={paginaSeg <= 1} onClick={() => setPagina(p => Math.max(1, p - 1))}
+                style={{ border:'1.5px solid #e2e8f0', background:'#fff', borderRadius:8, padding:'5px 12px', cursor:paginaSeg <= 1 ? 'default' : 'pointer', opacity:paginaSeg <= 1 ? .45 : 1, fontFamily:'inherit', fontWeight:700 }}>Anterior</button>
+              <span>Página <b>{paginaSeg}</b> de <b>{totalPaginas}</b> · {resto.length} registros</span>
+              <button type="button" disabled={paginaSeg >= totalPaginas} onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
+                style={{ border:'1.5px solid #e2e8f0', background:'#fff', borderRadius:8, padding:'5px 12px', cursor:paginaSeg >= totalPaginas ? 'default' : 'pointer', opacity:paginaSeg >= totalPaginas ? .45 : 1, fontFamily:'inherit', fontWeight:700 }}>Siguiente</button>
+              <button type="button" disabled={paginaSeg >= totalPaginas} onClick={() => setPagina(totalPaginas)}
+                style={{ border:'1.5px solid #e2e8f0', background:'#fff', borderRadius:8, padding:'5px 10px', cursor:paginaSeg >= totalPaginas ? 'default' : 'pointer', opacity:paginaSeg >= totalPaginas ? .45 : 1, fontFamily:'inherit', fontWeight:700 }}>»</button>
+            </div>
+          )}
         </>
       )}
 
