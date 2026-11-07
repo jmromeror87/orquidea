@@ -44,13 +44,17 @@ export async function imprimirReciboPagoPoliza({ pago, poliza, empresa, salida =
   const GREEN = [5,120,85], GREEN_BG = [236,253,245], GREEN_BORDER = [167,243,208]
   // Un pago de varios periodos = varias filas con el mismo lote → UN recibo
   // con el detalle y el total (pagos viejos: mismas fila/hora/usuario).
-  const hermanos = pago.tipo === 'CUOTA' ? (poliza.pagos || []).filter(x => !x.anulado && x.tipo === 'CUOTA' &&
+  // Pagos migrados de Pisco: cada uno es su propio recibo (todos se cargaron
+  // a la misma hora, así que la regla de "misma hora/usuario" los juntaría).
+  const hermanos = pago.tipo === 'CUOTA' && !pago.migrado_pisco ? (poliza.pagos || []).filter(x => !x.anulado && x.tipo === 'CUOTA' &&
     (pago.lote_id ? x.lote_id === pago.lote_id : (x.creado_en === pago.creado_en && x.usuario_id === pago.usuario_id)))
     .sort((a, b) => String(a.mes_correspondiente).localeCompare(String(b.mes_correspondiente))) : []
   const grupo = hermanos.length > 1 ? hermanos : [pago]
   const totalGrupo = grupo.reduce((t, x) => t + Number(x.monto || 0), 0)
   const nums = grupo.map(x => Number(x.numero_recibo)).sort((a, b) => a - b)
-  const numero = String(nums[0]).padStart(6,'0') + (nums.length > 1 ? `–${String(nums[nums.length - 1]).padStart(6,'0')}` : '')
+  // En los migrados el número que conoce el cliente es el recibo de Pisco
+  const numero = pago.migrado_pisco && pago.referencia ? pago.referencia
+    : String(nums[0]).padStart(6,'0') + (nums.length > 1 ? `–${String(nums[nums.length - 1]).padStart(6,'0')}` : '')
   const obs = grupo.map(x => x.observaciones).find(Boolean) || pago.observaciones
   const esCambio = pago.tipo === 'AFILIACION' && (pago.beneficiario_id || pago.beneficiario_nombre)
   const titulo = esCambio ? 'CAMBIO DE BENEFICIARIO' : pago.tipo === 'AFILIACION' ? 'RECIBO DE AFILIACIÓN' : 'RECIBO DE PAGO'

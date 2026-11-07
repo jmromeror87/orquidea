@@ -309,7 +309,7 @@ export async function obtener(req, reply) {
 
       ORDER BY creado_en`, [id]),
     pool.query(`
-      SELECT pp.*, u.nombre AS cajero, ua.nombre AS anulado_por_nombre,
+      SELECT pp.*, CASE WHEN pp.migrado_pisco THEN 'Migrado desde Pisco' || COALESCE(' · ' || NULLIF(btrim(substring(pp.observaciones from 'Usuario ([^·]+)')), ''), '') ELSE u.nombre END AS cajero, ua.nombre AS anulado_por_nombre,
         (SELECT COALESCE(tb.nombres||' '||tb.apellidos, tb.razon_social) FROM poliza_beneficiarios bb
            JOIN terceros tb ON tb.id = bb.tercero_id WHERE bb.id = pp.beneficiario_id) AS beneficiario_nombre,
         -- Trazabilidad contable de la anulación: comprobante original y su nota de reverso

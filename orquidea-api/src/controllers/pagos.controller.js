@@ -162,7 +162,7 @@ export async function listar(req, reply) {
         t.nombres || ' ' || COALESCE(t.apellidos,'') AS titular,
         t.telefono,
         pl.nombre      AS plan,
-        u.nombre       AS cajero,
+        CASE WHEN pp.migrado_pisco THEN 'Migrado desde Pisco' || COALESCE(' · ' || NULLIF(btrim(substring(pp.observaciones from 'Usuario ([^·]+)')), ''), '') ELSE u.nombre END       AS cajero,
         uc.nombre      AS cobrador
       FROM pagos_poliza pp
       JOIN polizas p ON p.id = pp.poliza_id
@@ -766,7 +766,7 @@ export async function detalleRecibo(req, reply) {
       pl.nombre AS plan,
       t.nombres || ' ' || COALESCE(t.apellidos,'') AS titular,
       t.numero_documento AS cedula, t.telefono, t.direccion,
-      u.nombre AS cajero,
+      CASE WHEN pp.migrado_pisco THEN 'Migrado desde Pisco' || COALESCE(' · ' || NULLIF(btrim(substring(pp.observaciones from 'Usuario ([^·]+)')), ''), '') ELSE u.nombre END AS cajero,
       e.razon_social AS nombre_empresa, e.nit, e.direccion AS empresa_direccion,
       e.telefono_1 AS empresa_telefono, e.logo_url AS empresa_logo_url
     FROM pagos_poliza pp

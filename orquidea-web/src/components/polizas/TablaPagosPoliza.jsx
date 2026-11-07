@@ -22,7 +22,7 @@
  * y su desglose. Los anulados se ven tachados con quién, cuándo y por qué.
  */
 import { useState } from 'react'
-import { Printer, Ban, Eye, Search } from 'lucide-react'
+import { Printer, Ban, Eye, Search, ChevronRight, ChevronDown } from 'lucide-react'
 import { diaAncla, normalizarInicio, diasQueCubre, addDias, iso } from '../../utils/periodosPoliza.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import { FormaPagoTag } from '../ui/FormaPago.jsx'
@@ -61,6 +61,12 @@ const CSS = `
 .tp-total small { display:block; font-size:10.5px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:#047857; }
 .tp-total strong { font-size:20px; font-weight:900; color:#047857; font-variant-numeric:tabular-nums; }
 .tp-vacio { padding:28px; text-align:center; color:#94a3b8; font-size:12.5px; }
+.tp-tabla tr.tp-anio td { background:#f1f5f9 !important; cursor:pointer; user-select:none; padding:9px 10px; border-bottom:1.5px solid #e2e8f0; }
+.tp-tabla tr.tp-anio:hover td { background:#e2e8f0 !important; }
+.tp-anio-fila { display:flex; align-items:center; gap:10px; font-size:12.5px; color:#334155; }
+.tp-anio-fila b { font-size:14px; color:#0f172a; }
+.tp-anio-fila .tp-anio-tot { margin-left:auto; font-weight:800; color:#065f46; font-variant-numeric:tabular-nums; }
+.tp-tabla tr.tp-mes td { background:#fff !important; padding:5px 10px 3px; font-size:10.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:#64748b; border-bottom:1px solid #f1f5f9; }
 @media (max-width:640px) { .tp-buscar { margin-left:0; width:100%; } .tp-buscar input { width:100%; box-sizing:border-box; } }
 `
 
@@ -131,49 +137,35 @@ export default function TablaPagosPoliza({ pagos = [], poliza, fmtMetodo = x => 
     if (filtro === 'AFILIACION' && (p.anulado || !['AFIL', 'CAMBIO'].includes(p._i.concepto))) return false
     if (filtro === 'ANULADOS' && !p.anulado) return false
     if (!q.trim()) return true
-    const texto = norm([String(p.numero_recibo).padStart(6, '0'), p._i.etiqueta, fNum(p._i.desde), fNum(p._i.hasta), fCorta(p._i.desde), fCorta(p._i.hasta), CONCEPTOS[p._i.concepto].label,
+    const texto = norm([String(p.numero_recibo).padStart(6, '0'), p.referencia || '', p._i.etiqueta, fNum(p._i.desde), fNum(p._i.hasta), fCorta(p._i.desde), fCorta(p._i.hasta), CONCEPTOS[p._i.concepto].label,
       fmtMetodo(p.metodo_pago), p.cajero, p.referencia, fCorta(p.fecha_pago)].join(' '))
     return norm(q).split(/\s+/).every(t => texto.includes(t))
   })
   const totalVisible = sumar(visibles.filter(p => !p.anulado))
 
-  return (
-    <>
-      <style>{CSS}</style>
-      <div className="tp-filtros">
-        {[['TODOS', 'Todos'], ['CUOTAS', 'Cuotas y abonos'], ['AFILIACION', 'Afiliación / cambios'], ['ANULADOS', 'Anulados']].map(([k, l]) => (
-          <button key={k} type="button" className={`tp-chip${filtro === k ? ' on' : ''}`} onClick={() => setFiltro(k)}>
-            {l}<span>{cuenta[k]}</span>
-          </button>
-        ))}
-        <div className="tp-buscar">
-          <Search size={13}/>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar recibo, periodo, cajero…"/>
-        </div>
-      </div>
+  // Acordeón por año (año del pago): el año actual abierto, los demás
+  // recogidos mostrando cuántos pagos y cuánto suman. Al buscar se abren todos.
+  const anioActual = String(new Date().getFullYear())
+  const [abiertos, setAbiertos] = useState(() => new Set([anioActual]))
+  const buscando = q.trim() !== ''
+  const anioDe = p => String(p.fecha_pago || p.creado_en || '').slice(0, 4) || '—'
+  const grupos = []
+  for (const p of visibles) {
+    const a = anioDe(p)
+    let g = grupos.find(x => x.anio === a)
+    if (!g) { g = { anio: a, pagos: [] }; grupos.push(g) }
+    g.pagos.push(p)
+  }
+  grupos.sort((x, y) => y.anio.localeCompare(x.anio))
+  for (const g of grupos) g.pagos.sort((x, y) => String(y.fecha_pago || '').localeCompare(String(x.fecha_pago || '')) || String(y.mes_correspondiente).localeCompare(String(x.mes_correspondiente)))
+  const alternar = a => setAbiertos(s => { const n = new Set(s); n.has(a) ? n.delete(a) : n.add(a); return n })
+  const MES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-      <div className="tp-wrap">
-        <div className="tp-scroll">
-          <table className="tp-tabla">
-            <thead>
-              <tr>
-                <th>N° recibo</th>
-                <th>Pagado el / por</th>
-                <th>Concepto</th>
-                <th>Periodo que cubre</th>
-                <th>Forma de pago</th>
-                <th className="num">Valor</th>
-                <th style={{ width:1 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.length === 0 ? (
-                <tr><td colSpan={7} className="tp-vacio">{filas.length ? 'Ningún pago coincide con el filtro' : 'Sin pagos registrados'}</td></tr>
-              ) : visibles.map(p => {
-                const c = CONCEPTOS[p._i.concepto]
-                return (
-                  <tr key={p.id} className={p.anulado ? 'anul' : undefined}>
-                    <td className="tp-recibo">{String(p.numero_recibo).padStart(6, '0')}</td>
+  const filaPago = p => {
+    const c = CONCEPTOS[p._i.concepto]
+    return (
+      <tr key={p.id} className={p.anulado ? 'anul' : undefined}>
+                    <td className="tp-recibo" title={p.migrado_pisco ? 'Recibo del sistema Pisco' : undefined}>{p.migrado_pisco && p.referencia ? p.referencia : String(p.numero_recibo).padStart(6, '0')}</td>
                     <td>
                       <div style={{ whiteSpace:'nowrap', fontWeight:600 }}>{fCorta(p.fecha_pago)}</div>
                       <div className="tp-rango" style={{ whiteSpace:'normal', maxWidth:150 }}>{p.cajero || '—'}</div>
@@ -220,14 +212,73 @@ export default function TablaPagosPoliza({ pagos = [], poliza, fmtMetodo = x => 
                           <button type="button" className="tp-btn" onClick={() => onRecibo?.(p)} title="Imprimir recibo"
                             style={{ color:'#059669', background:'#ecfdf5', border:'1.5px solid #a7f3d0' }}><Printer size={13}/></button>
                         )}
-                        {!p.anulado && puedeAnular && (
+                        {!p.anulado && puedeAnular && !p.migrado_pisco && (
                           <button type="button" className="tp-btn" onClick={() => onAnular?.(p)} title="Anular este pago"
                             style={{ color:'#dc2626', background:'#fef2f2', border:'1.5px solid #fecaca' }}><Ban size={13}/></button>
                         )}
                       </div>
                     </td>
+      </tr>
+    )
+  }
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div className="tp-filtros">
+        {[['TODOS', 'Todos'], ['CUOTAS', 'Cuotas y abonos'], ['AFILIACION', 'Afiliación / cambios'], ['ANULADOS', 'Anulados']].map(([k, l]) => (
+          <button key={k} type="button" className={`tp-chip${filtro === k ? ' on' : ''}`} onClick={() => setFiltro(k)}>
+            {l}<span>{cuenta[k]}</span>
+          </button>
+        ))}
+        <div className="tp-buscar">
+          <Search size={13}/>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar recibo, periodo, cajero…"/>
+        </div>
+      </div>
+
+      <div className="tp-wrap">
+        <div className="tp-scroll">
+          <table className="tp-tabla">
+            <thead>
+              <tr>
+                <th>N° recibo</th>
+                <th>Pagado el / por</th>
+                <th>Concepto</th>
+                <th>Periodo que cubre</th>
+                <th>Forma de pago</th>
+                <th className="num">Valor</th>
+                <th style={{ width:1 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.length === 0 ? (
+                <tr><td colSpan={7} className="tp-vacio">{filas.length ? 'Ningún pago coincide con el filtro' : 'Sin pagos registrados'}</td></tr>
+              ) : grupos.flatMap(g => {
+                const abierto = buscando || abiertos.has(g.anio)
+                const filasAnio = [(
+                  <tr key={`a-${g.anio}`} className="tp-anio" onClick={() => alternar(g.anio)}>
+                    <td colSpan={7}>
+                      <div className="tp-anio-fila">
+                        {abierto ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}
+                        <b>{g.anio}</b>
+                        <span>{g.pagos.length} {g.pagos.length === 1 ? 'pago' : 'pagos'}</span>
+                        <span className="tp-anio-tot">{fmt(sumar(g.pagos.filter(p => !p.anulado)))}</span>
+                      </div>
+                    </td>
                   </tr>
-                )
+                )]
+                if (!abierto) return filasAnio
+                let mesPrevio = null
+                for (const p of g.pagos) {
+                  const m = String(p.fecha_pago || '').slice(5, 7)
+                  if (m && m !== mesPrevio) {
+                    filasAnio.push(<tr key={`m-${g.anio}-${m}`} className="tp-mes"><td colSpan={7}>{MES_LARGO[+m - 1]}</td></tr>)
+                    mesPrevio = m
+                  }
+                  filasAnio.push(filaPago(p))
+                }
+                return filasAnio
               })}
             </tbody>
           </table>
