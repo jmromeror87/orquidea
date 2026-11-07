@@ -301,6 +301,7 @@ export async function obtener(req, reply) {
         td.sigla AS tipo_doc_sigla,
         t.fecha_nacimiento, t.rh,
         DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad,
+        NULL::int AS edad_afiliacion,
         NULL::date AS fecha_afiliacion, NULL::date AS fecha_fin_carencia, FALSE AS en_carencia,
         0::numeric AS costo_afiliacion, TRUE AS afiliacion_pagada
       FROM servicios_funerarios sf
