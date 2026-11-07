@@ -16,10 +16,91 @@
  */
 import { useEffect, useState, useCallback } from 'react'
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
 import api from '../../services/api.js'
+
+// ─── Gráfica de áreas: esperado vs. recaudado ─────────────────────────────────
+// Dos series con colores validados (incluido daltonismo): esperado en azul,
+// recaudado en verde. Resumen con cifras arriba (no depende del color) y
+// tooltip con ambas cifras y el % de cumplimiento.
+const C_ESP = '#2a78d6'
+const C_REC = '#1baf7a'
+const MESES_C = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+const copC = n => '$' + Math.round(+n || 0).toLocaleString('es-CO')
+const ejeM = v => v >= 1e6 ? `$${(v / 1e6).toLocaleString('es-CO', { maximumFractionDigits: 1 })} M` : v >= 1e3 ? `$${Math.round(v / 1e3)} mil` : `$${v}`
+
+function TooltipEsperado({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const p = payload[0].payload
+  const pct = p.esperado > 0 && p.recaudado != null ? Math.round(p.recaudado / p.esperado * 100) : null
+  const fila = (color, texto, valor) => (
+    <div style={{ display:'flex', alignItems:'center', gap:10, justifyContent:'space-between', marginTop:3 }}>
+      <span style={{ display:'flex', alignItems:'center', gap:6 }}><i style={{ width:10, height:3, borderRadius:2, background:color, display:'inline-block' }}/>{texto}</span>
+      <b style={{ fontVariantNumeric:'tabular-nums' }}>{valor}</b>
+    </div>
+  )
+  return (
+    <div style={{ background:'#0F172A', color:'#fff', borderRadius:12, padding:'10px 14px', fontSize:12.5, boxShadow:'0 10px 30px rgba(15,23,42,.25)', minWidth:200 }}>
+      <div style={{ fontWeight:800, marginBottom:4 }}>{p.etiquetaLarga || label}</div>
+      {fila(C_ESP, 'Esperado', copC(p.esperado))}
+      {fila(C_REC, 'Recaudado', p.recaudado == null ? '—' : copC(p.recaudado))}
+      {pct != null && <div style={{ marginTop:6, paddingTop:6, borderTop:'1px solid rgba(255,255,255,.15)', color:'#CBD5E1' }}>Cumplimiento: <b style={{ color:'#fff' }}>{pct} %</b></div>}
+    </div>
+  )
+}
+
+function GraficaEsperadoRecaudado({ datos = [], vista }) {
+  const hoy = new Date().toISOString().slice(0, 10)
+  const filas = datos.map(d => vista === 'mensual'
+    ? { ...d, etiqueta: `${MESES_C[d.mes_num - 1]} ${String(d.anio).slice(2)}`,
+        etiquetaLarga: `${MESES_C[d.mes_num - 1]} ${d.anio}${d.clave === hoy.slice(0, 7) ? ' (en curso)' : ''}` }
+    : { ...d, etiqueta: String(d.dia_num), etiquetaLarga: `${d.dia_num} de ${MESES_C[+d.clave.slice(5, 7) - 1]}`,
+        recaudado: d.clave > hoy ? null : d.recaudado })     // días que no han llegado: sin área de recaudo
+  const totE = filas.reduce((a, f) => a + (+f.esperado || 0), 0)
+  const totR = filas.reduce((a, f) => a + (+f.recaudado || 0), 0)
+  const pct = totE > 0 ? Math.round(totR / totE * 100) : 0
+  const tono = pct >= 95 ? ['#ECFDF5', '#047857'] : pct >= 80 ? ['#FFFBEB', '#B45309'] : ['#FEF2F2', '#B91C1C']
+  const clave = (color, texto, valor) => (
+    <span style={{ display:'flex', alignItems:'center', gap:7 }}>
+      <i style={{ width:14, height:4, borderRadius:2, background:color, display:'inline-block' }}/>{texto}
+      <b style={{ color:'#0F172A', fontVariantNumeric:'tabular-nums' }}>{copC(valor)}</b>
+    </span>
+  )
+  return (
+    <div>
+      <div style={{ display:'flex', gap:18, flexWrap:'wrap', alignItems:'center', margin:'2px 0 10px', fontSize:12.5, color:'#475569' }}>
+        {clave(C_ESP, 'Esperado', totE)}
+        {clave(C_REC, 'Recaudado', totR)}
+        <span style={{ marginLeft:'auto', fontSize:12, fontWeight:800, padding:'4px 10px', borderRadius:20, background:tono[0], color:tono[1] }}>
+          Cumplimiento {pct} %
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={250}>
+        <AreaChart data={filas} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gEsp" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={C_ESP} stopOpacity={0.22}/><stop offset="100%" stopColor={C_ESP} stopOpacity={0.02}/>
+            </linearGradient>
+            <linearGradient id="gRec" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={C_REC} stopOpacity={0.35}/><stop offset="100%" stopColor={C_REC} stopOpacity={0.04}/>
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="#EEF0F6" vertical={false}/>
+          <XAxis dataKey="etiqueta" tick={{ fontSize: 11.5, fill: '#64748B' }} axisLine={false} tickLine={false}
+            interval={vista === 'mensual' ? 0 : 'preserveStartEnd'} minTickGap={8}/>
+          <YAxis tick={{ fontSize: 11, fill: '#64748B' }} tickFormatter={ejeM} axisLine={false} tickLine={false} width={64}/>
+          <Tooltip content={<TooltipEsperado/>} cursor={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '4 4' }}/>
+          <Area type="monotone" dataKey="esperado" name="Esperado" stroke={C_ESP} strokeWidth={2} fill="url(#gEsp)"
+            dot={false} activeDot={{ r: 5, fill: C_ESP, stroke: '#fff', strokeWidth: 2 }}/>
+          <Area type="monotone" dataKey="recaudado" name="Recaudado" stroke={C_REC} strokeWidth={2} fill="url(#gRec)"
+            dot={false} activeDot={{ r: 5, fill: C_REC, stroke: '#fff', strokeWidth: 2 }} connectNulls={false}/>
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
 
 // ─── Utilidades ────────────────────────────────────────────────────────────────
 
@@ -320,7 +401,7 @@ export default function DashboardPage() {
               <div style={{ ...styles.card, flex: 2 }}>
                 <div style={styles.cardHeader}>
                   <h3 style={styles.cardTitle}>
-                    {vistaRecaudo === 'mensual' ? 'Recaudo Mensual' : 'Recaudo del Mes por Día'}
+                    {vistaRecaudo === 'mensual' ? 'Esperado vs. recaudado · por mes' : 'Esperado vs. recaudado · este mes por día'}
                   </h3>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
@@ -343,28 +424,8 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart
-                    data={vistaRecaudo === 'mensual' ? data.recaudo_mensual : data.recaudo_diario}
-                    margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ECEDF8" vertical={false} />
-                    <XAxis
-                      dataKey={vistaRecaudo === 'mensual' ? 'mes' : 'dia'}
-                      tick={{ fontSize: 12, fill: '#64748B' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: '#64748B' }}
-                      tickFormatter={(v) => `$${(v / 1_000_000).toFixed(1)}M`}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip content={<CopTooltip />} cursor={{ fill: '#F7F8FC' }} />
-                    <Bar dataKey="total" name="Recaudo" fill="#6366F1" radius={[6, 6, 0, 0]} maxBarSize={52} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <GraficaEsperadoRecaudado vista={vistaRecaudo}
+                  datos={vistaRecaudo === 'mensual' ? data.recaudo_mensual : data.recaudo_diario}/>
               </div>
 
               <div style={{ ...styles.card, flex: 1, minWidth: 0 }}>

@@ -53,20 +53,32 @@ export async function getDashboard(req, reply) {
         (SELECT COALESCE(SUM(total),0) FROM pos_ventas WHERE NOT anulada AND creado_en::date = CURRENT_DATE AND ($1::uuid[] IS NULL OR sede_id = ANY($1::uuid[]))) AS pos_total_hoy
     `, s),
 
-    // Recaudo últimos 6 meses (para gráfica de barras)
+    // Esperado vs recaudado, mes a mes (los 6 meses anteriores + el actual).
+    // Esperado = cuotas de las pólizas vigentes en ese mes (afiliadas antes de
+    // que termine y sin cancelar antes de que empiece) + cuotas de contratos a
+    // plazos en curso. Recaudado = pagos no anulados con fecha en ese mes.
     pool.query(`
-      SELECT TO_CHAR(DATE_TRUNC('month', fecha_pago),'Mon YY') AS mes,
-        EXTRACT(MONTH FROM fecha_pago)::int AS mes_num,
-        EXTRACT(YEAR FROM fecha_pago)::int AS anio,
-        SUM(monto) AS total
-      FROM (
-        SELECT pp.fecha_pago, pp.monto FROM pagos_poliza pp JOIN polizas p ON p.id=pp.poliza_id
-          WHERE pp.anulado=FALSE AND pp.fecha_pago >= NOW() - INTERVAL '6 months' AND ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[]))
-        UNION ALL
-        SELECT pc.fecha_pago, pc.monto FROM pagos_contrato pc JOIN contratos c ON c.id=pc.contrato_id
-          WHERE pc.anulado=FALSE AND pc.fecha_pago >= NOW() - INTERVAL '6 months' AND ($1::uuid[] IS NULL OR c.sede_id = ANY($1::uuid[]))
-      ) t
-      GROUP BY 1,2,3 ORDER BY 3,2
+      WITH meses AS (
+        SELECT generate_series(DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '6 months', DATE_TRUNC('month', CURRENT_DATE), INTERVAL '1 month')::date AS m
+      )
+      SELECT TO_CHAR(m, 'YYYY-MM') AS clave, EXTRACT(MONTH FROM m)::int AS mes_num, EXTRACT(YEAR FROM m)::int AS anio,
+        (SELECT COALESCE(SUM(pp.monto),0) FROM pagos_poliza pp JOIN polizas p ON p.id = pp.poliza_id
+          WHERE NOT pp.anulado AND pp.fecha_pago >= m AND pp.fecha_pago < m + INTERVAL '1 month'
+            AND ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[])))
+        + (SELECT COALESCE(SUM(pc.monto),0) FROM pagos_contrato pc JOIN contratos c ON c.id = pc.contrato_id
+          WHERE NOT pc.anulado AND pc.fecha_pago >= m AND pc.fecha_pago < m + INTERVAL '1 month'
+            AND ($1::uuid[] IS NULL OR c.sede_id = ANY($1::uuid[]))) AS recaudado,
+        (SELECT COALESCE(SUM(p.valor_cuota),0) FROM polizas p
+          WHERE p.fecha_inicio < m + INTERVAL '1 month' AND p.estado <> 'EJECUTADA'
+            AND (p.estado <> 'CANCELADA' OR p.fecha_cancelacion >= m)
+            AND ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[])))
+        + (SELECT COALESCE(SUM(c.valor_cuota),0) FROM contratos c
+          WHERE c.valor_cuota > 0 AND COALESCE(c.num_cuotas,0) > 1
+            AND COALESCE(c.fecha_inicio, c.creado_en::date) < m + INTERVAL '1 month'
+            AND (c.fecha_vencimiento IS NULL OR c.fecha_vencimiento >= m)
+            AND LOWER(COALESCE(c.estado,'')) NOT IN ('anulado','cancelado')
+            AND ($1::uuid[] IS NULL OR c.sede_id = ANY($1::uuid[]))) AS esperado
+      FROM meses ORDER BY m
     `, s),
 
     // Servicios por mes últimos 6 meses
@@ -131,21 +143,24 @@ export async function getDashboard(req, reply) {
       GROUP BY tipo_disposicion
     `, s),
 
-    // Recaudo día a día del mes en curso (para desglosar cuando solo hay 1 mes de historial)
+    // Esperado vs recaudado día a día del mes en curso. Esperado de un día =
+    // cuotas de las pólizas vigentes cuyo día de cobro (día de afiliación,
+    // ajustado al último día del mes) cae ese día.
     pool.query(`
-      SELECT TO_CHAR(fecha_pago, 'DD Mon') AS dia,
-        EXTRACT(DAY FROM fecha_pago)::int AS dia_num,
-        SUM(monto) AS total
-      FROM (
-        SELECT pp.fecha_pago, pp.monto FROM pagos_poliza pp JOIN polizas p ON p.id=pp.poliza_id
-          WHERE pp.anulado=FALSE AND DATE_TRUNC('month', pp.fecha_pago) = DATE_TRUNC('month', NOW())
-            AND ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[]))
-        UNION ALL
-        SELECT pc.fecha_pago, pc.monto FROM pagos_contrato pc JOIN contratos c ON c.id=pc.contrato_id
-          WHERE pc.anulado=FALSE AND DATE_TRUNC('month', pc.fecha_pago) = DATE_TRUNC('month', NOW())
-            AND ($1::uuid[] IS NULL OR c.sede_id = ANY($1::uuid[]))
-      ) t
-      GROUP BY 1,2 ORDER BY 2
+      WITH dias AS (
+        SELECT generate_series(DATE_TRUNC('month', CURRENT_DATE), DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day', INTERVAL '1 day')::date AS d
+      ), ult AS (SELECT EXTRACT(DAY FROM DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month' - INTERVAL '1 day')::int AS u)
+      SELECT TO_CHAR(d, 'YYYY-MM-DD') AS clave, EXTRACT(DAY FROM d)::int AS dia_num,
+        (SELECT COALESCE(SUM(pp.monto),0) FROM pagos_poliza pp JOIN polizas p ON p.id = pp.poliza_id
+          WHERE NOT pp.anulado AND pp.fecha_pago = d AND ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[])))
+        + (SELECT COALESCE(SUM(pc.monto),0) FROM pagos_contrato pc JOIN contratos c ON c.id = pc.contrato_id
+          WHERE NOT pc.anulado AND pc.fecha_pago = d AND ($1::uuid[] IS NULL OR c.sede_id = ANY($1::uuid[]))) AS recaudado,
+        (SELECT COALESCE(SUM(p.valor_cuota),0) FROM polizas p, ult
+          WHERE p.fecha_inicio <= d AND p.estado <> 'EJECUTADA'
+            AND (p.estado <> 'CANCELADA' OR p.fecha_cancelacion >= DATE_TRUNC('month', CURRENT_DATE))
+            AND LEAST(EXTRACT(DAY FROM p.fecha_inicio)::int, ult.u) = EXTRACT(DAY FROM d)::int
+            AND ($1::uuid[] IS NULL OR p.sede_id = ANY($1::uuid[]))) AS esperado
+      FROM dias ORDER BY d
     `, s),
   ])
 
@@ -167,8 +182,8 @@ export async function getDashboard(req, reply) {
         pos_ventas_hoy:       +k.pos_ventas_hoy,
         pos_total_hoy:        +k.pos_total_hoy,
       },
-      recaudo_mensual:     recaudoMensualRes.rows.map(r => ({ mes: r.mes, total: +r.total })),
-      recaudo_diario:      recaudoDiarioRes.rows.map(r => ({ dia: r.dia, total: +r.total })),
+      recaudo_mensual:     recaudoMensualRes.rows.map(r => ({ clave: r.clave, mes_num: r.mes_num, anio: r.anio, recaudado: +r.recaudado, esperado: +r.esperado, total: +r.recaudado })),
+      recaudo_diario:      recaudoDiarioRes.rows.map(r => ({ clave: r.clave, dia_num: r.dia_num, recaudado: +r.recaudado, esperado: +r.esperado, total: +r.recaudado })),
       servicios_mes:       serviciosMesRes.rows.map(r => ({ mes: r.mes, total: +r.total })),
       salas:               salaRes.rows,
       mora_stats:          polizasMoraRes.rows[0],
