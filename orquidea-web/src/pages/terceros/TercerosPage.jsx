@@ -29,6 +29,7 @@ import { useAuthStore } from '../../store/auth.store.js'
 import { toast } from '../../store/toast.store.js'
 import { archivoUrl } from '../../utils/archivoUrl.js'
 import Angelito from '../../components/ui/Angelito.jsx'
+import { PolizasFamilia, ServiciosTercero } from '../../components/terceros/PolizasFamilia.jsx'
 
 // ── Constantes ────────────────────────────────────────────────────────────
 
@@ -1001,7 +1002,10 @@ function DataItem({ icon: Icon, label, value, accent }) {
   )
 }
 
-function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
+function ModalFicha({ id: idInicial, onClose, onEditar, tiposDocs }) {
+  // La ficha puede pasar de una persona a un familiar sin cerrarse
+  const [id, setId]           = useState(idInicial)
+  useEffect(() => { setId(idInicial) }, [idInicial])
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab]         = useState('datos')
@@ -1042,6 +1046,7 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
 
   const cargar = useCallback(async () => {
     setLoading(true)
+    setFormDef(BLANK_DEF)
     try {
       const r = await api.get(`/terceros/${id}`)
       setData(r.data.data)
@@ -1128,11 +1133,16 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
   const rolesActivos = !loading ? (data?.roles || []).filter(r => r.activo) : []
   const nucleo = !loading ? (data?.nucleo_familiar || []) : []
 
+  const polizasT   = !loading ? (data?.polizas || []) : []
+  const serviciosT = !loading ? (data?.servicios || []) : []
+  const fallecio   = !loading && (data?.defuncion?.fecha_fallecimiento || null)
   const TABS = [
     { key:'datos',     icon:'👤', label:'Datos' },
-    { key:'nucleo',    icon:'👨‍👩‍👧', label:`Familia (${nucleo.length})` },
+    { key:'familia',   icon:'👨‍👩‍👧', label:`Pólizas y familia (${polizasT.length})` },
+    ...(serviciosT.length ? [{ key:'servicios', icon:'🕯️', label:`Servicios (${serviciosT.length})` }] : []),
     { key:'defuncion', icon:'🕊️', label:'Defunción', dot: isDifunto ? (data?.defuncion ? 'green' : 'amber') : null },
   ]
+  const abrirFamiliar = otroId => { setId(otroId); setTab('familia') }
 
   const TpdCard = ({ icon, title, children, accentColor = '#2E3192', headerRight }) => (
     <div className="tpd-card">
@@ -1167,7 +1177,7 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
             background:'rgba(255,255,255,.18)', border:'2px solid rgba(255,255,255,.3)',
             display:'flex', alignItems:'center', justifyContent:'center',
             fontSize:20, fontWeight:900, color:'#fff', letterSpacing:-.5 }}>
-            {loading ? '…' : iniciales(data)}
+            {loading ? '…' : (isDifunto || fallecio) ? <Angelito size={34}/> : iniciales(data)}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>
@@ -1182,6 +1192,12 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                   <span style={{ background:'rgba(255,255,255,.18)', border:'1px solid rgba(255,255,255,.3)',
                     padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:700, color:'#fff' }}>
                     {data.tipo_doc_sigla} {data.numero_documento}
+                  </span>
+                )}
+                {fallecio && (
+                  <span style={{ background:'rgba(0,0,0,.25)', border:'1px solid rgba(255,255,255,.3)',
+                    padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:800, color:'#fff' }}>
+                    ✝ Falleció el {new Date(String(fallecio).slice(0,10) + 'T12:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'long', year:'numeric' })}
                   </span>
                 )}
                 {data.rh && (
@@ -1306,127 +1322,11 @@ function ModalFicha({ id, onClose, onEditar, tiposDocs }) {
                 )}
               </>
 
-            ) : tab === 'nucleo' ? (
-              <TpdCard icon="👨‍👩‍👧" title="Núcleo Familiar"
-                headerRight={
-                  <button onClick={() => setShowVinc(v => !v)}
-                    style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 14px',
-                      background: showVinc ? '#EEF2FF' : 'linear-gradient(135deg,#5B6EE8,#4A5DD4)',
-                      border:'none', borderRadius:8, fontSize:11.5, fontWeight:700,
-                      color: showVinc ? '#2E3192' : '#fff', cursor:'pointer' }}>
-                    <PlusCircle size={12}/> Vincular familiar
-                  </button>
-                }>
-                <div style={{ fontSize:12, color:'#6B7280', fontWeight:600, marginBottom:14 }}>
-                  {nucleo.length === 0 ? 'Sin miembros registrados' : `${nucleo.length} persona${nucleo.length>1?'s':''} vinculada${nucleo.length>1?'s':''}`}
-                </div>
+            ) : tab === 'familia' ? (
+              <PolizasFamilia polizas={polizasT} yoId={id} onAbrirTercero={abrirFamiliar}/>
 
-                {showVinc && (
-                  <div style={{ background:'#F0F1FA', border:'1.5px solid #C7CAE8', borderRadius:12, padding:14, marginBottom:14 }}>
-                    {errVinc && <div className="tp-alert err" style={{ marginBottom:10 }}><AlertTriangle size={13}/>{errVinc}</div>}
-                    <div className="tp-grid2" style={{ marginBottom:10 }}>
-                      <div className="tp-field" style={{ marginBottom:0 }}>
-                        <label>Buscar persona</label>
-                        <div style={{ position:'relative' }}>
-                          <Search size={13} color="#9CA3AF" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
-                          <input value={busq} onChange={e => setBusq(e.target.value)} placeholder="Nombre, cédula…" style={{ paddingLeft:30 }}/>
-                        </div>
-                      </div>
-                      <div className="tp-field" style={{ marginBottom:0 }}>
-                        <label>Parentesco</label>
-                        <select value={parentesco} onChange={e => setParentesco(e.target.value)}>
-                          {PARENTESCOS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    {candidatos.length > 0 && (
-                      <div style={{ border:'1.5px solid #C7CAE8', borderRadius:10, overflow:'hidden', maxHeight:180, overflowY:'auto', background:'#fff' }}>
-                        {candidatos.map((c, i) => (
-                          <div key={c.id} onClick={() => vincularFamiliar(c.id)}
-                            style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
-                              cursor:'pointer', borderBottom:i<candidatos.length-1?'1px solid #F4F5FA':'none' }}
-                            onMouseEnter={e => e.currentTarget.style.background='#EEF2FF'}
-                            onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                            <Avatar t={c} size={34}/>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontSize:13, fontWeight:700 }}>{nombreCompleto(c)}</div>
-                              <div style={{ fontSize:11, color:'#9CA3AF' }}>{c.tipo_doc_sigla} {c.numero_documento}</div>
-                            </div>
-                            {savingVinc ? <Loader2 size={14} className="tp-spin" color="#2E3192"/> : <ChevronRight size={14} color="#9CA3AF"/>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {nucleo.length === 0 ? (
-                  <div style={{ textAlign:'center', padding:'40px 20px' }}>
-                    <div style={{ width:60, height:60, borderRadius:16, background:'#F0F1FA',
-                      display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
-                      <Heart size={26} color="#C7CAE8"/>
-                    </div>
-                    <p style={{ fontSize:14, fontWeight:800, color:'#374151', margin:'0 0 6px' }}>Sin núcleo familiar</p>
-                    <span style={{ fontSize:12.5, color:'#9CA3AF' }}>Use "Vincular familiar" para agregar miembros</span>
-                  </div>
-                ) : (
-                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                    {nucleo.map(f => (
-                      <div key={f.id} style={{ display:'flex', alignItems:'center', gap:12,
-                        background:'#F8F9FF', border:'1.5px solid #ECEDF8', borderRadius:12, padding:'12px 14px' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor='#C7CAE8'; e.currentTarget.style.background='#F0F1FA' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor='#ECEDF8'; e.currentTarget.style.background='#F8F9FF' }}>
-                        <div style={{ width:42, height:42, borderRadius:12, flexShrink:0,
-                          background: f.relacion==='TITULAR' ? 'linear-gradient(135deg,#C9A020,#A37A10)' : 'linear-gradient(135deg,#0891B2,#0F5E7A)',
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:15, fontWeight:900, color:'#fff', boxShadow:'0 3px 10px rgba(0,0,0,.15)' }}>
-                          {(f.nombres?.[0]||'?').toUpperCase()}
-                        </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13.5, fontWeight:800, color:'#0F1035' }}>{f.nombres} {f.apellidos}</div>
-                          <div style={{ fontSize:11.5, color:'#6B7280', marginTop:2, display:'flex', alignItems:'center', gap:6 }}>
-                            {f.relacion === 'TITULAR' ? (
-                              <span style={{ background:'#FEF3C7', color:'#B45309',
-                                fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6 }}>
-                                🏠 Titular
-                              </span>
-                            ) : editandoParentescoId === f.id ? (
-                              <select autoFocus value={f.parentesco} disabled={guardandoParentesco}
-                                onChange={e => cambiarParentesco(f.id, e.target.value)}
-                                onBlur={() => setEditandoParentescoId(null)}
-                                style={{ fontSize:10.5, fontWeight:700, color:'#0891B2', border:'1.5px solid #A5F3FC',
-                                  borderRadius:6, padding:'1px 4px', background:'#fff' }}>
-                                {PARENTESCOS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                              </select>
-                            ) : (
-                              <span onClick={() => setEditandoParentescoId(f.id)} title="Clic para corregir el parentesco"
-                                style={{ background:'#CFFAFE', color:'#0891B2', cursor:'pointer',
-                                  fontWeight:700, fontSize:10, padding:'2px 7px', borderRadius:6, display:'inline-flex', alignItems:'center', gap:3 }}>
-                                {f.parentesco} <Edit2 size={9}/>
-                              </span>
-                            )}
-                            <span>{f.tipo_doc_sigla} {f.numero_documento}</span>
-                          </div>
-                        </div>
-                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <span style={{ background:f.activo?'#D1FAE5':'#F3F4F6', color:f.activo?'#065F46':'#6B7280',
-                            fontSize:10.5, fontWeight:700, padding:'3px 9px', borderRadius:20 }}>
-                            {f.activo ? 'Activo' : 'Inactivo'}
-                          </span>
-                          {f.relacion === 'BENEFICIARIO' && (
-                            <button onClick={() => desvincularFamiliar(f.id)}
-                              style={{ width:30, height:30, borderRadius:8, border:'1.5px solid #FECACA',
-                                background:'#FEF2F2', display:'flex', alignItems:'center',
-                                justifyContent:'center', cursor:'pointer', color:'#EF4444' }}>
-                              <Trash2 size={13}/>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </TpdCard>
+            ) : tab === 'servicios' ? (
+              <ServiciosTercero servicios={serviciosT}/>
 
             ) : (
               /* Tab Defunción */

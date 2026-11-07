@@ -156,8 +156,51 @@ export async function obtener(req, reply) {
     `SELECT * FROM defunciones WHERE tercero_id = $1 LIMIT 1`, [id]
   )
 
+  // Grupo familiar = las pólizas donde la persona es titular o beneficiaria
+  // (una sola fuente de verdad: lo que se cambia en la póliza se ve aquí).
+  const { rows: polizas } = await pool.query(
+    `SELECT p.id, p.numero, p.numero_legado, p.estado, p.valor_cuota, p.pago_hasta, p.fecha_inicio,
+            pl.nombre AS plan, p.max_beneficiarios,
+            CASE WHEN p.titular_id = $1 THEN 'TITULAR' ELSE 'BENEFICIARIO' END AS rol,
+            (SELECT pb.parentesco FROM poliza_beneficiarios pb WHERE pb.poliza_id = p.id AND pb.tercero_id = $1 LIMIT 1) AS parentesco,
+            json_build_object('id', tt.id, 'nombre', concat_ws(' ', tt.nombres, tt.apellidos), 'documento', tt.numero_documento,
+              'sigla', tdt.sigla, 'fecha_nacimiento', tt.fecha_nacimiento,
+              'fallecido', EXISTS (SELECT 1 FROM defunciones d WHERE d.tercero_id = tt.id),
+              'fecha_fallecimiento', (SELECT d.fecha_fallecimiento FROM defunciones d WHERE d.tercero_id = tt.id LIMIT 1)) AS titular,
+            COALESCE((SELECT json_agg(json_build_object(
+                'id', t.id, 'nombre', concat_ws(' ', t.nombres, t.apellidos), 'documento', t.numero_documento,
+                'sigla', td.sigla, 'parentesco', pb.parentesco, 'fecha_nacimiento', t.fecha_nacimiento,
+                'activo', pb.activo, 'ejecutado', pb.ejecutado, 'fecha_ejecucion', pb.fecha_ejecucion,
+                'fecha_afiliacion', pb.fecha_afiliacion,
+                'fallecido', (pb.ejecutado OR EXISTS (SELECT 1 FROM defunciones d WHERE d.tercero_id = t.id)),
+                'fecha_fallecimiento', COALESCE(pb.fecha_ejecucion, (SELECT d.fecha_fallecimiento FROM defunciones d WHERE d.tercero_id = t.id LIMIT 1)))
+              ORDER BY pb.ejecutado, pb.activo DESC, t.fecha_nacimiento NULLS LAST)
+              FROM poliza_beneficiarios pb JOIN terceros t ON t.id = pb.tercero_id
+              LEFT JOIN tipos_documento td ON td.id = t.tipo_documento_id
+              WHERE pb.poliza_id = p.id), '[]'::json) AS miembros
+       FROM polizas p
+       JOIN planes_poliza pl ON pl.id = p.plan_id
+       JOIN terceros tt ON tt.id = p.titular_id
+       LEFT JOIN tipos_documento tdt ON tdt.id = tt.tipo_documento_id
+      WHERE p.titular_id = $1
+         OR EXISTS (SELECT 1 FROM poliza_beneficiarios x WHERE x.poliza_id = p.id AND x.tercero_id = $1)
+      ORDER BY (p.estado = 'CANCELADA'), p.fecha_inicio DESC`, [id])
+
+  // Servicios funerarios donde es el fallecido o el responsable
+  const { rows: servicios } = await pool.query(
+    `SELECT sf.id, sf.codigo, sf.numero, sf.estado, sf.creado_en, sf.migrado_pisco, sf.tipo_disposicion,
+            CASE WHEN sf.difunto_id = $1 THEN 'FALLECIDO' ELSE 'RESPONSABLE' END AS rol,
+            concat_ws(' ', t.nombres, t.apellidos) AS difunto, p.numero_legado AS poliza_legado, p.numero AS poliza_numero,
+            c.nombre AS convenio
+       FROM servicios_funerarios sf
+       JOIN terceros t ON t.id = sf.difunto_id
+       LEFT JOIN polizas p ON p.id = sf.poliza_id
+       LEFT JOIN convenios c ON c.id = sf.convenio_id
+      WHERE sf.difunto_id = $1 OR sf.responsable_id = $1
+      ORDER BY sf.creado_en DESC`, [id])
+
   return reply.send({
-    data: { ...rows[0], nucleo_familiar: nucleo, defuncion: def[0] || null },
+    data: { ...rows[0], nucleo_familiar: nucleo, defuncion: def[0] || null, polizas, servicios },
     error: null,
   })
 }
