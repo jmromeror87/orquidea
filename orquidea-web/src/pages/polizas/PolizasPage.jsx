@@ -1868,8 +1868,8 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                 <div style={{ fontSize:12, color:'#6B7280', fontWeight:600, marginBottom:12 }}>
                   {(data.beneficiarios||[]).filter(b=>b.activo && !b.ejecutado && !b.es_titular_historico).length} de {data.max_beneficiarios} beneficiarios usados
                   {(() => {
-                    const n = data.plan_edad_max ? (data.beneficiarios||[]).filter(b => b.activo && !b.ejecutado && b.edad != null && b.edad > Number(data.plan_edad_max)).length : 0
-                    return n > 0 ? <span style={{ marginLeft:10, color:'#B45309', fontWeight:800 }}>· ⚠ {n} {n === 1 ? 'supera' : 'superan'} la edad del plan ({data.plan_edad_max} años)</span> : null
+                    const n = data.plan_edad_max ? (data.beneficiarios||[]).filter(b => b.activo && !b.ejecutado && b.edad_afiliacion != null && b.edad_afiliacion > Number(data.plan_edad_max)).length : 0
+                    return n > 0 ? <span style={{ marginLeft:10, color:'#B45309', fontWeight:800 }}>· ⚠ {n} se {n === 1 ? 'afilió' : 'afiliaron'} con más de {data.plan_edad_max} años</span> : null
                   })()}
                 </div>
 
@@ -1914,8 +1914,10 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                             if (!b.fecha_nacimiento) return <span style={{ color:'#9CA3AF' }}>Sin fecha de nacimiento</span>
                             const n = new Date(String(b.fecha_nacimiento).slice(0,10)), h = b.ejecutado && b.fecha_ejecucion ? new Date(String(b.fecha_ejecucion).slice(0,10)) : new Date()
                             let e = h.getFullYear() - n.getFullYear(); if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) e--
-                            const pasa = !b.ejecutado && data.plan_edad_max && e > Number(data.plan_edad_max)
-                            return <span style={{ fontWeight:800, color: pasa ? '#B45309' : '#374151' }}>{b.ejecutado ? `Falleció a los ${e} años` : `${e} años`}</span>
+                            const pasa = !b.ejecutado && data.plan_edad_max && b.edad_afiliacion != null && b.edad_afiliacion > Number(data.plan_edad_max)
+                            return <span style={{ fontWeight:800, color: pasa ? '#B45309' : '#374151' }}
+                              title={b.edad_afiliacion != null ? `Tenía ${b.edad_afiliacion} años cuando se afilió` : undefined}>
+                              {b.ejecutado ? `Falleció a los ${e} años` : `${e} años`}{!b.ejecutado && b.edad_afiliacion != null && b.edad_afiliacion !== e ? ` · se afilió con ${b.edad_afiliacion}` : ''}</span>
                           })()}
                           {b.cobertura_basica && (
                             <span style={{ background:'#FFFBEB', color:'#B45309', padding:'2px 7px',
@@ -1925,11 +1927,11 @@ function ModalFicha({ id, onClose, onEditar, onPagar, onCancelar, onReactivar })
                           )}
                           {b.ejecutado && <span style={{ color:'#EF4444', fontWeight:700 }}>✓ Ejecutado {fmtDate(b.fecha_ejecucion)}</span>}
                         </div>
-                        {!b.ejecutado && data.plan_edad_max && b.edad != null && b.edad > Number(data.plan_edad_max) && (
+                        {!b.ejecutado && data.plan_edad_max && b.edad_afiliacion != null && b.edad_afiliacion > Number(data.plan_edad_max) && (
                           <div style={{ marginTop:6, display:'flex', alignItems:'flex-start', gap:7, background:'#FFFBEB', border:'1.5px solid #FDE68A',
                             borderRadius:9, padding:'7px 10px', fontSize:11.5, color:'#92400E', lineHeight:1.45 }}>
                             <AlertTriangle size={14} style={{ flexShrink:0, marginTop:1 }}/>
-                            <span><b>Supera la edad de afiliación del plan ({data.plan_edad_max} años).</b> Su cobertura es restringida: revise la póliza y las condiciones del plan antes de prestar el servicio.</span>
+                            <span><b>Se afilió con {b.edad_afiliacion} años, más de la edad de afiliación del plan ({data.plan_edad_max}).</b> Su cobertura es restringida: revise la póliza y las condiciones del plan antes de prestar el servicio.</span>
                           </div>
                         )}
                         {b.fecha_afiliacion && !b.ejecutado && (

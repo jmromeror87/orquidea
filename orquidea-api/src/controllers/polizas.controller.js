@@ -278,6 +278,8 @@ export async function obtener(req, reply) {
         td.sigla AS tipo_doc_sigla,
         t.fecha_nacimiento, t.rh,
         DATE_PART('year', AGE(CURRENT_DATE, t.fecha_nacimiento))::INT AS edad,
+        -- Edad el día que se afilió: la que decide la regla de edad del plan
+        DATE_PART('year', AGE(COALESCE(pb.fecha_afiliacion, (SELECT fecha_inicio FROM polizas WHERE id = pb.poliza_id)), t.fecha_nacimiento))::INT AS edad_afiliacion,
         pb.fecha_afiliacion, pb.fecha_fin_carencia, (CURRENT_DATE < pb.fecha_fin_carencia) AS en_carencia,
         pb.costo_afiliacion, pb.afiliacion_pagada
       FROM poliza_beneficiarios pb
