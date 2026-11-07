@@ -274,9 +274,6 @@ export default function DashboardPage() {
   const fechaStr = now.toLocaleDateString('es-CO', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })
-  const horaStr = now.toLocaleTimeString('es-CO', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  })
 
   const trendRecaudo = data && data.kpis.recaudo_mes_anterior > 0
     ? ((data.kpis.recaudo_mes - data.kpis.recaudo_mes_anterior) / data.kpis.recaudo_mes_anterior) * 100
@@ -321,10 +318,6 @@ export default function DashboardPage() {
             <p style={styles.headerSub}>
               {fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1)}
             </p>
-          </div>
-          <div style={styles.clockBox}>
-            <span style={styles.clock}>{horaStr}</span>
-            <span style={styles.clockSub}>Hora local</span>
           </div>
         </div>
 

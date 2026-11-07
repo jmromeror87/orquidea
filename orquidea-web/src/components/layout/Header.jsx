@@ -127,11 +127,11 @@ const CSS = `
   /* Reloj */
   .hdr-clock {
     font-size: 12.5px;
-    font-weight: 700;
-    color: #374151;
+    font-weight: 800;
+    color: #6366F1;
     font-variant-numeric: tabular-nums;
-    background: #F4F5FA;
-    border: 1px solid #ECEDF8;
+    background: #EEF2FF;
+    border: 1px solid #C7D2FE;
     border-radius: 8px;
     padding: 5px 11px;
     letter-spacing: .3px;
