@@ -519,6 +519,8 @@ export async function anularPagoPoliza(req, reply) {
   if (sedeIds !== null && !sedeIds.includes(pago.rows[0].sede_id))
     return reply.status(403).send({ error: 'Ese pago no pertenece a tu sede' })
   if (pago.rows[0].anulado) return reply.status(400).send({ error: 'El pago ya está anulado' })
+  if (pago.rows[0].migrado_pisco)
+    return reply.status(400).send({ error: 'Este pago viene del historial de Pisco y no tiene comprobante contable en Orquídea: no se puede anular desde aquí' })
 
   const pg = pago.rows[0]
 
